@@ -20,6 +20,7 @@ type Mapper struct {
 	ProductLinks       map[string]string
 }
 
+// Review is the public JSON representation of a stored review.
 type Review struct {
 	ID                    uint       `json:"id"`
 	Marketplace           string     `json:"marketplace"`
@@ -40,11 +41,13 @@ type Review struct {
 	SellerProductURL      string     `json:"sellerProductUrl,omitempty"`
 }
 
+// Answer is the public JSON representation of a marketplace answer.
 type Answer struct {
 	Text  string `json:"text"`
 	State string `json:"state"`
 }
 
+// Media is the public JSON representation of review media.
 type Media struct {
 	Kind       string `json:"kind"`
 	URL        string `json:"url"`
@@ -114,6 +117,7 @@ func marketplaceProductURL(review store.Review) string {
 	}
 }
 
+// When the seller article is empty, {article} uses the external product id while {seller_article} expands to empty.
 func (m Mapper) sellerProductURL(review store.Review, sellerArticle string) string {
 	article := sellerArticle
 	if article == "" {
@@ -185,6 +189,7 @@ func SellerArticleForReview(review store.Review) string {
 	return raw.ProductDetails.SupplierArticle
 }
 
+// urlPathEscape hand-escapes only / ? # & so readable characters (e.g. Cyrillic) stay untouched in WB catalog paths.
 func urlPathEscape(value string) string {
 	return strings.NewReplacer("/", "%2F", "?", "%3F", "#", "%23", "&", "%26").Replace(value)
 }

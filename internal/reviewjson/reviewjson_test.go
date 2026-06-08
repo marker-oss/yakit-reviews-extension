@@ -53,6 +53,44 @@ func TestToReview_WBMapping(t *testing.T) {
 	}
 }
 
+func TestToReview_TemplateFallbackWhenArticleNotInLinks(t *testing.T) {
+	mapper := Mapper{
+		ProductURLTemplate: "https://shegida.ru/search?query={seller_article_url}",
+		ProductLinks:       map[string]string{"9999": "https://shegida.ru/products/p-9999"},
+	}
+	r := store.Review{
+		Marketplace:       "wb",
+		ExternalReviewID:  "wb-1",
+		ExternalProductID: "70476012",
+		SellerArticle:     "1523",
+		CreatedAtMP:       time.Unix(1, 0),
+	}
+	out := mapper.ToReview(r)
+	// 1523 is not in ProductLinks, so the template is used with the escaped article.
+	if out.SellerProductURL != "https://shegida.ru/search?query=1523" {
+		t.Fatalf("sellerProductUrl = %q", out.SellerProductURL)
+	}
+}
+
+func TestToReview_ProductLinkNormalizationFallback(t *testing.T) {
+	mapper := Mapper{
+		ProductURLTemplate: "https://shegida.ru/search?query={seller_article_url}",
+		// Only the normalized base article is registered; the review has a variant.
+		ProductLinks: map[string]string{"3467": "https://shegida.ru/products/p-3467"},
+	}
+	r := store.Review{
+		Marketplace:      "wb",
+		ExternalReviewID: "wb-2",
+		SellerArticle:    "3467/Белый",
+		CreatedAtMP:      time.Unix(1, 0),
+	}
+	out := mapper.ToReview(r)
+	// Exact "3467/Белый" misses; normalized "3467" hits the product link.
+	if out.SellerProductURL != "https://shegida.ru/products/p-3467" {
+		t.Fatalf("sellerProductUrl = %q", out.SellerProductURL)
+	}
+}
+
 func TestNormalizeSellerArticle(t *testing.T) {
 	if got := NormalizeSellerArticle("3467/Белый"); got != "3467" {
 		t.Fatalf("normalize = %q", got)
