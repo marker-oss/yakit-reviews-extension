@@ -5,8 +5,10 @@ package reviewjson
 import (
 	"encoding/json"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"reviews/internal/store"
 )
@@ -151,12 +153,45 @@ func (m Mapper) productLinkForSellerArticle(article string) (string, bool) {
 	if u, ok := m.ProductLinks[article]; ok {
 		return u, true
 	}
-	normalized := NormalizeSellerArticle(article)
+	normalized := m.NormalizeSellerArticle(article)
 	if normalized == article {
 		return "", false
 	}
 	u, ok := m.ProductLinks[normalized]
 	return u, ok
+}
+
+// NormalizeSellerArticle returns the export/grouping article for this
+// deployment. It first applies generic marketplace normalization, then uses
+// known site product articles to collapse WB values like "6202бежевый" to
+// "6202" when the suffix is a color written without a separator.
+func (m Mapper) NormalizeSellerArticle(article string) string {
+	normalized := NormalizeSellerArticle(article)
+	if normalized == "" || len(m.ProductLinks) == 0 {
+		return normalized
+	}
+	if _, ok := m.ProductLinks[normalized]; ok {
+		return normalized
+	}
+
+	keys := make([]string, 0, len(m.ProductLinks))
+	for key := range m.ProductLinks {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return len(keys[i]) > len(keys[j])
+	})
+
+	for _, key := range keys {
+		if key == "" || len(key) >= len(normalized) || !strings.HasPrefix(normalized, key) {
+			continue
+		}
+		suffix := strings.TrimSpace(strings.TrimPrefix(normalized, key))
+		if startsWithCyrillicLetter(suffix) {
+			return key
+		}
+	}
+	return normalized
 }
 
 // NormalizeSellerArticle collapses marketplace article variants (e.g.
@@ -167,6 +202,13 @@ func NormalizeSellerArticle(article string) string {
 		return strings.TrimSpace(before)
 	}
 	return article
+}
+
+func startsWithCyrillicLetter(value string) bool {
+	for _, r := range value {
+		return unicode.Is(unicode.Cyrillic, r) && unicode.IsLetter(r)
+	}
+	return false
 }
 
 // SellerArticleForReview returns the explicit seller article, falling back to

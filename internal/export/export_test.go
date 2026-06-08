@@ -43,6 +43,29 @@ func TestBuildBundlesGroupsByNormalizedArticleAndAggregates(t *testing.T) {
 	}
 }
 
+func TestBuildBundlesUsesKnownSiteArticlePrefixes(t *testing.T) {
+	reviews := []store.Review{
+		{Marketplace: "wb", ExternalReviewID: "r1", SellerArticle: "6202бежевый", Rating: ptrInt(5), CreatedAtMP: time.Unix(300, 0)},
+		{Marketplace: "wb", ExternalReviewID: "r2", SellerArticle: "6202красный", Rating: ptrInt(4), CreatedAtMP: time.Unix(200, 0)},
+	}
+	mapper := reviewjson.Mapper{
+		ProductLinks: map[string]string{"6202": "https://shegida.ru/products/p-6202"},
+	}
+
+	bundles := BuildBundles(reviews, mapper)
+
+	if len(bundles) != 1 {
+		t.Fatalf("want 1 article, got %d", len(bundles))
+	}
+	b := bundles["6202"]
+	if b == nil {
+		t.Fatalf("missing article 6202")
+	}
+	if b.Aggregate.Count != 2 || b.Aggregate.RatingAvg != 4.5 {
+		t.Fatalf("aggregate = %+v", b.Aggregate)
+	}
+}
+
 func TestWriteProducesFiles(t *testing.T) {
 	dir := t.TempDir()
 	reviews := []store.Review{

@@ -40,7 +40,7 @@ type Index struct {
 func BuildBundles(reviews []store.Review, mapper reviewjson.Mapper) map[string]*Bundle {
 	bundles := make(map[string]*Bundle)
 	for _, review := range reviews {
-		article := reviewjson.NormalizeSellerArticle(reviewjson.SellerArticleForReview(review))
+		article := mapper.NormalizeSellerArticle(reviewjson.SellerArticleForReview(review))
 		if article == "" {
 			continue
 		}
@@ -82,6 +82,9 @@ func BuildBundles(reviews []store.Review, mapper reviewjson.Mapper) map[string]*
 // Write emits by-article/<article>.json files and index.json into dir.
 func Write(dir string, bundles map[string]*Bundle, generatedAt time.Time) error {
 	byArticleDir := filepath.Join(dir, "by-article")
+	if err := os.RemoveAll(byArticleDir); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(byArticleDir, 0o755); err != nil {
 		return err
 	}

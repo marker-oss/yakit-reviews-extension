@@ -91,6 +91,26 @@ func TestToReview_ProductLinkNormalizationFallback(t *testing.T) {
 	}
 }
 
+func TestNormalizeSellerArticleWithProductLinks(t *testing.T) {
+	mapper := Mapper{
+		ProductLinks: map[string]string{
+			"6202":   "https://shegida.ru/products/p-6202",
+			"3508":   "https://shegida.ru/products/p-3508",
+			"3508-1": "https://shegida.ru/products/p-3508-1",
+		},
+	}
+
+	if got := mapper.NormalizeSellerArticle("6202бежевый"); got != "6202" {
+		t.Fatalf("normalize 6202 color = %q", got)
+	}
+	if got := mapper.NormalizeSellerArticle("3508-1/Бордовый"); got != "3508-1" {
+		t.Fatalf("normalize 3508-1 variant = %q", got)
+	}
+	if got := mapper.NormalizeSellerArticle("1102"); got != "1102" {
+		t.Fatalf("normalize numeric suffix = %q", got)
+	}
+}
+
 func TestNormalizeSellerArticle(t *testing.T) {
 	if got := NormalizeSellerArticle("3467/Белый"); got != "3467" {
 		t.Fatalf("normalize = %q", got)
