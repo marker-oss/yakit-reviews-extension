@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="Outfit photo">
+  <rect width="180" height="180" fill="#f4f0e8"/>
+  <rect x="48" y="24" width="84" height="132" rx="22" fill="#ffffff" stroke="#cfc8bb" stroke-width="4"/>
+  <path d="M64 70h52l-7 67H71z" fill="#dfe8df"/>
+  <path d="M72 70 59 86l12 16 9-8v43h20V94l9 8 12-16-13-16-12 7H84z" fill="#7f927c"/>
+</svg>

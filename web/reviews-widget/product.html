@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Карточка товара</title>
+    <link rel="stylesheet" href="./reviews-widget.css" />
+  </head>
+  <body>
+    <main class="demo-shell">
+      <section class="product-strip product-strip-large" aria-label="Product card">
+        <div class="product-media">
+          <img src="./assets/product-card.svg" alt="" />
+        </div>
+        <div class="product-copy">
+          <p class="product-kicker">Seller product page</p>
+          <h1 id="product-title">Карточка товара</h1>
+          <p id="product-meta"></p>
+          <p class="product-note">
+            Это прототип страницы магазина продавца. В production сюда будет
+            подставлен реальный URL через `REVIEWS_SITE_PRODUCT_URL_TEMPLATE`.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const article = params.get("article") || "unknown";
+      const marketplace = params.get("marketplace") || "marketplace";
+      document.querySelector("#product-title").textContent = `Артикул ${article}`;
+      document.querySelector("#product-meta").textContent =
+        `Источник отзыва: ${marketplace.toUpperCase()}`;
+    </script>
+  </body>
+</html>

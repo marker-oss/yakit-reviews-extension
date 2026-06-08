@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reviews Widget Demo</title>
+    <link rel="stylesheet" href="./reviews-widget.css" />
+  </head>
+  <body class="rw-demo-page">
+    <main class="demo-shell">
+      <section class="product-strip" aria-label="Product">
+        <div class="product-media">
+          <img src="./assets/product-card.svg" alt="" />
+        </div>
+        <div class="product-copy">
+          <p class="product-kicker">Marketplaces feedback</p>
+          <h1>Футболка Supima Cotton</h1>
+          <p>Отзывы покупателей из Wildberries, Яндекс Маркета и Ozon в одном виджете.</p>
+        </div>
+      </section>
+
+      <section
+        id="reviews-widget"
+        class="reviews-widget"
+        aria-label="Отзывы покупателей"
+      ></section>
+    </main>
+
+    <script src="./reviews-widget.js"></script>
+    <script>
+      ReviewsWidget.mount(document.querySelector("#reviews-widget"), {
+        reviews: ReviewsWidget.sampleReviews,
+        productName: "Футболка Supima Cotton",
+      });
+    </script>
+  </body>
+</html>

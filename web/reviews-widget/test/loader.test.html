@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>loader unit tests</title>
+<pre id="out"></pre>
+<script>
+  window.REVIEWS_EMBED_CONFIG = { debug: true };
+</script>
+<script src="../loader.js"></script>
+<script>
+  var out = document.getElementById("out");
+  var pass = 0;
+  var fail = 0;
+
+  function eq(name, got, want) {
+    var ok = JSON.stringify(got) === JSON.stringify(want);
+    out.textContent +=
+      (ok ? "PASS " : "FAIL ") +
+      name +
+      (ok ? "" : " got=" + JSON.stringify(got) + " want=" + JSON.stringify(want)) +
+      "\n";
+    if (ok) {
+      pass++;
+    } else {
+      fail++;
+    }
+  }
+
+  var I = window.__reviewsEmbedInternals;
+
+  eq("isProductPath true", I.isProductPath("/products/svitshot-100954"), true);
+  eq("isProductPath false", I.isProductPath("/catalog/platya"), false);
+  eq("normalizeArticle slash", I.normalizeArticle("3467/Белый"), "3467");
+  eq("normalizeArticle trim", I.normalizeArticle("  107 "), "107");
+  eq("articleFileKey space", I.articleFileKey("a b/c"), "a_b_c");
+  eq("bundleUrl", I.bundleUrl("3467/Белый"), I.cfg.dataBase + "/by-article/3467.json");
+  eq("extract sku", I.extractArticleFromHTML('x "sku":"107" y'), "107");
+  eq("extract label", I.extractArticleFromHTML("Артикул: 1523"), "1523");
+
+  var ld = I.buildJsonLd(
+    {
+      aggregate: { count: 2, ratingCount: 2, ratingAvg: 4.5 },
+      reviews: [
+        { rating: 5, authorName: "A", createdAt: "2026-05-01T00:00:00Z", text: "t1" },
+        { rating: 4, authorName: "B", createdAt: "2026-04-01T00:00:00Z", text: "t2" },
+      ],
+    },
+    10,
+  );
+  eq("jsonld ratingValue", ld.ratingValue, 4.5);
+  eq("jsonld reviewCount", ld.reviewCount, 2);
+  eq("jsonld reviews len", ld.review.length, 2);
+  eq("jsonld null when empty", I.buildJsonLd({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 } }, 10), null);
+
+  out.textContent += "\n" + pass + " passed, " + fail + " failed\n";
+  document.title = fail === 0 ? "ALL PASS" : "FAIL";
+</script>

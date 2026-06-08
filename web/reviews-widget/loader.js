@@ -1,0 +1,327 @@
+/*
+ * Reviews embed loader for shegida.ru (Yandex Kit).
+ * Loaded once by a Yandex Tag Manager Custom HTML tag. The DOM glue added in
+ * the next step watches SPA navigation, fetches per-article JSON, mounts the
+ * widget into Shadow DOM, and injects JSON-LD.
+ */
+(function () {
+  "use strict";
+
+  var CFG = Object.assign(
+    {
+      dataBase: "https://reviews.shegida.ru/reviews-data",
+      widgetJsUrl: "https://reviews.shegida.ru/reviews-widget.js",
+      widgetCssUrl: "https://reviews.shegida.ru/reviews-widget.css",
+      productPathPrefix: "/products/",
+      hostId: "reviews-embed-host",
+      maxJsonLdReviews: 10,
+      debug: false,
+    },
+    window.REVIEWS_EMBED_CONFIG || {},
+  );
+
+  function log() {
+    if (CFG.debug && window.console) {
+      console.log.apply(console, ["[reviews-embed]"].concat([].slice.call(arguments)));
+    }
+  }
+
+  function isProductPath(pathname) {
+    return typeof pathname === "string" && pathname.indexOf(CFG.productPathPrefix) === 0;
+  }
+
+  function normalizeArticle(article) {
+    if (!article) {
+      return "";
+    }
+    var value = String(article).trim();
+    var slash = value.indexOf("/");
+    if (slash >= 0) {
+      value = value.slice(0, slash).trim();
+    }
+    return value;
+  }
+
+  function articleFileKey(article) {
+    return String(article).replace(/[\/\\ ]/g, "_");
+  }
+
+  function bundleUrl(rawArticle) {
+    var article = normalizeArticle(rawArticle);
+    if (!article) {
+      return "";
+    }
+    return CFG.dataBase + "/by-article/" + encodeURIComponent(articleFileKey(article)) + ".json";
+  }
+
+  function extractArticleFromHTML(html) {
+    if (!html) {
+      return "";
+    }
+    var match = /"sku"\s*:\s*"([^"]+)"/i.exec(html);
+    if (match) {
+      return match[1];
+    }
+    match = /Артикул[^0-9A-Za-zА-Яа-яЁё]{0,8}([0-9A-Za-zА-Яа-яЁё/_.-]+)/i.exec(html);
+    return match ? match[1] : "";
+  }
+
+  function buildJsonLd(bundle, maxReviews) {
+    if (!bundle || !bundle.aggregate || bundle.aggregate.ratingCount < 1) {
+      return null;
+    }
+
+    var reviews = (bundle.reviews || [])
+      .filter(function (review) {
+        return review.rating != null;
+      })
+      .slice(0, maxReviews)
+      .map(function (review) {
+        return {
+          "@type": "Review",
+          author: { "@type": "Person", name: review.authorName || "Покупатель" },
+          datePublished: review.createdAt,
+          reviewRating: { "@type": "Rating", ratingValue: review.rating, bestRating: 5, worstRating: 1 },
+          reviewBody: review.text || "",
+        };
+      });
+
+    return {
+      "@context": "https://schema.org",
+      "@type": "AggregateRating",
+      ratingValue: bundle.aggregate.ratingAvg,
+      reviewCount: bundle.aggregate.count,
+      ratingCount: bundle.aggregate.ratingCount,
+      bestRating: 5,
+      worstRating: 1,
+      review: reviews,
+    };
+  }
+
+  window.__reviewsEmbedInternals = {
+    isProductPath: isProductPath,
+    normalizeArticle: normalizeArticle,
+    articleFileKey: articleFileKey,
+    bundleUrl: bundleUrl,
+    extractArticleFromHTML: extractArticleFromHTML,
+    buildJsonLd: buildJsonLd,
+    cfg: CFG,
+    log: log,
+  };
+
+  var widgetLoading = null;
+  var widgetCssText = "";
+  var currentArticle = null;
+  var requestSeq = 0;
+  var spaWatchInstalled = false;
+
+  function loadWidgetAssets() {
+    if (widgetLoading) {
+      return widgetLoading;
+    }
+
+    widgetLoading = new Promise(function (resolve, reject) {
+      var cssDone = fetch(CFG.widgetCssUrl)
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error("widget css " + response.status);
+          }
+          return response.text();
+        })
+        .then(function (text) {
+          widgetCssText = text;
+        });
+
+      if (window.ReviewsWidget && window.ReviewsWidget.mountShadow) {
+        cssDone.then(resolve, reject);
+        return;
+      }
+
+      var script = document.createElement("script");
+      script.src = CFG.widgetJsUrl;
+      script.onload = function () {
+        cssDone.then(resolve, reject);
+      };
+      script.onerror = function () {
+        reject(new Error("widget js failed"));
+      };
+      document.head.appendChild(script);
+    });
+
+    return widgetLoading;
+  }
+
+  function findAnchor() {
+    var details = document.querySelector('[data-testid="ProductDetails"]');
+    if (!details) {
+      return null;
+    }
+    return details.querySelector("main");
+  }
+
+  function removeHost() {
+    var existing = document.getElementById(CFG.hostId);
+    if (existing && existing.parentNode) {
+      existing.parentNode.removeChild(existing);
+    }
+
+    var jsonLd = document.getElementById(CFG.hostId + "-jsonld");
+    if (jsonLd && jsonLd.parentNode) {
+      jsonLd.parentNode.removeChild(jsonLd);
+    }
+  }
+
+  function injectJsonLd(bundle) {
+    var data = buildJsonLd(bundle, CFG.maxJsonLdReviews);
+    if (!data) {
+      return;
+    }
+
+    var script = document.createElement("script");
+    script.type = "application/ld+json";
+    script.id = CFG.hostId + "-jsonld";
+    script.textContent = JSON.stringify(data);
+    document.head.appendChild(script);
+  }
+
+  function render(bundle, normalizedArticle) {
+    removeHost();
+
+    var reviews = bundle && bundle.reviews ? bundle.reviews : [];
+    if (!reviews.length) {
+      currentArticle = null;
+      log("empty bundle", normalizedArticle);
+      return;
+    }
+
+    var anchor = findAnchor();
+    if (!anchor || !anchor.parentNode) {
+      log("no anchor");
+      return;
+    }
+
+    var host = document.createElement("div");
+    host.id = CFG.hostId;
+    host.setAttribute("data-article", normalizedArticle);
+    host.style.display = "block";
+    host.style.width = "100%";
+    host.style.maxWidth = "none";
+    host.style.margin = "32px 0";
+    host.style.padding = "0";
+    host.style.boxSizing = "border-box";
+    host.style.gridColumn = "1 / -1";
+    host.style.flexBasis = "100%";
+    host.style.order = "999";
+    anchor.parentNode.insertBefore(host, anchor.nextSibling);
+
+    window.ReviewsWidget.mountShadow(host, { styleText: widgetCssText, reviews: reviews });
+    injectJsonLd(bundle);
+    currentArticle = normalizedArticle;
+    log("rendered", normalizedArticle, reviews.length, "reviews");
+  }
+
+  function handleNavigation() {
+    if (!isProductPath(location.pathname)) {
+      if (currentArticle !== null || document.getElementById(CFG.hostId)) {
+        removeHost();
+        currentArticle = null;
+      }
+      return;
+    }
+
+    var rawArticle = extractArticleFromHTML(document.documentElement.innerHTML);
+    var normalizedArticle = normalizeArticle(rawArticle);
+    if (!normalizedArticle) {
+      log("no article on page yet");
+      return;
+    }
+    if (normalizedArticle === currentArticle && document.getElementById(CFG.hostId)) {
+      return;
+    }
+
+    var seq = ++requestSeq;
+    var url = bundleUrl(rawArticle);
+    log("fetch", url);
+
+    loadWidgetAssets()
+      .then(function () {
+        return fetch(url, { headers: { Accept: "application/json" } });
+      })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("bundle " + response.status);
+        }
+        return response.json();
+      })
+      .then(function (bundle) {
+        if (seq !== requestSeq) {
+          return;
+        }
+        render(bundle, normalizedArticle);
+      })
+      .catch(function (error) {
+        if (seq !== requestSeq) {
+          return;
+        }
+        if (currentArticle !== null || document.getElementById(CFG.hostId)) {
+          removeHost();
+          currentArticle = null;
+        }
+        log("skip", url, error && error.message);
+      });
+  }
+
+  var debounceTimer = null;
+  function scheduleHandle() {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+    debounceTimer = setTimeout(handleNavigation, 400);
+  }
+
+  function installSpaWatch() {
+    if (spaWatchInstalled || !document.body) {
+      return;
+    }
+    spaWatchInstalled = true;
+
+    ["pushState", "replaceState"].forEach(function (name) {
+      var original = history[name];
+      history[name] = function () {
+        var result = original.apply(this, arguments);
+        scheduleHandle();
+        return result;
+      };
+    });
+
+    window.addEventListener("popstate", scheduleHandle);
+
+    var observer = new MutationObserver(function () {
+      if (isProductPath(location.pathname) && !document.getElementById(CFG.hostId)) {
+        scheduleHandle();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function start() {
+    installSpaWatch();
+    scheduleHandle();
+  }
+
+  function boot() {
+    if (window.__reviewsEmbedBooted) {
+      return;
+    }
+    window.__reviewsEmbedBooted = true;
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", start);
+      return;
+    }
+    start();
+  }
+
+  window.__reviewsEmbedBoot = boot;
+  boot();
+})();
