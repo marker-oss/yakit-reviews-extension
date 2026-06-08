@@ -35,7 +35,7 @@ Move the JSON DTO and mapping out of `internal/server` into a reusable `internal
 - Create: `internal/reviewjson/reviewjson_test.go`
 - Modify: `internal/server/server.go` (replace local DTO/mappers with calls into `reviewjson`)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `internal/reviewjson/reviewjson_test.go`:
 
@@ -105,12 +105,12 @@ func TestNormalizeSellerArticle(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/reviewjson/`
 Expected: FAIL — package `reviewjson` does not compile (types/functions undefined).
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `internal/reviewjson/reviewjson.go` (move the mapping logic verbatim from `internal/server/server.go`, parameterized by `Mapper`):
 
@@ -314,7 +314,7 @@ func stringValue(value *string) string {
 }
 ```
 
-- [ ] **Step 4: Refactor `internal/server/server.go` to use the package**
+- [x] **Step 4: Refactor `internal/server/server.go` to use the package**
 
 In `internal/server/server.go`: delete the local `reviewDTO`, `answerDTO`, `mediaDTO`, `toReviewDTO`, `marketplaceReviewURL`, `marketplaceProductURL`, `sellerProductURL`, `productLinkForSellerArticle`, `normalizeSellerArticle`, `sellerArticleForReview`, `urlPathEscape`, `stringValue`. Add import `"reviews/internal/reviewjson"`. Replace the body of `handleReviews` item-mapping and the `reviewsResponse` type:
 
@@ -349,12 +349,12 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 
 Keep `config` import only if still used elsewhere in the file; if `goimports`/compiler flags it unused, remove it.
 
-- [ ] **Step 5: Run tests to verify everything passes**
+- [x] **Step 5: Run tests to verify everything passes**
 
 Run: `go build ./... && go test ./internal/reviewjson/ ./internal/server/ ./...`
 Expected: PASS across the board; `go vet ./...` clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/reviewjson/ internal/server/server.go
@@ -371,7 +371,7 @@ git commit -m "refactor: extract shared reviewjson package from server"
 - Create: `internal/store/export.go`
 - Modify: `internal/store/store_test.go` (add test) — or create `internal/store/export_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `internal/store/export_test.go`:
 
@@ -409,12 +409,12 @@ func TestListAllReviews_ReturnsEveryRowWithMedia(t *testing.T) {
 
 > NOTE for implementer: open `internal/store/store_test.go` first and reuse its existing store-construction and review-seeding helpers. If they have different names than `newTestStore`/`seedReview`, adapt the test to the real helper names — do not invent a second seeding path.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/store/ -run TestListAllReviews`
 Expected: FAIL — `ListAllReviews` undefined.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `internal/store/export.go`:
 
@@ -444,7 +444,7 @@ func (s *Store) ListAllReviews(ctx context.Context) ([]Review, error) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/store/ -run TestListAllReviews -v`
 Expected: PASS.
@@ -466,7 +466,7 @@ Group reviews by normalized seller article, compute aggregate, write `by-article
 - Create: `internal/export/export.go`
 - Create: `internal/export/export_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `internal/export/export_test.go`:
 
@@ -555,12 +555,12 @@ func TestWrite_ProducesFiles(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/export/`
 Expected: FAIL — package does not compile.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `internal/export/export.go`:
 
@@ -689,7 +689,7 @@ func writeJSONFile(path string, value any) error {
 
 > NOTE: `articleFileName` must match what `loader.js` requests (Task 9). Keep both in sync: loader uses the same `/`,`\`,space → `_` rule before `encodeURIComponent`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/export/ -v`
 Expected: PASS (both tests).
@@ -708,7 +708,7 @@ git commit -m "feat: static per-article review export builder"
 **Files:**
 - Modify: `cmd/reviews/main.go` (add `case "export"`, `runExport`, usage line)
 
-- [ ] **Step 1: Add the command dispatch**
+- [x] **Step 1: Add the command dispatch**
 
 In `run()`'s `switch`, add after the `discover-site-urls` case:
 
@@ -717,7 +717,7 @@ In `run()`'s `switch`, add after the `discover-site-urls` case:
 		return runExport(ctx, args[1:], cfg, logger)
 ```
 
-- [ ] **Step 2: Implement `runExport`**
+- [x] **Step 2: Implement `runExport`**
 
 Add to `cmd/reviews/main.go` (imports needed: `reviews/internal/export`, `reviews/internal/reviewjson`, and `time` is already imported):
 
@@ -759,7 +759,7 @@ func runExport(ctx context.Context, args []string, cfg config.Config, logger *sl
 }
 ```
 
-- [ ] **Step 3: Update `usage()`**
+- [x] **Step 3: Update `usage()`**
 
 Add to the usage string (after the `discover-site-urls` line):
 
@@ -767,7 +767,7 @@ Add to the usage string (after the `discover-site-urls` line):
   reviews export [--out web/reviews-data]
 ```
 
-- [ ] **Step 4: Build, run against the test DB, eyeball output**
+- [x] **Step 4: Build, run against the test DB, eyeball output**
 
 Run:
 
@@ -799,7 +799,7 @@ We need a saved copy of the live DOM to test injection offline (test ladder step
 - Create: `web/reviews-widget/test/fixtures/shegida-product.html`
 - Create: `web/reviews-widget/test/fixtures/README.md`
 
-- [ ] **Step 1: Download the fixture**
+- [x] **Step 1: Download the fixture**
 
 Run:
 
@@ -813,7 +813,7 @@ wc -c web/reviews-widget/test/fixtures/shegida-product.html
 
 Expected: a ~400KB HTML file. (This product's seller article is `107`, which exists in the export.)
 
-- [ ] **Step 2: Document the fixture**
+- [x] **Step 2: Document the fixture**
 
 `web/reviews-widget/test/fixtures/README.md`:
 
@@ -844,7 +844,7 @@ The widget already renders via `root.innerHTML`. For Shadow DOM, styles must liv
 - Modify: `web/reviews-widget/reviews-widget.js` (extend the public API)
 - Modify: `web/reviews-widget/reviews-widget.css` (no behavioral change; confirm it has no `:root`/`body`-scoped rules that break inside shadow — if it does, scope them to the widget container class)
 
-- [ ] **Step 1: Add `mountShadow` and expose CSS injection**
+- [x] **Step 1: Add `mountShadow` and expose CSS injection**
 
 At the bottom of `reviews-widget.js`, replace the public export block with:
 
@@ -878,12 +878,12 @@ At the bottom of `reviews-widget.js`, replace the public export block with:
 })();
 ```
 
-- [ ] **Step 2: Verify no global-only CSS selectors break inside shadow**
+- [x] **Step 2: Verify no global-only CSS selectors break inside shadow**
 
 Run: `grep -nE "(^|[^.#a-zA-Z-])(:root|html|body)\b" web/reviews-widget/reviews-widget.css || echo "OK: no global selectors"`
 Expected: `OK: no global selectors`. If any are found, rewrite them to target `.reviews-widget-root` (the shadow container) instead. Make that edit if needed.
 
-- [ ] **Step 3: Manual smoke test in a browser**
+- [x] **Step 3: Manual smoke test in a browser**
 
 Create a throwaway check (do not commit): open `web/reviews-widget/demo.html` logic mentally — instead verify via a one-off file:
 
@@ -927,7 +927,7 @@ Decide the runtime config the loader reads and the function that turns a `Bundle
 
 This task builds the **pure helpers** of the loader; Task 8 adds DOM glue; Task 9 wires injection. Splitting keeps each step reviewable.
 
-- [ ] **Step 1: Write `loader.js` skeleton with pure helpers + config**
+- [x] **Step 1: Write `loader.js` skeleton with pure helpers + config**
 
 `web/reviews-widget/loader.js`:
 
@@ -1041,7 +1041,7 @@ This task builds the **pure helpers** of the loader; Task 8 adds DOM glue; Task 
 })();
 ```
 
-- [ ] **Step 2: Write browser unit tests for the pure helpers**
+- [x] **Step 2: Write browser unit tests for the pure helpers**
 
 `web/reviews-widget/test/loader.test.html`:
 
@@ -1091,7 +1091,7 @@ This task builds the **pure helpers** of the loader; Task 8 adds DOM glue; Task 
 </script>
 ```
 
-- [ ] **Step 3: Run the unit tests in a browser**
+- [x] **Step 3: Run the unit tests in a browser**
 
 Run:
 
@@ -1116,7 +1116,7 @@ git commit -m "feat: loader pure helpers (article parse, url, json-ld) + unit te
 **Files:**
 - Modify: `web/reviews-widget/loader.js` (replace the `__reviewsEmbedBoot` placeholder and add the SPA watcher + bootstrap)
 
-- [ ] **Step 1: Replace the boot placeholder with real DOM glue**
+- [x] **Step 1: Replace the boot placeholder with real DOM glue**
 
 In `loader.js`, replace the final two lines (the `window.__reviewsEmbedBoot = ...` placeholder and nothing after the internals export) with:
 
@@ -1263,7 +1263,7 @@ In `loader.js`, replace the final two lines (the `window.__reviewsEmbedBoot = ..
 
 > NOTE: the placeholder line `window.__reviewsEmbedBoot = function boot() { /* replaced in Task 8 */ };` from Task 7 is removed and replaced by the block above. The internals export from Task 7 stays.
 
-- [ ] **Step 2: Offline render test against the saved fixture**
+- [x] **Step 2: Offline render test against the saved fixture**
 
 Build a test page that loads the fixture's DOM, points the loader at local data, and asserts the host node appears. First generate local data and a fixture-driven harness:
 
@@ -1387,7 +1387,7 @@ git commit -m "test: live-site embed bookmarklet + automated MCP check notes"
 - Create: `deploy/README.md`
 - Create: `deploy/build.sh`
 
-- [ ] **Step 1: Write the Caddyfile**
+- [x] **Step 1: Write the Caddyfile**
 
 `deploy/Caddyfile` (serves static JSON + widget assets with CORS and auto-TLS):
 
@@ -1414,7 +1414,7 @@ reviews.shegida.ru {
 }
 ```
 
-- [ ] **Step 2: Write the cross-compile script**
+- [x] **Step 2: Write the cross-compile script**
 
 `deploy/build.sh`:
 
@@ -1429,7 +1429,7 @@ echo "built $OUT"
 ls -lh "$OUT"
 ```
 
-- [ ] **Step 3: Write deploy notes**
+- [x] **Step 3: Write deploy notes**
 
 `deploy/README.md`:
 
@@ -1481,7 +1481,7 @@ browser blocks them as mixed content. For pre-DNS testing use a `cloudflared`
 tunnel and override `window.REVIEWS_EMBED_CONFIG` accordingly.
 ```
 
-- [ ] **Step 4: Make build.sh executable, verify cross-compile works**
+- [x] **Step 4: Make build.sh executable, verify cross-compile works**
 
 Run:
 
@@ -1506,7 +1506,7 @@ git commit -m "chore: Caddy config, cross-compile script, deploy runbook"
 - Modify: `.gitignore`
 - Modify: `README.md`
 
-- [ ] **Step 1: Ignore generated artifacts**
+- [x] **Step 1: Ignore generated artifacts**
 
 Append to `.gitignore`:
 
@@ -1515,7 +1515,7 @@ Append to `.gitignore`:
 /dist/
 ```
 
-- [ ] **Step 2: Document the new command + embed flow in README**
+- [x] **Step 2: Document the new command + embed flow in README**
 
 Add to `README.md` under "Expected Binary Commands":
 

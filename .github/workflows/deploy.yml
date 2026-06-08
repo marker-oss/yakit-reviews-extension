@@ -1,0 +1,60 @@
+name: Deploy VPS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build
+        run: ./deploy/build.sh ./dist/reviews-linux-amd64
+      - name: Package static files
+        run: |
+          mkdir -p ./dist/web
+          cp web/reviews-widget/loader.js ./dist/web/loader.js
+          cp web/reviews-widget/reviews-widget.js ./dist/web/reviews-widget.js
+          cp web/reviews-widget/reviews-widget.css ./dist/web/reviews-widget.css
+          tar -C dist -czf ./dist/reviews-deploy.tar.gz reviews-linux-amd64 web
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
+          {
+            echo "Host reviews-vps"
+            echo "  HostName $VPS_HOST"
+            echo "  User $VPS_USER"
+            echo "  Port $VPS_PORT"
+            echo "  IdentityFile ~/.ssh/id_ed25519"
+            echo "  StrictHostKeyChecking yes"
+          } >> ~/.ssh/config
+      - name: Upload release bundle
+        run: scp ./dist/reviews-deploy.tar.gz reviews-vps:/tmp/reviews-deploy.tar.gz
+      - name: Install release
+        run: |
+          ssh reviews-vps '
+            set -eu
+            mkdir -p /srv/reviews/web
+            tar -xzf /tmp/reviews-deploy.tar.gz -C /tmp
+            install -m 0755 /tmp/reviews-linux-amd64 /srv/reviews/reviews
+            install -m 0644 /tmp/web/loader.js /srv/reviews/web/loader.js
+            install -m 0644 /tmp/web/reviews-widget.js /srv/reviews/web/reviews-widget.js
+            install -m 0644 /tmp/web/reviews-widget.css /srv/reviews/web/reviews-widget.css
+            cd /srv/reviews
+            ./reviews migrate
+            ./reviews export --out ./web/reviews-data
+            sudo systemctl reload caddy || true
+          '

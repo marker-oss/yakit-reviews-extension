@@ -1,0 +1,13 @@
+.env
+*.db
+*.db-*
+/reviews
+coverage.out
+.gomodcache/
+.gocache/
+/dist/
+/web/reviews-data/
+
+# Editor / language-server caches
+/.clj-kondo/
+/.lsp/

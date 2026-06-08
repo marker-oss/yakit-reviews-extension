@@ -1,0 +1,11 @@
+[Unit]
+Description=Reviews marketplace sync and static export
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/reviews
+EnvironmentFile=/srv/reviews/.env
+ExecStart=/srv/reviews/reviews sync --once
+ExecStart=/srv/reviews/reviews export --out /srv/reviews/web/reviews-data

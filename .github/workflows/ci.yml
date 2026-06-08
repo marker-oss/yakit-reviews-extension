@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test
+        run: go test ./...
+      - name: Build Linux artifact
+        run: ./deploy/build.sh ./dist/reviews-linux-amd64
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviews-linux-amd64
+          path: ./dist/reviews-linux-amd64

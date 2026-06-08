@@ -1,0 +1,26 @@
+reviews.shegida.ru {
+	encode zstd gzip
+
+	root * /srv/reviews/web
+
+	@options method OPTIONS
+	respond @options 204
+
+	header {
+		Access-Control-Allow-Origin "https://shegida.ru"
+		Access-Control-Allow-Methods "GET, OPTIONS"
+		Access-Control-Allow-Headers "Accept, Content-Type"
+		Vary "Origin"
+	}
+
+	@json path /reviews-data/* /reviews-data
+	header @json {
+		Content-Type "application/json; charset=utf-8"
+		Cache-Control "public, max-age=300"
+	}
+
+	@assets path /loader.js /reviews-widget.js /reviews-widget.css
+	header @assets Cache-Control "public, max-age=3600"
+
+	file_server
+}
