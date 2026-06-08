@@ -18,10 +18,12 @@ jobs:
       - name: Package static files
         run: |
           mkdir -p ./dist/web
+          mkdir -p ./dist/data
           cp web/reviews-widget/loader.js ./dist/web/loader.js
           cp web/reviews-widget/reviews-widget.js ./dist/web/reviews-widget.js
           cp web/reviews-widget/reviews-widget.css ./dist/web/reviews-widget.css
-          tar -C dist -czf ./dist/reviews-deploy.tar.gz reviews-linux-amd64 web
+          cp data/shegida-product-links.json ./dist/data/shegida-product-links.json
+          tar -C dist -czf ./dist/reviews-deploy.tar.gz reviews-linux-amd64 web data
       - name: Configure SSH
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -47,14 +49,19 @@ jobs:
         run: |
           ssh reviews-vps '
             set -eu
-            mkdir -p /srv/reviews/web
+            mkdir -p /srv/reviews/data /srv/reviews/web
             tar -xzf /tmp/reviews-deploy.tar.gz -C /tmp
             install -m 0755 /tmp/reviews-linux-amd64 /srv/reviews/reviews
+            install -m 0644 /tmp/data/shegida-product-links.json /srv/reviews/data/shegida-product-links.json
             install -m 0644 /tmp/web/loader.js /srv/reviews/web/loader.js
             install -m 0644 /tmp/web/reviews-widget.js /srv/reviews/web/reviews-widget.js
             install -m 0644 /tmp/web/reviews-widget.css /srv/reviews/web/reviews-widget.css
             cd /srv/reviews
             ./reviews migrate
             ./reviews export --out ./web/reviews-data
-            sudo systemctl reload caddy || true
+            if command -v sudo >/dev/null 2>&1; then
+              sudo systemctl reload caddy || true
+            else
+              systemctl reload caddy || true
+            fi
           '
