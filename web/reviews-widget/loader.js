@@ -66,6 +66,83 @@
     return match ? match[1] : "";
   }
 
+  function samePath(urlValue, pathname) {
+    if (!urlValue || !pathname) {
+      return false;
+    }
+    try {
+      return new URL(urlValue, location.origin).pathname === pathname;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function isProductJSONLD(value) {
+    var type = value && value["@type"];
+    if (Array.isArray(type)) {
+      return type.some(function (item) {
+        return String(item).toLowerCase() === "product";
+      });
+    }
+    return String(type || "").toLowerCase() === "product";
+  }
+
+  function skuFromProductJSONLD(value, pathname) {
+    if (!value) {
+      return "";
+    }
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length; i++) {
+        var arraySKU = skuFromProductJSONLD(value[i], pathname);
+        if (arraySKU) {
+          return arraySKU;
+        }
+      }
+      return "";
+    }
+    if (value["@graph"]) {
+      return skuFromProductJSONLD(value["@graph"], pathname);
+    }
+    if (!isProductJSONLD(value)) {
+      return "";
+    }
+
+    var offers = value.offers || {};
+    var urls = [value.url, offers.url];
+    var matchesPage = urls.some(function (urlValue) {
+      return samePath(urlValue, pathname);
+    });
+    if (!matchesPage) {
+      return "";
+    }
+
+    return value.sku || offers.sku || "";
+  }
+
+  function extractArticleFromDocument(doc) {
+    if (!doc) {
+      return "";
+    }
+
+    var scripts = doc.querySelectorAll('script[type="application/ld+json"]');
+    for (var i = 0; i < scripts.length; i++) {
+      try {
+        var sku = skuFromProductJSONLD(JSON.parse(scripts[i].textContent || ""), location.pathname);
+        if (sku) {
+          return sku;
+        }
+      } catch (_error) {
+        // Ignore unrelated or malformed JSON-LD blocks.
+      }
+    }
+
+    var details = doc.querySelector('[data-testid="ProductDetails"]');
+    if (details) {
+      return extractArticleFromHTML(details.innerHTML);
+    }
+    return "";
+  }
+
   function buildJsonLd(bundle, maxReviews) {
     if (!bundle || !bundle.aggregate || bundle.aggregate.ratingCount < 1) {
       return null;
@@ -104,6 +181,7 @@
     articleFileKey: articleFileKey,
     bundleUrl: bundleUrl,
     extractArticleFromHTML: extractArticleFromHTML,
+    extractArticleFromDocument: extractArticleFromDocument,
     buildJsonLd: buildJsonLd,
     cfg: CFG,
     log: log,
@@ -112,6 +190,7 @@
   var widgetLoading = null;
   var widgetCssText = "";
   var currentArticle = null;
+  var currentPath = null;
   var requestSeq = 0;
   var spaWatchInstalled = false;
 
@@ -226,10 +305,18 @@
         removeHost();
         currentArticle = null;
       }
+      currentPath = location.pathname;
       return;
     }
 
-    var rawArticle = extractArticleFromHTML(document.documentElement.innerHTML);
+    if (currentPath !== location.pathname) {
+      removeHost();
+      currentArticle = null;
+      currentPath = location.pathname;
+      requestSeq++;
+    }
+
+    var rawArticle = extractArticleFromDocument(document);
     var normalizedArticle = normalizeArticle(rawArticle);
     if (!normalizedArticle) {
       log("no article on page yet");

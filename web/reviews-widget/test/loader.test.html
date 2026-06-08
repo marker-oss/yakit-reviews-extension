@@ -36,6 +36,22 @@
   eq("extract sku", I.extractArticleFromHTML('x "sku":"107" y'), "107");
   eq("extract label", I.extractArticleFromHTML("Артикул: 1523"), "1523");
 
+  history.replaceState({}, "", "/products/plate-v-stile-beiybi-cvet-1-bordovyiy-100808");
+  var testDoc = document.implementation.createHTMLDocument("product");
+  testDoc.body.innerHTML =
+    '<script type="application/ld+json">' +
+    JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Product",
+      url: "https://shegida.ru/products/plate-v-stile-beiybi-cvet-1-bordovyiy-100808?variant=101236",
+      sku: "3508-1",
+      offers: { sku: "3508-1" },
+    }) +
+    "<\/script>" +
+    '<div data-testid="ProductDetails">Артикул: 1523</div>' +
+    '<div>"sku":"1523"</div>';
+  eq("extract current jsonld product sku", I.extractArticleFromDocument(testDoc), "3508-1");
+
   var ld = I.buildJsonLd(
     {
       aggregate: { count: 2, ratingCount: 2, ratingAvg: 4.5 },
