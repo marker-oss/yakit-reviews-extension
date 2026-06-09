@@ -67,6 +67,41 @@ REVIEWS_OZON_ENABLED=false
 ./deploy/build.sh ./dist/reviews-linux-amd64
 ```
 
+## Server-Pull Deploy
+
+For repeatable deploys where the VPS pulls from GitHub and builds in place,
+use a source checkout at `/srv/reviews-src` and keep runtime state in
+`/srv/reviews`.
+
+One-time bootstrap on the VPS:
+
+```sh
+scp deploy/server-bootstrap.sh reviews-vps:/tmp/server-bootstrap.sh
+ssh reviews-vps 'sh /tmp/server-bootstrap.sh'
+```
+
+Deploy the latest commit of a branch:
+
+```sh
+ssh reviews-vps 'DEPLOY_REF=main sh /srv/reviews-src/deploy/server-deploy.sh'
+```
+
+For the first run, when `/srv/reviews-src` does not exist yet, copy the deploy
+script once and pass the repository URL:
+
+```sh
+scp deploy/server-deploy.sh reviews-vps:/tmp/server-deploy.sh
+ssh reviews-vps 'REPO_URL=git@github.com:marker-oss/yakit-reviews-extension.git DEPLOY_REF=main sh /tmp/server-deploy.sh'
+```
+
+The deploy script does:
+
+- `git fetch` / hard reset to `origin/$DEPLOY_REF`;
+- server-side Go build;
+- install binary, widget assets, and product links into `/srv/reviews`;
+- run `migrate`, `sync --once`, `export`;
+- reload Caddy if it is active.
+
 ## Manual Ship
 
 ```sh

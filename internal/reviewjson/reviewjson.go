@@ -163,8 +163,8 @@ func (m Mapper) productLinkForSellerArticle(article string) (string, bool) {
 
 // NormalizeSellerArticle returns the export/grouping article for this
 // deployment. It first applies generic marketplace normalization, then uses
-// known site product articles to collapse WB values like "6202бежевый" to
-// "6202" when the suffix is a color written without a separator.
+// known site product articles to collapse variant suffixes like
+// "6202бежевый" or "1715-3-52_Зеленый" to the matching site article.
 func (m Mapper) NormalizeSellerArticle(article string) string {
 	normalized := NormalizeSellerArticle(article)
 	if normalized == "" || len(m.ProductLinks) == 0 {
@@ -187,7 +187,7 @@ func (m Mapper) NormalizeSellerArticle(article string) string {
 			continue
 		}
 		suffix := strings.TrimSpace(strings.TrimPrefix(normalized, key))
-		if startsWithCyrillicLetter(suffix) {
+		if startsWithCyrillicLetter(suffix) || startsWithSizeColorSuffix(suffix) {
 			return key
 		}
 	}
@@ -207,6 +207,21 @@ func NormalizeSellerArticle(article string) string {
 func startsWithCyrillicLetter(value string) bool {
 	for _, r := range value {
 		return unicode.Is(unicode.Cyrillic, r) && unicode.IsLetter(r)
+	}
+	return false
+}
+
+func startsWithSizeColorSuffix(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || !strings.ContainsRune("-_ ", []rune(value)[0]) {
+		return false
+	}
+	value = strings.TrimLeft(value, "-_ ")
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		return unicode.IsDigit(r)
 	}
 	return false
 }

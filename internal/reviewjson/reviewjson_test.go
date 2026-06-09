@@ -97,6 +97,8 @@ func TestNormalizeSellerArticleWithProductLinks(t *testing.T) {
 			"6202":   "https://shegida.ru/products/p-6202",
 			"3508":   "https://shegida.ru/products/p-3508",
 			"3508-1": "https://shegida.ru/products/p-3508-1",
+			"1715-3": "https://shegida.ru/products/p-1715-3",
+			"105":    "https://shegida.ru/products/p-105",
 		},
 	}
 
@@ -106,8 +108,14 @@ func TestNormalizeSellerArticleWithProductLinks(t *testing.T) {
 	if got := mapper.NormalizeSellerArticle("3508-1/Бордовый"); got != "3508-1" {
 		t.Fatalf("normalize 3508-1 variant = %q", got)
 	}
+	if got := mapper.NormalizeSellerArticle("1715-3-52_Зеленый"); got != "1715-3" {
+		t.Fatalf("normalize size/color suffix = %q", got)
+	}
 	if got := mapper.NormalizeSellerArticle("1102"); got != "1102" {
 		t.Fatalf("normalize numeric suffix = %q", got)
+	}
+	if got := mapper.NormalizeSellerArticle("10552"); got != "10552" {
+		t.Fatalf("normalize product number containing another article = %q", got)
 	}
 }
 
