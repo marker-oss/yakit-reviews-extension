@@ -8,22 +8,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Build
-        run: ./deploy/build.sh ./dist/reviews-linux-amd64
-      - name: Package static files
-        run: |
-          mkdir -p ./dist/web
-          mkdir -p ./dist/data
-          cp web/reviews-widget/loader.js ./dist/web/loader.js
-          cp web/reviews-widget/reviews-widget.js ./dist/web/reviews-widget.js
-          cp web/reviews-widget/reviews-widget.css ./dist/web/reviews-widget.css
-          cp data/shegida-product-links.json ./dist/data/shegida-product-links.json
-          tar -C dist -czf ./dist/reviews-deploy.tar.gz reviews-linux-amd64 web data
       - name: Configure SSH
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -43,25 +27,19 @@ jobs:
             echo "  IdentityFile ~/.ssh/id_ed25519"
             echo "  StrictHostKeyChecking yes"
           } >> ~/.ssh/config
-      - name: Upload release bundle
-        run: scp ./dist/reviews-deploy.tar.gz reviews-vps:/tmp/reviews-deploy.tar.gz
-      - name: Install release
+      - name: Server pull, build, and deploy
+        env:
+          DEPLOY_REF: ${{ github.ref_name }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
         run: |
-          ssh reviews-vps '
+          ssh reviews-vps "
             set -eu
-            mkdir -p /srv/reviews/data /srv/reviews/web
-            tar -xzf /tmp/reviews-deploy.tar.gz -C /tmp
-            install -m 0755 /tmp/reviews-linux-amd64 /srv/reviews/reviews
-            install -m 0644 /tmp/data/shegida-product-links.json /srv/reviews/data/shegida-product-links.json
-            install -m 0644 /tmp/web/loader.js /srv/reviews/web/loader.js
-            install -m 0644 /tmp/web/reviews-widget.js /srv/reviews/web/reviews-widget.js
-            install -m 0644 /tmp/web/reviews-widget.css /srv/reviews/web/reviews-widget.css
-            cd /srv/reviews
-            ./reviews migrate
-            ./reviews export --out ./web/reviews-data
-            if command -v sudo >/dev/null 2>&1; then
-              sudo systemctl reload caddy || true
+            if [ -x /srv/reviews-src/deploy/server-deploy.sh ]; then
+              REPO_URL='$REPO_URL' DEPLOY_REF='$DEPLOY_REF' sh /srv/reviews-src/deploy/server-deploy.sh
             else
-              systemctl reload caddy || true
+              git clone '$REPO_URL' /srv/reviews-src
+              cd /srv/reviews-src
+              git checkout '$DEPLOY_REF'
+              REPO_URL='$REPO_URL' DEPLOY_REF='$DEPLOY_REF' sh deploy/server-deploy.sh
             fi
-          '
+          "
