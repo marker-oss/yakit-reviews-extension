@@ -132,3 +132,114 @@ func TestFetchReviewsMapsYMResponse(t *testing.T) {
 		t.Fatalf("video media = %+v", review.Media[1])
 	}
 }
+
+func TestFetchReviewsPaginatesWithPageToken(t *testing.T) {
+	// First page returns a nextPageToken; the client must surface it as the cursor.
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		token := r.URL.Query().Get("page_token")
+		switch token {
+		case "":
+			return jsonResponse(http.StatusOK, map[string]any{
+				"result": map[string]any{
+					"feedbacks": []map[string]any{
+						{
+							"feedbackId": 1, "createdAt": "2026-06-01T00:00:00Z",
+							"identifiers": map[string]any{"offerId": "A"},
+							"statistics":  map[string]any{"rating": 4},
+						},
+					},
+					"paging": map[string]any{"nextPageToken": "PAGE2"},
+				},
+			}), nil
+		case "PAGE2":
+			return jsonResponse(http.StatusOK, map[string]any{
+				"result": map[string]any{
+					"feedbacks": []map[string]any{
+						{
+							"feedbackId": 2, "createdAt": "2026-06-02T00:00:00Z",
+							"identifiers": map[string]any{"offerId": "B"},
+							"statistics":  map[string]any{"rating": 5},
+						},
+					},
+					"paging": map[string]any{"nextPageToken": ""},
+				},
+			}), nil
+		default:
+			t.Fatalf("unexpected page_token %q", token)
+			return nil, nil
+		}
+	})}
+
+	client := NewWithHTTPClient(config.YMConfig{APIKey: "key", BusinessID: "777"}, "https://api.partner.test", httpClient, 50)
+
+	page1, cursor1, err := client.FetchReviews(context.Background(), time.Time{}, "")
+	if err != nil {
+		t.Fatalf("page1: %v", err)
+	}
+	if cursor1 != "PAGE2" {
+		t.Fatalf("cursor1 = %q", cursor1)
+	}
+	if len(page1) != 1 || page1[0].ExternalReviewID != "1" {
+		t.Fatalf("page1 = %+v", page1)
+	}
+
+	page2, cursor2, err := client.FetchReviews(context.Background(), time.Time{}, cursor1)
+	if err != nil {
+		t.Fatalf("page2: %v", err)
+	}
+	if cursor2 != "" {
+		t.Fatalf("cursor2 = %q", cursor2)
+	}
+	if len(page2) != 1 || page2[0].ExternalReviewID != "2" {
+		t.Fatalf("page2 = %+v", page2)
+	}
+}
+
+func TestFetchReviewsDropsReviewsOlderThanSince(t *testing.T) {
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, map[string]any{
+			"result": map[string]any{
+				"feedbacks": []map[string]any{
+					{
+						"feedbackId": 10, "createdAt": "2026-01-01T00:00:00Z", // old → dropped
+						"identifiers": map[string]any{"offerId": "OLD"},
+						"statistics":  map[string]any{"rating": 3},
+					},
+					{
+						"feedbackId": 11, "createdAt": "2026-06-05T00:00:00Z", // recent → kept
+						"identifiers": map[string]any{"offerId": "NEW"},
+						"statistics":  map[string]any{"rating": 5},
+					},
+				},
+				"paging": map[string]any{"nextPageToken": ""},
+			},
+		}), nil
+	})}
+
+	client := NewWithHTTPClient(config.YMConfig{APIKey: "key", BusinessID: "777"}, "https://api.partner.test", httpClient, 50)
+	since := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	reviews, _, err := client.FetchReviews(context.Background(), since, "")
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if len(reviews) != 1 || reviews[0].ExternalReviewID != "11" {
+		t.Fatalf("expected only the recent review, got %+v", reviews)
+	}
+}
+
+func TestFetchReviewsErrorsOnNon2xx(t *testing.T) {
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusForbidden, map[string]any{
+			"errors": []map[string]any{{"code": "FORBIDDEN", "message": "no access"}},
+		}), nil
+	})}
+
+	client := NewWithHTTPClient(config.YMConfig{APIKey: "key", BusinessID: "777"}, "https://api.partner.test", httpClient, 50)
+	_, _, err := client.FetchReviews(context.Background(), time.Time{}, "")
+	if err == nil {
+		t.Fatal("expected an error on HTTP 403")
+	}
+	if !strings.Contains(err.Error(), "no access") {
+		t.Fatalf("error should surface the API message, got %v", err)
+	}
+}
