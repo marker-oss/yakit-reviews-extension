@@ -17,6 +17,7 @@ import (
 	"reviews/internal/export"
 	"reviews/internal/marketplace"
 	"reviews/internal/marketplace/wb"
+	"reviews/internal/marketplace/ym"
 	"reviews/internal/reviewjson"
 	"reviews/internal/server"
 	"reviews/internal/site"
@@ -285,6 +286,9 @@ func buildAdapters(cfg config.Config) []marketplace.Adapter {
 	var adapters []marketplace.Adapter
 	if cfg.Marketplaces.WB.Enabled {
 		adapters = append(adapters, wb.New(cfg.Marketplaces.WB))
+	}
+	if cfg.Marketplaces.YM.Enabled {
+		adapters = append(adapters, ym.New(cfg.Marketplaces.YM))
 	}
 	return adapters
 }
