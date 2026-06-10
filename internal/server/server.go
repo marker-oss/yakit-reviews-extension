@@ -98,6 +98,8 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /admin/api/me", s.handleMe)
 	protected.HandleFunc("GET /admin/api/csrf", s.handleCSRFToken)
+	protected.HandleFunc("GET /admin/api/reviews", s.handleAdminReviews)
+	protected.Handle("PATCH /admin/api/reviews/{id}", requireCSRF(http.HandlerFunc(s.handleAdminReviewModerate)))
 	protected.Handle("POST /admin/api/logout", requireCSRF(http.HandlerFunc(s.handleLogout)))
 	mux.Handle("/admin/api/", s.requireSession(protected))
 
