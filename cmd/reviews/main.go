@@ -169,12 +169,25 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		return exitRunError
 	}
 
+	runner := collector.NewRunner(db, cfg.Sync, logger, buildAdapters(cfg))
+	triggerSync := func(marketplaces []string) {
+		if len(marketplaces) == 0 {
+			marketplaces = cfg.EnabledMarketplaces()
+		}
+		for _, result := range runner.RunOnce(ctx, marketplaces) {
+			if result.Error != nil {
+				logger.Error("manual sync marketplace failed", "marketplace", result.Marketplace, "error", result.Error)
+				continue
+			}
+			logger.Info("manual sync marketplace ok", "marketplace", result.Marketplace, "seen", result.Seen, "upserted", result.Upserted)
+		}
+	}
+
 	if *withSync {
 		if err := cfg.ValidateMarketplaceCredentials(""); err != nil {
 			logger.Error("sync credentials invalid", "error", err)
 			return exitConfigError
 		}
-		runner := collector.NewRunner(db, cfg.Sync, logger, buildAdapters(cfg))
 		sched := scheduler.New(
 			syncRunnerAdapter{runner: runner, logger: logger},
 			cfg.Sync.Interval,
@@ -192,6 +205,8 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		ProductLinks:       loadProductLinks(cfg.Web.ProductLinksPath, logger),
 		SessionTTL:         24 * time.Hour,
 		SecureCookies:      os.Getenv("REVIEWS_INSECURE_COOKIES") == "",
+		TriggerSync:        triggerSync,
+		Marketplaces:       marketplaceStatuses(cfg),
 	}, logger)
 	if err := httpServer.Run(ctx); err != nil {
 		logger.Error("server stopped with error", "error", err)
@@ -328,6 +343,27 @@ func buildAdapters(cfg config.Config) []marketplace.Adapter {
 		adapters = append(adapters, ym.New(cfg.Marketplaces.YM))
 	}
 	return adapters
+}
+
+func marketplaceStatuses(cfg config.Config) []server.MarketplaceStatus {
+	return []server.MarketplaceStatus{
+		{
+			ID:         config.MarketplaceWB,
+			Enabled:    cfg.Marketplaces.WB.Enabled,
+			Configured: cfg.Marketplaces.WB.Token != "",
+		},
+		{
+			ID:      config.MarketplaceYM,
+			Enabled: cfg.Marketplaces.YM.Enabled,
+			Configured: cfg.Marketplaces.YM.BusinessID != "" &&
+				(cfg.Marketplaces.YM.APIKey != "" || cfg.Marketplaces.YM.OAuthToken != ""),
+		},
+		{
+			ID:         config.MarketplaceOzon,
+			Enabled:    cfg.Marketplaces.Ozon.Enabled,
+			Configured: cfg.Marketplaces.Ozon.ClientID != "" && cfg.Marketplaces.Ozon.APIKey != "",
+		},
+	}
 }
 
 func loadProductLinks(path string, logger *slog.Logger) map[string]string {

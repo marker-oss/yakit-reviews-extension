@@ -72,3 +72,15 @@ func (s *Store) DashboardStats(ctx context.Context) (Stats, error) {
 	}
 	return stats, nil
 }
+
+func (s *Store) RecentSyncRuns(ctx context.Context, limit int) ([]SyncRun, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
+	var runs []SyncRun
+	err := s.db.WithContext(ctx).
+		Order("started_at desc").
+		Limit(limit).
+		Find(&runs).Error
+	return runs, err
+}

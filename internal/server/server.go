@@ -23,6 +23,8 @@ type Config struct {
 	ProductLinks       map[string]string
 	SessionTTL         time.Duration
 	SecureCookies      bool
+	TriggerSync        func(marketplaces []string)
+	Marketplaces       []MarketplaceStatus
 }
 
 type Server struct {
@@ -100,6 +102,9 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.HandleFunc("GET /admin/api/csrf", s.handleCSRFToken)
 	protected.HandleFunc("GET /admin/api/reviews", s.handleAdminReviews)
 	protected.Handle("PATCH /admin/api/reviews/{id}", requireCSRF(http.HandlerFunc(s.handleAdminReviewModerate)))
+	protected.HandleFunc("GET /admin/api/dashboard", s.handleDashboard)
+	protected.HandleFunc("GET /admin/api/marketplaces", s.handleMarketplaces)
+	protected.Handle("POST /admin/api/sync", requireCSRF(http.HandlerFunc(s.handleTriggerSync)))
 	protected.Handle("POST /admin/api/logout", requireCSRF(http.HandlerFunc(s.handleLogout)))
 	mux.Handle("/admin/api/", s.requireSession(protected))
 
