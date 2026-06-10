@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-09-reviews-admin-and-containerization-design.md` (Parts "Архитектура", "Модель данных", "Безопасность", FR-1).
 
-**Depends on:** Stage 1 (containerization) — not strictly required to build, but the Dockerfile gains an SPA build stage here (Task 8).
+**Depends on:** Stage 1 (containerization) — not strictly required to build, but the Dockerfile gains an SPA build stage here (Task 9).
 
 ---
 
@@ -25,7 +25,9 @@
 - Create: `internal/store/auth_test.go`
 - Modify: `internal/store/store.go` — add new models to `Migrate`.
 - Modify: `internal/store/models.go` — add `TenantID` to `Product`, `Review`, `ProductMarketplaceLink`.
-- Create: `internal/server/middleware.go` — security headers, session auth, CSRF.
+- Create: `internal/server/middleware.go` — security headers and session auth.
+- Create: `internal/server/csrf.go` — double-submit CSRF middleware + token endpoint.
+- Create: `internal/server/csrf_test.go`
 - Create: `internal/server/admin_auth.go` — setup/login/logout/me handlers.
 - Create: `internal/server/admin_auth_test.go`
 - Create: `internal/server/spa.go` — embedded SPA file server.
@@ -642,7 +644,7 @@ func clearSessionCookie(w http.ResponseWriter, secure bool) {
 var _ = store.ErrNotFound // ensure store import is used across the package
 ```
 
-Note: remove the trailing `var _ = store.ErrNotFound` line once `admin_auth.go` (Task 6) references the `store` package; it is only there to keep this file compiling in isolation if implemented first. If `store` is already used, omit it.
+Note: remove the trailing `var _ = store.ErrNotFound` line once `admin_auth.go` (Task 7) references the `store` package; it is only there to keep this file compiling in isolation if implemented first. If `store` is already used, omit it.
 
 - [ ] **Step 2: Verify build**
 
@@ -658,7 +660,145 @@ git commit -m "feat(server): security headers and session middleware"
 
 ---
 
-## Task 6: Setup, login, logout, and CSRF
+## Task 6: Double-submit CSRF protection
+
+**Files:**
+- Create: `internal/server/csrf.go`
+- Create: `internal/server/csrf_test.go`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `internal/server/csrf_test.go`:
+
+```go
+package server
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestRequireCSRF(t *testing.T) {
+	handler := requireCSRF(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/x", nil))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("no token: status = %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "abc123"})
+	req.Header.Set(csrfHeaderName, "abc123")
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("valid token: status = %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/x", nil)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "abc123"})
+	req.Header.Set(csrfHeaderName, "different")
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("mismatch: status = %d", rec.Code)
+	}
+}
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `go test ./internal/server/ -run TestRequireCSRF -v`
+Expected: FAIL — `undefined: requireCSRF`.
+
+- [ ] **Step 3: Write the implementation**
+
+Create `internal/server/csrf.go`:
+
+```go
+package server
+
+import (
+	"crypto/subtle"
+	"errors"
+	"net/http"
+
+	"reviews/internal/auth"
+)
+
+const (
+	csrfCookieName = "reviews_csrf"
+	csrfHeaderName = "X-CSRF-Token"
+)
+
+// requireCSRF enforces the double-submit cookie pattern on state-changing
+// requests: the X-CSRF-Token header must equal the reviews_csrf cookie.
+func requireCSRF(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(csrfCookieName)
+		header := r.Header.Get(csrfHeaderName)
+		if err != nil || header == "" ||
+			subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(header)) != 1 {
+			writeError(w, http.StatusForbidden, errors.New("invalid CSRF token"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// handleCSRFToken issues a CSRF token cookie and returns the value so the SPA
+// can echo it back in the X-CSRF-Token header.
+func (s *Server) handleCSRFToken(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.NewSessionToken()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: false,
+		Secure:   s.cfg.SecureCookies,
+		SameSite: http.SameSiteLaxMode,
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"csrf_token": token})
+}
+```
+
+- [ ] **Step 4: Register the token endpoint**
+
+When `adminMux` is added in Task 8, include the token endpoint in the
+authenticated admin API:
+
+```go
+protected.HandleFunc("GET /admin/api/csrf", s.handleCSRFToken)
+```
+
+All state-changing admin endpoints added in this or later stages must be wrapped
+with `requireCSRF(...)`. Logout is protected by both session auth and CSRF.
+Login and first-time setup remain unauthenticated and do not require CSRF
+because they create the session boundary.
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `go test ./internal/server/ -run TestRequireCSRF -v`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add internal/server/csrf.go internal/server/csrf_test.go
+git commit -m "feat(server): double-submit CSRF protection"
+```
+
+---
+
+## Task 7: Setup, login, logout
 
 **Files:**
 - Create: `internal/server/admin_auth.go`
@@ -878,13 +1018,13 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 var _ = store.ErrNotFound
 ```
 
-- [ ] **Step 4: Add `adminMux` and config fields (Task 7 completes wiring)**
+- [ ] **Step 4: Add `adminMux` and config fields (Task 8 completes wiring)**
 
-This test depends on `adminMux` and `Config.SessionTTL`/`Config.SecureCookies`, defined in Task 7. Implement Task 7 before re-running. (Tasks 6 and 7 form one commit boundary; commit after Task 7's build passes.)
+This test depends on `adminMux` and `Config.SessionTTL`/`Config.SecureCookies`, defined in Task 8. Implement Task 8 before re-running. (Tasks 7 and 8 form one commit boundary; commit after Task 8's build passes.)
 
 ---
 
-## Task 7: Wire admin routes into the server
+## Task 8: Wire admin routes into the server
 
 **Files:**
 - Modify: `internal/server/server.go`
@@ -925,13 +1065,14 @@ func (s *Server) adminMux() *http.ServeMux {
 	mux.HandleFunc("GET /admin/api/setup-status", s.handleSetupStatus)
 	mux.HandleFunc("POST /admin/api/setup", s.handleSetup)
 	mux.HandleFunc("POST /admin/api/login", s.handleLogin)
-	mux.HandleFunc("POST /admin/api/logout", s.handleLogout)
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /admin/api/me", s.handleMe)
-	mux.Handle("/admin/api/me", s.requireSession(protected))
+	protected.HandleFunc("GET /admin/api/csrf", s.handleCSRFToken)
+	protected.Handle("POST /admin/api/logout", requireCSRF(http.HandlerFunc(s.handleLogout)))
+	mux.Handle("/admin/api/", s.requireSession(protected))
 
-	// SPA assets and client-side routes (Task 8 provides adminSPAHandler).
+	// SPA assets and client-side routes (Task 9 provides adminSPAHandler).
 	mux.Handle("/admin/", s.adminSPAHandler())
 	return mux
 }
@@ -971,9 +1112,9 @@ In `cmd/reviews/main.go` `runServe`, add to the `server.Config` literal:
 - [ ] **Step 4: Run the auth flow test**
 
 Run: `go test ./internal/server/ -run TestSetupThenLoginFlow -v`
-Expected: PASS. (Requires Task 8's `adminSPAHandler` to compile — implement Task 8's `spa.go` first, or temporarily stub `adminSPAHandler` returning `http.NotFoundHandler()`; the test does not hit SPA routes.)
+Expected: PASS. (Requires Task 9's `adminSPAHandler` to compile — implement Task 9's `spa.go` first, or temporarily stub `adminSPAHandler` returning `http.NotFoundHandler()`; the test does not hit SPA routes.)
 
-- [ ] **Step 5: Commit (Tasks 6+7+stub)**
+- [ ] **Step 5: Commit (Tasks 7+8+stub)**
 
 ```bash
 git add internal/server/admin_auth.go internal/server/admin_auth_test.go internal/server/server.go cmd/reviews/main.go
@@ -982,7 +1123,7 @@ git commit -m "feat(server): admin setup/login/logout endpoints and routing"
 
 ---
 
-## Task 8: Embedded React SPA shell
+## Task 9: Embedded React SPA shell
 
 **Files:**
 - Create: `web/admin/` (Vite React TS project)
@@ -1123,7 +1264,7 @@ func (s *Server) adminSPAHandler() http.Handler {
 }
 ```
 
-Note: if Task 7 used a stub `adminSPAHandler`, remove the stub now.
+Note: if Task 8 used a stub `adminSPAHandler`, remove the stub now.
 
 - [ ] **Step 6: Verify backend build + tests with embedded assets**
 
@@ -1138,8 +1279,8 @@ In `Dockerfile`, add a node stage before the Go builder and copy its output in s
 # ---- web builder ----
 FROM node:22-bookworm AS web
 WORKDIR /web/admin
-COPY web/admin/package.json web/admin/package-lock.json ./
-RUN npm ci
+COPY web/admin/package.json ./
+RUN npm install
 COPY web/admin ./
 RUN npm run build   # writes to /internal/server/admin_dist via vite outDir
 ```
@@ -1198,7 +1339,7 @@ git commit -m "feat(admin): embedded React SPA shell with auth screens"
 
 ## Self-Review Notes
 
-- **Spec coverage:** argon2id + session cookie (Tasks 1–7), CSRF — see note below, security headers (Task 5), generic login error (Task 6), setup wizard guarded by `CountAdminUsers` (Task 6, FR-1), `tenant_id` columns with default tenant (Task 3), embedded React SPA (Task 8).
-- **CSRF gap:** This plan ships SameSite=Lax cookies (primary CSRF mitigation for a same-origin SPA). A double-submit CSRF token, mentioned in the spec, is deferred to the first task of Stage 3 (where state-changing write endpoints land) and should be added as a `requireCSRF` middleware alongside them. Flagged here so it is not silently dropped.
-- **Type consistency:** `server.Config` gains `SessionTTL`/`SecureCookies` (Task 7), used by `handleLogin` (Task 6). `adminSPAHandler` defined in Task 8, referenced in Task 7 (stub until then). Store methods (`CountAdminUsers`, `CreateAdminUser`, `GetAdminUserByLogin`, `CreateSession`, `GetValidSession`, `DeleteSession`) match between Task 4 definitions and Task 6 call sites.
+- **Spec coverage:** argon2id + session cookie (Tasks 1–8), double-submit CSRF token and middleware (Task 6), security headers (Task 5), generic login error (Task 7), setup wizard guarded by `CountAdminUsers` (Task 7, FR-1), `tenant_id` columns with default tenant (Task 3), embedded React SPA (Task 9).
+- **CSRF usage:** Task 6 ships the reusable `requireCSRF` middleware and authenticated token endpoint. Stage 3 must wrap every state-changing admin route with it as those write endpoints are introduced.
+- **Type consistency:** `server.Config` gains `SessionTTL`/`SecureCookies` (Task 8), used by `handleLogin` (Task 7) and `handleCSRFToken` (Task 6). `adminSPAHandler` defined in Task 9, referenced in Task 8 (stub until then). Store methods (`CountAdminUsers`, `CreateAdminUser`, `GetAdminUserByLogin`, `CreateSession`, `GetValidSession`, `DeleteSession`) match between Task 4 definitions and Task 7 call sites.
 - **Build-without-Node:** committing a built `admin_dist` keeps `go build` working in CI/local without Node; the Dockerfile still rebuilds it fresh.

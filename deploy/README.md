@@ -67,6 +67,43 @@ REVIEWS_OZON_ENABLED=false
 ./deploy/build.sh ./dist/reviews-linux-amd64
 ```
 
+## Run with Docker
+
+Prerequisites: Docker with the Compose plugin.
+
+1. Copy and edit configuration:
+
+   ```sh
+   cp .env.example .env
+   # fill in marketplace tokens, then enable the marketplaces you want to sync
+   ```
+
+2. Start the service (builds the image on first run):
+
+   ```sh
+   docker compose up -d --build
+   ```
+
+3. Verify it is healthy:
+
+   ```sh
+   curl -fsS http://localhost:8080/healthz
+   ```
+
+The server runs database migrations on startup and, because the image's default
+command is `serve --with-sync`, it also runs review sync on `REVIEWS_SYNC_INTERVAL`
+inside the same process, so no systemd timer is required. The SQLite database
+persists in the `reviews-data` named volume.
+
+Note: `docker compose config` expands values from `.env` into its output. Avoid
+pasting that output into logs or tickets when real marketplace tokens are set.
+
+To run a one-off sync manually:
+
+```sh
+docker compose run --rm reviews sync --once
+```
+
 ## Server-Pull Deploy
 
 For repeatable deploys where the VPS pulls from GitHub and builds in place,

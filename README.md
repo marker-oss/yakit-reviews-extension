@@ -65,6 +65,7 @@ reviews migrate
 reviews sync --once
 reviews sync --once --marketplace wb
 reviews serve --addr 127.0.0.1:8080
+reviews serve --addr 127.0.0.1:8080 --with-sync
 reviews discover-site-urls --out data/shegida-product-links.json
 reviews export --out web/reviews-data
 ```

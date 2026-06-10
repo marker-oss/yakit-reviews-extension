@@ -46,5 +46,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 		&ReviewMedia{},
 		&SyncState{},
 		&SyncRun{},
+		&AdminUser{},
+		&Session{},
 	)
 }

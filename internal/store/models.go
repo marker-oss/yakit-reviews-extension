@@ -4,6 +4,7 @@ import "time"
 
 type Product struct {
 	ID             uint `gorm:"primaryKey"`
+	TenantID       uint `gorm:"not null;default:1;index"`
 	Title          *string
 	SiteProductKey *string
 	CreatedAt      time.Time
@@ -12,6 +13,7 @@ type Product struct {
 
 type ProductMarketplaceLink struct {
 	ID                uint `gorm:"primaryKey"`
+	TenantID          uint `gorm:"not null;default:1;index;uniqueIndex:idx_marketplace_product"`
 	ProductID         uint `gorm:"index;not null"`
 	Product           Product
 	Marketplace       string `gorm:"size:16;not null;uniqueIndex:idx_marketplace_product"`
@@ -22,6 +24,7 @@ type ProductMarketplaceLink struct {
 
 type Review struct {
 	ID                uint   `gorm:"primaryKey"`
+	TenantID          uint   `gorm:"not null;default:1;index;uniqueIndex:idx_marketplace_review"`
 	Marketplace       string `gorm:"size:16;not null;uniqueIndex:idx_marketplace_review"`
 	ExternalReviewID  string `gorm:"size:128;not null;uniqueIndex:idx_marketplace_review"`
 	ExternalProductID string `gorm:"size:128;not null;index"`

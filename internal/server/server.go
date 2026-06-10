@@ -21,6 +21,8 @@ type Config struct {
 	StaticDir          string
 	ProductURLTemplate string
 	ProductLinks       map[string]string
+	SessionTTL         time.Duration
+	SecureCookies      bool
 }
 
 type Server struct {
@@ -40,6 +42,9 @@ func New(store *store.Store, cfg Config, logger *slog.Logger) *Server {
 	if cfg.ProductURLTemplate == "" {
 		cfg.ProductURLTemplate = "https://shegida.ru/search?query={seller_article_url}"
 	}
+	if cfg.SessionTTL <= 0 {
+		cfg.SessionTTL = 24 * time.Hour
+	}
 	return &Server{
 		store:  store,
 		cfg:    cfg,
@@ -51,11 +56,12 @@ func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/reviews", s.handleReviews)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.Handle("/admin/", s.adminMux())
 	mux.Handle("/", http.FileServer(http.Dir(s.cfg.StaticDir)))
 
 	s.server = &http.Server{
 		Addr:              s.cfg.Addr,
-		Handler:           s.logRequests(mux),
+		Handler:           securityHeaders(s.logRequests(mux)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -79,6 +85,24 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 		return err
 	}
+}
+
+// adminMux builds the admin API + SPA routes. Setup and login are public;
+// everything below /admin/api/ requires a valid session.
+func (s *Server) adminMux() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /admin/api/setup-status", s.handleSetupStatus)
+	mux.HandleFunc("POST /admin/api/setup", s.handleSetup)
+	mux.HandleFunc("POST /admin/api/login", s.handleLogin)
+
+	protected := http.NewServeMux()
+	protected.HandleFunc("GET /admin/api/me", s.handleMe)
+	protected.HandleFunc("GET /admin/api/csrf", s.handleCSRFToken)
+	protected.Handle("POST /admin/api/logout", requireCSRF(http.HandlerFunc(s.handleLogout)))
+	mux.Handle("/admin/api/", s.requireSession(protected))
+
+	mux.Handle("/admin/", s.adminSPAHandler())
+	return mux
 }
 
 func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {

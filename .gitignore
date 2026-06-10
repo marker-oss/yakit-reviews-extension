@@ -8,6 +8,8 @@ coverage.out
 .gocache/
 /dist/
 /web/reviews-data/
+/web/admin/node_modules/
+/web/admin/dist/
 
 # Editor / language-server caches
 /.clj-kondo/

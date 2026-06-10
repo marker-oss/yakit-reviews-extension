@@ -20,7 +20,7 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 	var result UpsertResult
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		productID, err := resolveProductID(tx, input.Marketplace, input.ExternalProductID)
+		productID, err := resolveProductID(tx, DefaultTenantID, input.Marketplace, input.ExternalProductID)
 		if err != nil {
 			return err
 		}
@@ -28,6 +28,7 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 		answerText, answerState := answerFields(input.Answer)
 		now := time.Now().UTC()
 		next := Review{
+			TenantID:          DefaultTenantID,
 			Marketplace:       input.Marketplace,
 			ExternalReviewID:  input.ExternalReviewID,
 			ExternalProductID: input.ExternalProductID,
@@ -48,7 +49,12 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 		}
 
 		var existing Review
-		err = tx.Where("marketplace = ? AND external_review_id = ?", input.Marketplace, input.ExternalReviewID).First(&existing).Error
+		err = tx.Where(
+			"tenant_id = ? AND marketplace = ? AND external_review_id = ?",
+			DefaultTenantID,
+			input.Marketplace,
+			input.ExternalReviewID,
+		).First(&existing).Error
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			if err := tx.Create(&next).Error; err != nil {
@@ -90,9 +96,14 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 	return result, err
 }
 
-func resolveProductID(tx *gorm.DB, marketplaceID, externalProductID string) (*uint, error) {
+func resolveProductID(tx *gorm.DB, tenantID uint, marketplaceID, externalProductID string) (*uint, error) {
 	var link ProductMarketplaceLink
-	err := tx.Where("marketplace = ? AND external_product_id = ?", marketplaceID, externalProductID).First(&link).Error
+	err := tx.Where(
+		"tenant_id = ? AND marketplace = ? AND external_product_id = ?",
+		tenantID,
+		marketplaceID,
+		externalProductID,
+	).First(&link).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}

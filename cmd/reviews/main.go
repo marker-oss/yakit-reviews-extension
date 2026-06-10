@@ -19,6 +19,7 @@ import (
 	"reviews/internal/marketplace/wb"
 	"reviews/internal/marketplace/ym"
 	"reviews/internal/reviewjson"
+	"reviews/internal/scheduler"
 	"reviews/internal/server"
 	"reviews/internal/site"
 	"reviews/internal/store"
@@ -148,6 +149,7 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 	addr := flags.String("addr", "127.0.0.1:8080", "HTTP listen address")
 	staticDir := flags.String("static-dir", "web/reviews-widget", "static widget directory")
 	productURLTemplate := flags.String("product-url-template", cfg.Web.ProductURLTemplate, "seller product URL template")
+	withSync := flags.Bool("with-sync", false, "run periodic review sync inside the server process")
 	if err := flags.Parse(args); err != nil {
 		return exitConfigError
 	}
@@ -167,11 +169,29 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		return exitRunError
 	}
 
+	if *withSync {
+		if err := cfg.ValidateMarketplaceCredentials(""); err != nil {
+			logger.Error("sync credentials invalid", "error", err)
+			return exitConfigError
+		}
+		runner := collector.NewRunner(db, cfg.Sync, logger, buildAdapters(cfg))
+		sched := scheduler.New(
+			syncRunnerAdapter{runner: runner, logger: logger},
+			cfg.Sync.Interval,
+			cfg.EnabledMarketplaces(),
+			logger,
+		)
+		go sched.Run(ctx)
+		logger.Info("in-process sync scheduler started", "interval", cfg.Sync.Interval.String())
+	}
+
 	httpServer := server.New(db, server.Config{
 		Addr:               *addr,
 		StaticDir:          *staticDir,
 		ProductURLTemplate: *productURLTemplate,
 		ProductLinks:       loadProductLinks(cfg.Web.ProductLinksPath, logger),
+		SessionTTL:         24 * time.Hour,
+		SecureCookies:      os.Getenv("REVIEWS_INSECURE_COOKIES") == "",
 	}, logger)
 	if err := httpServer.Run(ctx); err != nil {
 		logger.Error("server stopped with error", "error", err)
@@ -180,6 +200,23 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 
 	logger.Info("shutdown complete")
 	return exitOK
+}
+
+// syncRunnerAdapter adapts collector.Runner to scheduler.Runner and logs the
+// per-marketplace results that the scheduler intentionally ignores.
+type syncRunnerAdapter struct {
+	runner *collector.Runner
+	logger *slog.Logger
+}
+
+func (a syncRunnerAdapter) RunOnce(ctx context.Context, marketplaces []string) {
+	for _, result := range a.runner.RunOnce(ctx, marketplaces) {
+		if result.Error != nil {
+			a.logger.Error("scheduled sync marketplace failed", "marketplace", result.Marketplace, "error", result.Error)
+			continue
+		}
+		a.logger.Info("scheduled sync marketplace ok", "marketplace", result.Marketplace, "seen", result.Seen, "upserted", result.Upserted)
+	}
 }
 
 func runDiscoverSiteURLs(ctx context.Context, args []string, cfg config.Config, logger *slog.Logger) int {
@@ -316,7 +353,7 @@ func usage() {
 	fmt.Fprint(os.Stderr, `Usage:
   reviews migrate
   reviews sync --once [--marketplace wb|ym|ozon]
-  reviews serve [--addr 127.0.0.1:8080]
+  reviews serve [--addr 127.0.0.1:8080] [--with-sync]
   reviews discover-site-urls
   reviews export [--out web/reviews-data]
 

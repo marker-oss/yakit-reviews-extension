@@ -4,11 +4,11 @@
 
 **Goal:** Give the admin a dashboard, a filterable review list with moderation (hide/show, pin), marketplace connection status with manual sync, and configurable homepage showcase rules (auto-rules + manual pin/hide) served to the widget.
 
-**Architecture:** Add `visibility`/`pinned` columns to `Review` and a `ShowcaseRule` model. Extend `ReviewListFilter` with the new admin filters. Add CSRF protection (deferred from Stage 2) on all write endpoints. New authenticated admin API: dashboard stats, admin review list (with total count), review moderation, marketplace status + manual sync trigger, showcase-rule CRUD. New public endpoint `GET /api/showcase` applies rules + pins/hides. React pages: Dashboard, Reviews, Marketplaces, Showcase.
+**Architecture:** Add `visibility`/`pinned` columns to `Review` and a `ShowcaseRule` model. Extend `ReviewListFilter` with the new admin filters. Apply the Stage 2 `requireCSRF` middleware to all state-changing admin endpoints. New authenticated admin API: dashboard stats, admin review list (with total count), review moderation, marketplace status + manual sync trigger, showcase-rule CRUD. New public endpoint `GET /api/showcase` applies rules + pins/hides. React pages: Dashboard, Reviews, Marketplaces, Showcase.
 
 **Tech Stack:** Go 1.26, GORM, `net/http`, React + Vite + TS.
 
-**Spec:** `docs/superpowers/specs/2026-06-09-reviews-admin-and-containerization-design.md` (FR-2, FR-3, FR-4, FR-5; "Безопасность" CSRF).
+**Spec:** `docs/superpowers/specs/2026-06-09-reviews-admin-and-containerization-design.md` (FR-2, FR-3, FR-4, FR-5; uses Stage 2 CSRF security layer).
 
 **Depends on:** Stage 2 (auth, `requireSession`, admin mux, store test helpers).
 
@@ -16,7 +16,6 @@
 
 ## File Structure
 
-- Create: `internal/server/csrf.go` — double-submit CSRF middleware + token endpoint.
 - Modify: `internal/store/models.go` — add `Visibility`, `Pinned` to `Review`.
 - Modify: `internal/store/store.go` — add `ShowcaseRule` to migrations.
 - Create: `internal/store/showcase_models.go` — `ShowcaseRule` model.
@@ -33,130 +32,33 @@
 
 ---
 
-## Task 1: CSRF protection
+## Task 1: Apply Stage 2 CSRF to write routes
 
 **Files:**
-- Create: `internal/server/csrf.go`
-- Create: `internal/server/csrf_test.go`
+- Modify: `internal/server/server.go`
 
-- [ ] **Step 1: Write the failing test**
-
-Create `internal/server/csrf_test.go`:
-
-```go
-package server
-
-import (
-	"net/http"
-	"net/http/httptest"
-	"testing"
-)
-
-func TestRequireCSRF(t *testing.T) {
-	handler := requireCSRF(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	// Missing token → 403.
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/x", nil))
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("no token: status = %d", rec.Code)
-	}
-
-	// Matching header + cookie → pass.
-	rec = httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/x", nil)
-	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "abc123"})
-	req.Header.Set(csrfHeaderName, "abc123")
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("valid token: status = %d", rec.Code)
-	}
-
-	// Mismatch → 403.
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/x", nil)
-	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "abc123"})
-	req.Header.Set(csrfHeaderName, "different")
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("mismatch: status = %d", rec.Code)
-	}
-}
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `go test ./internal/server/ -run TestRequireCSRF -v`
-Expected: FAIL — `undefined: requireCSRF`.
-
-- [ ] **Step 3: Write minimal implementation**
-
-Create `internal/server/csrf.go`:
-
-```go
-package server
-
-import (
-	"crypto/subtle"
-	"errors"
-	"net/http"
-
-	"reviews/internal/auth"
-)
-
-const (
-	csrfCookieName = "reviews_csrf"
-	csrfHeaderName = "X-CSRF-Token"
-)
-
-// requireCSRF enforces the double-submit cookie pattern on state-changing
-// requests: the X-CSRF-Token header must equal the reviews_csrf cookie.
-func requireCSRF(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(csrfCookieName)
-		header := r.Header.Get(csrfHeaderName)
-		if err != nil || header == "" ||
-			subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(header)) != 1 {
-			writeError(w, http.StatusForbidden, errors.New("invalid CSRF token"))
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// handleCSRFToken issues a CSRF token cookie and returns the value so the SPA
-// can echo it back in the X-CSRF-Token header.
-func (s *Server) handleCSRFToken(w http.ResponseWriter, r *http.Request) {
-	token, err := auth.NewSessionToken()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     csrfCookieName,
-		Value:    token,
-		Path:     "/",
-		HttpOnly: false, // readable by JS is fine for double-submit
-		Secure:   s.cfg.SecureCookies,
-		SameSite: http.SameSiteLaxMode,
-	})
-	writeJSON(w, http.StatusOK, map[string]string{"csrf_token": token})
-}
-```
-
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 1: Confirm Stage 2 CSRF is present**
 
 Run: `go test ./internal/server/ -run TestRequireCSRF -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 2: Use `requireCSRF` for every state-changing admin route**
 
-```bash
-git add internal/server/csrf.go internal/server/csrf_test.go
-git commit -m "feat(server): double-submit CSRF protection"
+As each Stage 3 write endpoint is registered, wrap it with `requireCSRF(...)`.
+The route registration examples later in this plan already do this for review
+moderation, manual sync, and showcase-rule updates:
+
+```go
+protected.Handle("PATCH /admin/api/reviews/{id}", requireCSRF(http.HandlerFunc(s.handleAdminReviewModerate)))
+protected.Handle("POST /admin/api/sync", requireCSRF(http.HandlerFunc(s.handleTriggerSync)))
+protected.Handle("PUT /admin/api/showcase-rule", requireCSRF(http.HandlerFunc(s.handlePutShowcaseRule)))
 ```
+
+- [ ] **Step 3: Keep reads CSRF-free**
+
+`GET` endpoints remain protected by session auth where appropriate, but do not
+require the CSRF header. The SPA obtains the token from `GET /admin/api/csrf`,
+introduced in Stage 2, before sending write requests.
 
 ---
 
