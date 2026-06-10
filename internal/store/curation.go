@@ -1,6 +1,12 @@
 package store
 
-import "context"
+import (
+	"context"
+	"errors"
+	"time"
+
+	"gorm.io/gorm"
+)
 
 func (s *Store) SetReviewVisibility(ctx context.Context, id uint, visibility string) error {
 	return s.db.WithContext(ctx).Model(&Review{}).
@@ -84,3 +90,76 @@ func (s *Store) RecentSyncRuns(ctx context.Context, limit int) ([]SyncRun, error
 		Find(&runs).Error
 	return runs, err
 }
+
+func (s *Store) GetShowcaseRule(ctx context.Context) (ShowcaseRule, error) {
+	var rule ShowcaseRule
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ?", DefaultTenantID).
+		First(&rule).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return defaultShowcaseRule(), nil
+	}
+	return rule, err
+}
+
+func (s *Store) SaveShowcaseRule(ctx context.Context, rule ShowcaseRule) error {
+	rule.TenantID = DefaultTenantID
+	if rule.SortBy == "" {
+		rule.SortBy = "recent"
+	}
+	if rule.Limit <= 0 {
+		rule.Limit = 12
+	}
+	return s.db.WithContext(ctx).
+		Where("tenant_id = ?", DefaultTenantID).
+		Assign(rule).
+		FirstOrCreate(&rule).Error
+}
+
+func (s *Store) ShowcaseReviews(ctx context.Context, rule ShowcaseRule) ([]Review, error) {
+	query := s.db.WithContext(ctx).
+		Preload("Media", func(db *gorm.DB) *gorm.DB {
+			return db.Order("position asc").Order("id asc")
+		}).
+		Where("visibility = ?", "visible")
+	if rule.MinRating > 0 {
+		query = query.Where("rating >= ?", rule.MinRating)
+	}
+	if rule.RequirePhoto {
+		query = query.Where("id IN (?)",
+			s.db.Model(&ReviewMedia{}).Select("review_id").Where("kind = ?", "photo"))
+	}
+	if rule.MinTextLen > 0 {
+		query = query.Where("LENGTH(text) >= ?", rule.MinTextLen)
+	}
+	if rule.MaxAgeDays > 0 {
+		cutoff := timeNowUTC().AddDate(0, 0, -rule.MaxAgeDays)
+		query = query.Where("created_at_mp >= ?", cutoff)
+	}
+
+	query = query.Order("pinned desc")
+	if rule.SortBy == "rating" {
+		query = query.Order("rating desc")
+	}
+	query = query.Order("created_at_mp desc")
+
+	limit := rule.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 12
+	}
+
+	var reviews []Review
+	err := query.Limit(limit).Find(&reviews).Error
+	return reviews, err
+}
+
+func defaultShowcaseRule() ShowcaseRule {
+	return ShowcaseRule{
+		TenantID:  DefaultTenantID,
+		MinRating: 4,
+		SortBy:    "recent",
+		Limit:     12,
+	}
+}
+
+var timeNowUTC = func() time.Time { return time.Now().UTC() }

@@ -57,6 +57,7 @@ func New(store *store.Store, cfg Config, logger *slog.Logger) *Server {
 func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/reviews", s.handleReviews)
+	mux.HandleFunc("GET /api/showcase", s.handleShowcase)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.Handle("/admin/", s.adminMux())
 	mux.Handle("/", http.FileServer(http.Dir(s.cfg.StaticDir)))
@@ -105,6 +106,8 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.HandleFunc("GET /admin/api/dashboard", s.handleDashboard)
 	protected.HandleFunc("GET /admin/api/marketplaces", s.handleMarketplaces)
 	protected.Handle("POST /admin/api/sync", requireCSRF(http.HandlerFunc(s.handleTriggerSync)))
+	protected.HandleFunc("GET /admin/api/showcase-rule", s.handleGetShowcaseRule)
+	protected.Handle("PUT /admin/api/showcase-rule", requireCSRF(http.HandlerFunc(s.handlePutShowcaseRule)))
 	protected.Handle("POST /admin/api/logout", requireCSRF(http.HandlerFunc(s.handleLogout)))
 	mux.Handle("/admin/api/", s.requireSession(protected))
 
