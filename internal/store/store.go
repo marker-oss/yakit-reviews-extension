@@ -48,5 +48,6 @@ func (s *Store) Migrate(ctx context.Context) error {
 		&SyncRun{},
 		&AdminUser{},
 		&Session{},
+		&ShowcaseRule{},
 	)
 }

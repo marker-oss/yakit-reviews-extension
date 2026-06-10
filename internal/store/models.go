@@ -41,6 +41,8 @@ type Review struct {
 	MPAnswerText      *string
 	MPAnswerState     *string
 	Status            string `gorm:"size:32;not null;default:imported"`
+	Visibility        string `gorm:"size:16;not null;default:visible;index"`
+	Pinned            bool   `gorm:"not null;default:false;index"`
 	Raw               string
 	FetchedAt         time.Time `gorm:"not null"`
 	UpdatedAt         time.Time

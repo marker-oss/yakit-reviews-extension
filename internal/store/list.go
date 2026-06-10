@@ -9,10 +9,15 @@ import (
 )
 
 type ReviewListFilter struct {
-	Marketplace string
-	Rating      int
-	Limit       int
-	Offset      int
+	Marketplace   string
+	Rating        int
+	Limit         int
+	Offset        int
+	Visibility    string
+	SellerArticle string
+	HasPhoto      bool
+	Search        string
+	PinnedFirst   bool
 }
 
 func (s *Store) ListReviews(ctx context.Context, filter ReviewListFilter) ([]Review, error) {
@@ -27,11 +32,25 @@ func (s *Store) ListReviews(ctx context.Context, filter ReviewListFilter) ([]Rev
 	query := s.db.WithContext(ctx).
 		Preload("Media", func(db *gorm.DB) *gorm.DB {
 			return db.Order("position asc").Order("id asc")
-		}).
-		Order("created_at_mp desc").
-		Limit(limit).
-		Offset(filter.Offset)
+		})
 
+	query, err := s.applyReviewFilters(query, filter)
+	if err != nil {
+		return nil, err
+	}
+	if filter.PinnedFirst {
+		query = query.Order("pinned desc")
+	}
+	query = query.Order("created_at_mp desc").Limit(limit).Offset(filter.Offset)
+
+	var reviews []Review
+	if err := query.Find(&reviews).Error; err != nil {
+		return nil, err
+	}
+	return reviews, nil
+}
+
+func (s *Store) applyReviewFilters(query *gorm.DB, filter ReviewListFilter) (*gorm.DB, error) {
 	if filter.Marketplace != "" && filter.Marketplace != "all" {
 		query = query.Where("marketplace = ?", strings.ToLower(filter.Marketplace))
 	}
@@ -41,10 +60,22 @@ func (s *Store) ListReviews(ctx context.Context, filter ReviewListFilter) ([]Rev
 		}
 		query = query.Where("rating = ?", filter.Rating)
 	}
-
-	var reviews []Review
-	if err := query.Find(&reviews).Error; err != nil {
-		return nil, err
+	if filter.Visibility != "" {
+		query = query.Where("visibility = ?", filter.Visibility)
 	}
-	return reviews, nil
+	if filter.SellerArticle != "" {
+		query = query.Where("seller_article = ?", filter.SellerArticle)
+	}
+	if filter.HasPhoto {
+		query = query.Where("id IN (?)",
+			s.db.Model(&ReviewMedia{}).Select("review_id").Where("kind = ?", "photo"))
+	}
+	if filter.Search != "" {
+		like := "%" + filter.Search + "%"
+		query = query.Where(
+			"text LIKE ? OR author_name LIKE ? OR pros LIKE ? OR cons LIKE ?",
+			like, like, like, like,
+		)
+	}
+	return query, nil
 }
