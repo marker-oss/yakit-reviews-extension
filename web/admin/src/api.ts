@@ -3,9 +3,12 @@ let csrfToken = ''
 async function readError(res: Response) {
   try {
     const data = (await res.json()) as { error?: string }
-    return data.error ?? 'request failed'
+    if (data.error === 'authentication required') return 'Требуется вход в админку'
+    if (data.error === 'invalid login or password') return 'Неверный логин или пароль'
+    if (data.error === 'request failed') return 'Запрос не выполнен'
+    return data.error ?? 'Запрос не выполнен'
   } catch {
-    return 'request failed'
+    return 'Запрос не выполнен'
   }
 }
 

@@ -21,7 +21,7 @@ export default function Reviews() {
     if (search) query.set('search', search)
     apiGet<ListResponse>(`/admin/api/reviews?${query.toString()}`)
       .then(setData)
-      .catch((err) => setError(String(err)))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }
 
   useEffect(load, [marketplace, visibility])
@@ -32,7 +32,7 @@ export default function Reviews() {
       await apiWrite('PATCH', `/admin/api/reviews/${id}`, body)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'request failed')
+      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
@@ -40,29 +40,29 @@ export default function Reviews() {
     <section className="stack">
       <div className="toolbar">
         <select value={marketplace} onChange={(e) => setMarketplace(e.target.value)}>
-          <option value="">All marketplaces</option>
+          <option value="">Все маркетплейсы</option>
           <option value="wb">Wildberries</option>
           <option value="ym">Yandex Market</option>
           <option value="ozon">Ozon</option>
         </select>
         <select value={visibility} onChange={(e) => setVisibility(e.target.value)}>
-          <option value="">All visibility</option>
-          <option value="visible">Visible</option>
-          <option value="hidden">Hidden</option>
+          <option value="">Любой статус</option>
+          <option value="visible">Показан</option>
+          <option value="hidden">Скрыт</option>
         </select>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search text" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск по тексту" />
         <button className="secondary" onClick={load}>
-          Search
+          Найти
         </button>
-        <span className="muted">{data.total} reviews</span>
+        <span className="muted">Отзывов: {data.total}</span>
       </div>
       {error && <p className="error">{error}</p>}
       <section className="panel">
         <div className="table">
           <div className="table-head grid-reviews">
-            <span>Review</span>
-            <span>Rating</span>
-            <span>Status</span>
+            <span>Отзыв</span>
+            <span>Оценка</span>
+            <span>Статус</span>
             <span></span>
           </div>
           {data.reviews.map((review) => (
@@ -74,22 +74,22 @@ export default function Reviews() {
               </div>
               <span>{review.rating ?? '-'} / 5</span>
               <span className={review.visibility === 'visible' ? 'status-ok' : 'status-muted'}>
-                {review.pinned ? 'pinned · ' : ''}{review.visibility}
+                {review.pinned ? 'закреплён · ' : ''}{review.visibility === 'visible' ? 'показан' : 'скрыт'}
               </span>
               <div className="actions">
                 <button
                   className="secondary"
                   onClick={() => moderate(review.id, { visibility: review.visibility === 'visible' ? 'hidden' : 'visible' })}
                 >
-                  {review.visibility === 'visible' ? 'Hide' : 'Show'}
+                  {review.visibility === 'visible' ? 'Скрыть' : 'Показать'}
                 </button>
                 <button className="secondary" onClick={() => moderate(review.id, { pinned: !review.pinned })}>
-                  {review.pinned ? 'Unpin' : 'Pin'}
+                  {review.pinned ? 'Открепить' : 'Закрепить'}
                 </button>
               </div>
             </div>
           ))}
-          {data.reviews.length === 0 && <p className="muted empty">No reviews match these filters.</p>}
+          {data.reviews.length === 0 && <p className="muted empty">Под эти фильтры отзывов нет.</p>}
         </div>
       </section>
     </section>

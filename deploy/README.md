@@ -78,6 +78,9 @@ Prerequisites: Docker with the Compose plugin.
    # fill in marketplace tokens, then enable the marketplaces you want to sync
    ```
 
+   Keep `REVIEWS_INSECURE_COOKIES=1` only for local HTTP preview. Remove it or
+   leave it empty when the admin panel is served over HTTPS.
+
 2. Start the service (builds the image on first run):
 
    ```sh

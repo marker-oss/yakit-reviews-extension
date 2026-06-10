@@ -15,8 +15,8 @@ async function postAuth(path: string, body: unknown) {
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    const data = (await res.json().catch(() => ({ error: 'request failed' }))) as { error?: string }
-    throw new Error(data.error ?? 'request failed')
+    const data = (await res.json().catch(() => ({ error: 'Запрос не выполнен' }))) as { error?: string }
+    throw new Error(data.error ?? 'Запрос не выполнен')
   }
 }
 
@@ -24,6 +24,12 @@ function currentPage(): Page {
   const raw = window.location.hash.replace(/^#\/?/, '')
   if (raw === 'reviews' || raw === 'marketplaces' || raw === 'showcase') return raw
   return 'dashboard'
+}
+
+function authError(message: string) {
+  if (message === 'authentication required') return 'Требуется вход в админку'
+  if (message === 'invalid login or password') return 'Неверный логин или пароль'
+  return message || 'Запрос не выполнен'
 }
 
 export default function App() {
@@ -51,10 +57,10 @@ export default function App() {
   }, [])
 
   const title = useMemo(() => {
-    if (page === 'reviews') return 'Reviews'
-    if (page === 'marketplaces') return 'Marketplaces'
-    if (page === 'showcase') return 'Showcase'
-    return 'Dashboard'
+    if (page === 'reviews') return 'Отзывы'
+    if (page === 'marketplaces') return 'Маркетплейсы'
+    if (page === 'showcase') return 'Витрина'
+    return 'Сводка'
   }, [page])
 
   async function submit(event: React.FormEvent) {
@@ -65,7 +71,7 @@ export default function App() {
       setMode('authed')
       setPassword('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'request failed')
+      setError(err instanceof Error ? authError(err.message) : 'Запрос не выполнен')
     }
   }
 
@@ -77,14 +83,14 @@ export default function App() {
       setMode('login')
       setPassword('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'request failed')
+      setError(err instanceof Error ? authError(err.message) : 'Запрос не выполнен')
     }
   }
 
   if (mode === 'loading') {
     return (
       <main className="auth-screen">
-        <p className="muted">Loading...</p>
+        <p className="muted">Загрузка...</p>
       </main>
     )
   }
@@ -93,14 +99,14 @@ export default function App() {
     return (
       <main className="auth-screen">
         <form className="auth-panel" onSubmit={submit}>
-          <p className="eyebrow">{mode === 'setup' ? 'First run' : 'Welcome back'}</p>
-          <h1>{mode === 'setup' ? 'Create admin' : 'Sign in'}</h1>
+          <p className="eyebrow">{mode === 'setup' ? 'Первый запуск' : 'Вход'}</p>
+          <h1>{mode === 'setup' ? 'Создать администратора' : 'Войти'}</h1>
           <label>
-            <span>Login</span>
+            <span>Логин</span>
             <input value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" />
           </label>
           <label>
-            <span>Password</span>
+            <span>Пароль</span>
             <input
               value={password}
               type="password"
@@ -108,7 +114,7 @@ export default function App() {
               autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
             />
           </label>
-          <button type="submit">{mode === 'setup' ? 'Create' : 'Sign in'}</button>
+          <button type="submit">{mode === 'setup' ? 'Создать' : 'Войти'}</button>
           {error && <p className="error">{error}</p>}
         </form>
       </main>
@@ -119,25 +125,25 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div>
-          <p className="eyebrow">Reviews</p>
-          <h1>Admin</h1>
+          <p className="eyebrow">Отзывы</p>
+          <h1>Админка</h1>
         </div>
         <nav>
           <a className={page === 'dashboard' ? 'active' : ''} href="#/dashboard">
-            Dashboard
+            Сводка
           </a>
           <a className={page === 'reviews' ? 'active' : ''} href="#/reviews">
-            Reviews
+            Отзывы
           </a>
           <a className={page === 'marketplaces' ? 'active' : ''} href="#/marketplaces">
-            Marketplaces
+            Маркетплейсы
           </a>
           <a className={page === 'showcase' ? 'active' : ''} href="#/showcase">
-            Showcase
+            Витрина
           </a>
         </nav>
         <button className="secondary" onClick={logout}>
-          Sign out
+          Выйти
         </button>
         {error && <p className="error">{error}</p>}
       </aside>

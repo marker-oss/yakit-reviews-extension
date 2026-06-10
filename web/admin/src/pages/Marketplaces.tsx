@@ -10,7 +10,7 @@ export default function Marketplaces() {
   useEffect(() => {
     apiGet<{ marketplaces: MarketplaceStatus[] }>('/admin/api/marketplaces')
       .then((data) => setItems(data.marketplaces))
-      .catch((err) => setMessage(String(err)))
+      .catch((err) => setMessage(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }, [])
 
   async function sync(marketplace?: string) {
@@ -18,9 +18,9 @@ export default function Marketplaces() {
     setMessage('')
     try {
       await apiWrite('POST', marketplace ? `/admin/api/sync?marketplace=${marketplace}` : '/admin/api/sync')
-      setMessage('Sync started')
+      setMessage('Синхронизация запущена')
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'request failed')
+      setMessage(err instanceof Error ? err.message : 'Запрос не выполнен')
     } finally {
       setBusy('')
     }
@@ -30,27 +30,27 @@ export default function Marketplaces() {
     <section className="stack">
       <div className="toolbar">
         <button onClick={() => sync()} disabled={busy !== ''}>
-          Sync all
+          Синхронизировать всё
         </button>
         {message && <p className="muted">{message}</p>}
       </div>
       <section className="panel">
         <div className="table">
           <div className="table-head grid-marketplaces">
-            <span>Marketplace</span>
-            <span>Enabled</span>
-            <span>Credentials</span>
+            <span>Маркетплейс</span>
+            <span>Включён</span>
+            <span>Доступы</span>
             <span></span>
           </div>
           {items.map((item) => (
             <div className="table-row grid-marketplaces" key={item.id}>
               <strong>{item.id}</strong>
-              <span className={item.enabled ? 'status-ok' : 'status-muted'}>{item.enabled ? 'enabled' : 'disabled'}</span>
+              <span className={item.enabled ? 'status-ok' : 'status-muted'}>{item.enabled ? 'да' : 'нет'}</span>
               <span className={item.configured ? 'status-ok' : 'status-warn'}>
-                {item.configured ? 'configured' : 'missing'}
+                {item.configured ? 'настроены' : 'нет'}
               </span>
               <button className="secondary" onClick={() => sync(item.id)} disabled={busy !== '' || !item.enabled}>
-                Sync
+                Запуск
               </button>
             </div>
           ))}
