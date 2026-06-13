@@ -4,12 +4,15 @@ package export
 
 import (
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"reviews/internal/reviewjson"
+	"reviews/internal/site"
 	"reviews/internal/store"
 )
 
@@ -104,6 +107,77 @@ func Write(dir string, bundles map[string]*Bundle, generatedAt time.Time) error 
 	}
 
 	return writeJSONFile(filepath.Join(dir, "index.json"), index)
+}
+
+// LinkIndex maps shegida product page locations to their seller article. The
+// embed loader fetches this to resolve the current product on SPA navigation,
+// where the page's own #requestContext no longer reflects the visited product.
+type LinkIndex struct {
+	GeneratedAt time.Time         `json:"generatedAt"`
+	ByPath      map[string]string `json:"byPath"`
+	ByID        map[string]string `json:"byID"`
+}
+
+// BuildLinkIndex derives path- and id-keyed article lookups from the full
+// crawled product-link list. Many product paths may share one article.
+func BuildLinkIndex(links []site.ProductLink, generatedAt time.Time) LinkIndex {
+	idx := LinkIndex{
+		GeneratedAt: generatedAt,
+		ByPath:      make(map[string]string),
+		ByID:        make(map[string]string),
+	}
+	for _, link := range links {
+		article := strings.TrimSpace(link.SellerArticle)
+		if article == "" {
+			continue
+		}
+		path := linkPath(link.URL)
+		if path == "" {
+			continue
+		}
+		idx.ByPath[path] = article
+		if id := productID(path); id != "" {
+			idx.ByID[id] = article
+		}
+	}
+	return idx
+}
+
+// WriteLinks writes the link index as links.json into dir.
+func WriteLinks(dir string, idx LinkIndex) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return writeJSONFile(filepath.Join(dir, "links.json"), idx)
+}
+
+// linkPath returns the normalized URL path (no trailing slash) of a product URL.
+func linkPath(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(parsed.Path, "/")
+}
+
+// productID extracts the trailing numeric Kit product id from a product path
+// (e.g. /products/plate-...-102291 → "102291"). Returns "" when the tail after
+// the last hyphen is not purely numeric.
+func productID(path string) string {
+	i := strings.LastIndex(path, "-")
+	if i < 0 || i+1 >= len(path) {
+		return ""
+	}
+	tail := path[i+1:]
+	for _, r := range tail {
+		if r < '0' || r > '9' {
+			return ""
+		}
+	}
+	return tail
 }
 
 func articleFileName(article string) string {

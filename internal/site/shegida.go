@@ -72,26 +72,26 @@ func DiscoverShegidaProductLinks(ctx context.Context, sitemapURL string, client 
 		close(results)
 	}()
 
-	byArticle := make(map[string]ProductLink)
+	// Keep every product URL (no collapsing by article): many product pages
+	// (colours/sizes) share one seller article, and the embed loader must be
+	// able to resolve ANY visited product path to its article.
+	var links []ProductLink
 	for link := range results {
-		if _, exists := byArticle[link.SellerArticle]; !exists {
-			byArticle[link.SellerArticle] = link
-		}
+		links = append(links, link)
 	}
 
 	select {
 	case err := <-errs:
-		if len(byArticle) == 0 {
+		if len(links) == 0 {
 			return nil, err
 		}
 	default:
 	}
 
-	links := make([]ProductLink, 0, len(byArticle))
-	for _, link := range byArticle {
-		links = append(links, link)
-	}
 	sort.Slice(links, func(i, j int) bool {
+		if links[i].URL != links[j].URL {
+			return links[i].URL < links[j].URL
+		}
 		return links[i].SellerArticle < links[j].SellerArticle
 	})
 	return links, nil
@@ -101,6 +101,17 @@ func EncodeProductLinks(w io.Writer, links []ProductLink) error {
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(links)
+}
+
+// LoadProductLinks decodes the full crawled product-link list. Unlike
+// LoadProductLinkMap (article→URL, one entry per article), this preserves every
+// product URL so callers can build a complete path→article lookup.
+func LoadProductLinks(r io.Reader) ([]ProductLink, error) {
+	var links []ProductLink
+	if err := json.NewDecoder(r).Decode(&links); err != nil {
+		return nil, err
+	}
+	return links, nil
 }
 
 func LoadProductLinkMap(r io.Reader) (map[string]string, error) {

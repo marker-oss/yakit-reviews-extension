@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"reviews/internal/reviewjson"
+	"reviews/internal/site"
 	"reviews/internal/store"
 )
 
@@ -98,5 +99,48 @@ func TestWriteProducesFiles(t *testing.T) {
 	}
 	if idx.Articles["107"].Count != 1 {
 		t.Fatalf("index = %+v", idx)
+	}
+}
+
+func TestBuildLinkIndexMapsEveryPathAndIDToArticle(t *testing.T) {
+	links := []site.ProductLink{
+		// Two distinct product pages share one seller article (colour variants).
+		{SellerArticle: "1777-5", URL: "https://shegida.ru/products/plate-naryadnoe-ofisnoe-suhaya-roza-102291"},
+		{SellerArticle: "1777-5", URL: "https://shegida.ru/products/plate-naryadnoe-cvet-1-bejevyiy-100635/"},
+		{SellerArticle: "3453", URL: "https://shegida.ru/products/plate-naryadnoe-v-stile-boho-temno-biryzovyiy-102277"},
+		// No article → skipped entirely.
+		{SellerArticle: "", URL: "https://shegida.ru/products/no-article-100000"},
+		// Non-numeric tail → kept in byPath, absent from byID.
+		{SellerArticle: "55", URL: "https://shegida.ru/products/slug-without-id"},
+	}
+
+	idx := BuildLinkIndex(links, time.Unix(1000, 0).UTC())
+
+	wantPath := map[string]string{
+		"/products/plate-naryadnoe-ofisnoe-suhaya-roza-102291":   "1777-5",
+		"/products/plate-naryadnoe-cvet-1-bejevyiy-100635":       "1777-5",
+		"/products/plate-naryadnoe-v-stile-boho-temno-biryzovyiy-102277": "3453",
+		"/products/slug-without-id":                              "55",
+	}
+	if len(idx.ByPath) != len(wantPath) {
+		t.Fatalf("ByPath size = %d, want %d (%v)", len(idx.ByPath), len(wantPath), idx.ByPath)
+	}
+	for p, a := range wantPath {
+		if idx.ByPath[p] != a {
+			t.Errorf("ByPath[%q] = %q, want %q", p, idx.ByPath[p], a)
+		}
+	}
+
+	wantID := map[string]string{"102291": "1777-5", "100635": "1777-5", "102277": "3453"}
+	if len(idx.ByID) != len(wantID) {
+		t.Fatalf("ByID size = %d, want %d (%v)", len(idx.ByID), len(wantID), idx.ByID)
+	}
+	for id, a := range wantID {
+		if idx.ByID[id] != a {
+			t.Errorf("ByID[%q] = %q, want %q", id, idx.ByID[id], a)
+		}
+	}
+	if _, ok := idx.ByID["without-id"]; ok {
+		t.Errorf("non-numeric tail must not appear in ByID")
 	}
 }

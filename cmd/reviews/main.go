@@ -371,12 +371,20 @@ func runExport(ctx context.Context, args []string, cfg config.Config, logger *sl
 	}
 	bundles := export.BuildBundles(reviews, mapper)
 
-	if err := export.Write(*outDir, bundles, time.Now().UTC()); err != nil {
+	generatedAt := time.Now().UTC()
+	if err := export.Write(*outDir, bundles, generatedAt); err != nil {
 		logger.Error("write export", "out", *outDir, "error", err)
 		return exitRunError
 	}
 
-	logger.Info("export complete", "articles", len(bundles), "reviews", len(reviews), "out", *outDir)
+	linkIndex := export.BuildLinkIndex(loadProductCatalog(cfg.Web.ProductLinksPath, logger), generatedAt)
+	if err := export.WriteLinks(*outDir, linkIndex); err != nil {
+		logger.Error("write links index", "out", *outDir, "error", err)
+		return exitRunError
+	}
+
+	logger.Info("export complete", "articles", len(bundles), "reviews", len(reviews),
+		"linkPaths", len(linkIndex.ByPath), "linkIDs", len(linkIndex.ByID), "out", *outDir)
 	return exitOK
 }
 
@@ -507,6 +515,24 @@ func loadProductLinks(path string, logger *slog.Logger) map[string]string {
 		return nil
 	}
 	logger.Info("product links loaded", "path", path, "count", len(links))
+	return links
+}
+
+func loadProductCatalog(path string, logger *slog.Logger) []site.ProductLink {
+	file, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		logger.Warn("open product catalog", "path", path, "error", err)
+		return nil
+	}
+	defer file.Close()
+	links, err := site.LoadProductLinks(file)
+	if err != nil {
+		logger.Warn("load product catalog", "path", path, "error", err)
+		return nil
+	}
 	return links
 }
 

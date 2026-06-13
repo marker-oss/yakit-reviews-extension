@@ -240,7 +240,8 @@
     findCustomAnchor: findCustomAnchor,
     findAnchor: findAnchor,
     collapseCustomAnchor: collapseCustomAnchor,
-    shouldReactToMutation: shouldReactToMutation,
+    loadLinkIndex: loadLinkIndex,
+    resolveArticleFromIndex: resolveArticleFromIndex,
     render: render,
     cfg: CFG,
     log: log,
@@ -250,6 +251,8 @@
   var widgetConfigLoading = null;
   var widgetConfig = null;
   var widgetCssText = "";
+  var linkIndexLoading = null;
+  var linkIndex = null;
   var currentArticle = null;
   var currentPath = null;
   var requestSeq = 0;
@@ -319,6 +322,67 @@
         return null;
       });
     return widgetConfigLoading;
+  }
+
+  // The product page's own context (#requestContext / JSON-LD) only reflects the
+  // current product on a hard load; on SPA navigation it stays frozen on the
+  // first product. links.json is a crawled path/id → seller-article map so the
+  // loader can resolve the visited product from the URL alone, which is the only
+  // reliable per-product signal during SPA navigation.
+  function loadLinkIndex() {
+    if (linkIndexLoading) {
+      return linkIndexLoading;
+    }
+    var base = CFG.dataBase || "";
+    var url = base.replace(/\/$/, "") + "/links.json";
+    linkIndexLoading = fetch(url, { headers: { Accept: "application/json" } })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("links " + response.status);
+        }
+        return response.json();
+      })
+      .then(function (data) {
+        linkIndex = data && (data.byPath || data.byID) ? data : null;
+        return linkIndex;
+      })
+      .catch(function (error) {
+        log("links index skipped", error && error.message);
+        linkIndex = null;
+        return null;
+      });
+    return linkIndexLoading;
+  }
+
+  // Resolve a product path to its seller article using the crawled index.
+  // Tries the exact pathname first, then the trailing numeric Kit product id so
+  // a changed slug still resolves between daily crawls. Pure for testability.
+  function resolveArticleFromIndex(index, pathname) {
+    if (!index) {
+      return "";
+    }
+    var path = String(pathname || "").replace(/\/+$/, "");
+    if (index.byPath && index.byPath[path]) {
+      return normalizeArticle(index.byPath[path]);
+    }
+    var match = /-(\d+)$/.exec(path);
+    if (match && index.byID && index.byID[match[1]]) {
+      return normalizeArticle(index.byID[match[1]]);
+    }
+    return "";
+  }
+
+  // Determine the current product's article: prefer the crawled index (works on
+  // both hard load and SPA navigation), fall back to the page context (fresh
+  // only on hard load) for products not yet in the index.
+  function resolveArticle(pathname) {
+    return loadLinkIndex().then(function (index) {
+      var fromIndex = resolveArticleFromIndex(index, pathname);
+      if (fromIndex) {
+        return fromIndex;
+      }
+      return normalizeArticle(extractArticleFromDocument(document));
+    });
   }
 
   function findCustomAnchor() {
@@ -437,47 +501,52 @@
       requestSeq++;
     }
 
-    var rawArticle = extractArticleFromDocument(document);
-    var normalizedArticle = normalizeArticle(rawArticle);
-    if (!normalizedArticle) {
-      log("no article on page yet");
-      return;
-    }
-    if (normalizedArticle === currentArticle && document.getElementById(CFG.hostId)) {
-      return;
-    }
+    var pathAtCall = location.pathname;
+    resolveArticle(pathAtCall).then(function (normalizedArticle) {
+      // A newer navigation started while we were resolving — let it win.
+      if (location.pathname !== pathAtCall) {
+        return;
+      }
+      if (!normalizedArticle) {
+        log("no article for", pathAtCall);
+        return;
+      }
+      if (normalizedArticle === currentArticle && document.getElementById(CFG.hostId)) {
+        return;
+      }
 
-    var seq = ++requestSeq;
-    var url = bundleUrl(rawArticle);
-    log("fetch", url);
+      var seq = ++requestSeq;
+      var url = bundleUrl(normalizedArticle);
+      log("fetch", url);
 
-    Promise.all([loadWidgetAssets(), loadWidgetConfig()])
-      .then(function () {
-        return fetch(url, { headers: { Accept: "application/json" } });
-      })
-      .then(function (response) {
-        if (!response.ok) {
-          throw new Error("bundle " + response.status);
-        }
-        return response.json();
-      })
-      .then(function (bundle) {
-        if (seq !== requestSeq) {
-          return;
-        }
-        render(bundle, normalizedArticle);
-      })
-      .catch(function (error) {
-        if (seq !== requestSeq) {
-          return;
-        }
-        if (currentArticle !== null || document.getElementById(CFG.hostId)) {
-          removeHost();
-          currentArticle = null;
-        }
-        collapseCustomAnchor();
-        log("skip", url, error && error.message);
-      });
+      Promise.all([loadWidgetAssets(), loadWidgetConfig()])
+        .then(function () {
+          return fetch(url, { headers: { Accept: "application/json" } });
+        })
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error("bundle " + response.status);
+          }
+          return response.json();
+        })
+        .then(function (bundle) {
+          if (seq !== requestSeq) {
+            return;
+          }
+          render(bundle, normalizedArticle);
+        })
+        .catch(function (error) {
+          if (seq !== requestSeq) {
+            return;
+          }
+          if (currentArticle !== null || document.getElementById(CFG.hostId)) {
+            removeHost();
+            currentArticle = null;
+          }
+          collapseCustomAnchor();
+          log("skip", url, error && error.message);
+        });
+    });
   }
 
   var debounceTimer = null;
@@ -486,23 +555,6 @@
       clearTimeout(debounceTimer);
     }
     debounceTimer = setTimeout(handleNavigation, 400);
-  }
-
-  // Decide whether a DOM mutation should re-run navigation handling.
-  // Reacting only while the host is absent is not enough: on SPA navigation the
-  // page article (#requestContext) updates late, so the widget can mount with
-  // the previous product's article. Once mounted we must keep watching and
-  // re-handle when the page's article diverges from the mounted one, otherwise
-  // stale reviews persist until a hard reload.
-  function shouldReactToMutation(doc) {
-    if (!isProductPath(location.pathname)) {
-      return false;
-    }
-    if (!document.getElementById(CFG.hostId)) {
-      return true;
-    }
-    var pageArticle = normalizeArticle(extractArticleFromDocument(doc || document));
-    return Boolean(pageArticle && pageArticle !== currentArticle);
   }
 
   function installSpaWatch() {
@@ -522,8 +574,12 @@
 
     window.addEventListener("popstate", scheduleHandle);
 
+    // Retry until the widget mounts: the #reviews-widget anchor (a Kit page
+    // block) can render after navigation. Article resolution itself comes from
+    // the URL via the link index, so pushState/popstate already cover product
+    // changes; this only needs to wait for the anchor to appear.
     var observer = new MutationObserver(function () {
-      if (shouldReactToMutation(document)) {
+      if (isProductPath(location.pathname) && !document.getElementById(CFG.hostId)) {
         scheduleHandle();
       }
     });
