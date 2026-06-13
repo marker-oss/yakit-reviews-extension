@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"reviews/internal/auth"
 	"reviews/internal/collector"
 	"reviews/internal/config"
 	"reviews/internal/export"
@@ -52,6 +53,8 @@ func run(args []string) int {
 	defer stop()
 
 	switch args[0] {
+	case "admin":
+		return runAdmin(ctx, args[1:], cfg, logger)
 	case "migrate":
 		return runMigrate(ctx, cfg, logger)
 	case "sync":
@@ -70,6 +73,68 @@ func run(args []string) int {
 		usage()
 		return exitConfigError
 	}
+}
+
+func runAdmin(ctx context.Context, args []string, cfg config.Config, logger *slog.Logger) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "admin requires a subcommand")
+		return exitConfigError
+	}
+	switch args[0] {
+	case "reset-password":
+		return runAdminResetPassword(ctx, args[1:], cfg, logger)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown admin subcommand: %s\n", args[0])
+		return exitConfigError
+	}
+}
+
+func runAdminResetPassword(ctx context.Context, args []string, cfg config.Config, logger *slog.Logger) int {
+	flags := flag.NewFlagSet("admin reset-password", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	login := flags.String("login", "admin", "admin login")
+	password := flags.String("password", "", "new password")
+	if err := flags.Parse(args); err != nil {
+		return exitConfigError
+	}
+	if strings.TrimSpace(*login) == "" {
+		fmt.Fprintln(os.Stderr, "login is required")
+		return exitConfigError
+	}
+	if len(*password) < 8 {
+		fmt.Fprintln(os.Stderr, "password must be at least 8 characters")
+		return exitConfigError
+	}
+
+	db, err := store.Open(cfg.DB)
+	if err != nil {
+		logger.Error("open database", "error", err)
+		return exitConfigError
+	}
+	if err := db.Migrate(ctx); err != nil {
+		logger.Error("migrate database", "error", err)
+		return exitRunError
+	}
+	user, err := db.GetAdminUserByLogin(ctx, strings.TrimSpace(*login))
+	if err != nil {
+		logger.Error("admin user not found", "login", *login, "error", err)
+		return exitRunError
+	}
+	hash, err := auth.HashPassword(*password)
+	if err != nil {
+		logger.Error("hash password", "error", err)
+		return exitRunError
+	}
+	if err := db.UpdateAdminPassword(ctx, user.ID, hash); err != nil {
+		logger.Error("update password", "login", *login, "error", err)
+		return exitRunError
+	}
+	if err := db.DeleteSessionsByUser(ctx, user.ID); err != nil {
+		logger.Error("delete sessions", "login", *login, "error", err)
+		return exitRunError
+	}
+	logger.Info("admin password reset", "login", *login)
+	return exitOK
 }
 
 func runMigrate(ctx context.Context, cfg config.Config, logger *slog.Logger) int {
@@ -106,11 +171,6 @@ func runSync(ctx context.Context, args []string, cfg config.Config, logger *slog
 		fmt.Fprintf(os.Stderr, "unknown marketplace: %s\n", *marketplace)
 		return exitConfigError
 	}
-	if err := cfg.ValidateMarketplaceCredentials(*marketplace); err != nil {
-		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
-		return exitConfigError
-	}
-
 	db, err := store.Open(cfg.DB)
 	if err != nil {
 		logger.Error("open database", "error", err)
@@ -119,6 +179,14 @@ func runSync(ctx context.Context, args []string, cfg config.Config, logger *slog
 	if err := db.Migrate(ctx); err != nil {
 		logger.Error("migrate database", "error", err)
 		return exitRunError
+	}
+
+	// Overlay credentials saved through the admin panel so CLI sync behaves
+	// the same as `serve --with-sync` and manual syncs.
+	cfg = applyStoredMarketplaceCredentials(ctx, db, cfg, logger)
+	if err := cfg.ValidateMarketplaceCredentials(*marketplace); err != nil {
+		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+		return exitConfigError
 	}
 
 	runner := collector.NewRunner(db, cfg.Sync, logger, buildAdapters(cfg))
@@ -168,12 +236,15 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		logger.Error("migrate database", "error", err)
 		return exitRunError
 	}
+	effectiveCfg := applyStoredMarketplaceCredentials(ctx, db, cfg, logger)
 
-	runner := collector.NewRunner(db, cfg.Sync, logger, buildAdapters(cfg))
+	runner := collector.NewRunner(db, effectiveCfg.Sync, logger, buildAdapters(effectiveCfg))
 	triggerSync := func(marketplaces []string) {
+		effectiveCfg := applyStoredMarketplaceCredentials(ctx, db, cfg, logger)
 		if len(marketplaces) == 0 {
-			marketplaces = cfg.EnabledMarketplaces()
+			marketplaces = effectiveCfg.EnabledMarketplaces()
 		}
+		runner := collector.NewRunner(db, effectiveCfg.Sync, logger, buildAdapters(effectiveCfg))
 		for _, result := range runner.RunOnce(ctx, marketplaces) {
 			if result.Error != nil {
 				logger.Error("manual sync marketplace failed", "marketplace", result.Marketplace, "error", result.Error)
@@ -184,14 +255,14 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 	}
 
 	if *withSync {
-		if err := cfg.ValidateMarketplaceCredentials(""); err != nil {
+		if err := effectiveCfg.ValidateMarketplaceCredentials(""); err != nil {
 			logger.Error("sync credentials invalid", "error", err)
 			return exitConfigError
 		}
 		sched := scheduler.New(
 			syncRunnerAdapter{runner: runner, logger: logger},
-			cfg.Sync.Interval,
-			cfg.EnabledMarketplaces(),
+			effectiveCfg.Sync.Interval,
+			effectiveCfg.EnabledMarketplaces(),
 			logger,
 		)
 		go sched.Run(ctx)
@@ -206,7 +277,7 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		SessionTTL:         24 * time.Hour,
 		SecureCookies:      os.Getenv("REVIEWS_INSECURE_COOKIES") == "",
 		TriggerSync:        triggerSync,
-		Marketplaces:       marketplaceStatuses(cfg),
+		Marketplaces:       marketplaceStatuses(effectiveCfg),
 	}, logger)
 	if err := httpServer.Run(ctx); err != nil {
 		logger.Error("server stopped with error", "error", err)
@@ -351,19 +422,73 @@ func marketplaceStatuses(cfg config.Config) []server.MarketplaceStatus {
 			ID:         config.MarketplaceWB,
 			Enabled:    cfg.Marketplaces.WB.Enabled,
 			Configured: cfg.Marketplaces.WB.Token != "",
+			Fields: map[string]bool{
+				"token": cfg.Marketplaces.WB.Token != "",
+			},
 		},
 		{
 			ID:      config.MarketplaceYM,
 			Enabled: cfg.Marketplaces.YM.Enabled,
 			Configured: cfg.Marketplaces.YM.BusinessID != "" &&
 				(cfg.Marketplaces.YM.APIKey != "" || cfg.Marketplaces.YM.OAuthToken != ""),
+			Fields: map[string]bool{
+				"api_key":     cfg.Marketplaces.YM.APIKey != "",
+				"oauth_token": cfg.Marketplaces.YM.OAuthToken != "",
+				"business_id": cfg.Marketplaces.YM.BusinessID != "",
+				"campaign_id": cfg.Marketplaces.YM.CampaignID != "",
+			},
 		},
 		{
 			ID:         config.MarketplaceOzon,
 			Enabled:    cfg.Marketplaces.Ozon.Enabled,
 			Configured: cfg.Marketplaces.Ozon.ClientID != "" && cfg.Marketplaces.Ozon.APIKey != "",
+			Fields: map[string]bool{
+				"client_id": cfg.Marketplaces.Ozon.ClientID != "",
+				"api_key":   cfg.Marketplaces.Ozon.APIKey != "",
+			},
 		},
 	}
+}
+
+func applyStoredMarketplaceCredentials(ctx context.Context, db *store.Store, cfg config.Config, logger *slog.Logger) config.Config {
+	creds, err := db.ListMarketplaceCredentials(ctx)
+	if err != nil {
+		logger.Warn("load marketplace credentials", "error", err)
+		return cfg
+	}
+	for _, cred := range creds {
+		values := cred.PayloadMap()
+		switch cred.Marketplace {
+		case config.MarketplaceWB:
+			cfg.Marketplaces.WB.Enabled = cred.Enabled
+			if values["token"] != "" {
+				cfg.Marketplaces.WB.Token = values["token"]
+			}
+		case config.MarketplaceYM:
+			cfg.Marketplaces.YM.Enabled = cred.Enabled
+			if values["api_key"] != "" {
+				cfg.Marketplaces.YM.APIKey = values["api_key"]
+			}
+			if values["oauth_token"] != "" {
+				cfg.Marketplaces.YM.OAuthToken = values["oauth_token"]
+			}
+			if values["business_id"] != "" {
+				cfg.Marketplaces.YM.BusinessID = values["business_id"]
+			}
+			if values["campaign_id"] != "" {
+				cfg.Marketplaces.YM.CampaignID = values["campaign_id"]
+			}
+		case config.MarketplaceOzon:
+			cfg.Marketplaces.Ozon.Enabled = cred.Enabled
+			if values["client_id"] != "" {
+				cfg.Marketplaces.Ozon.ClientID = values["client_id"]
+			}
+			if values["api_key"] != "" {
+				cfg.Marketplaces.Ozon.APIKey = values["api_key"]
+			}
+		}
+	}
+	return cfg
 }
 
 func loadProductLinks(path string, logger *slog.Logger) map[string]string {
@@ -388,6 +513,7 @@ func loadProductLinks(path string, logger *slog.Logger) map[string]string {
 func usage() {
 	fmt.Fprint(os.Stderr, `Usage:
   reviews migrate
+  reviews admin reset-password --login admin --password NEW_PASSWORD
   reviews sync --once [--marketplace wb|ym|ozon]
   reviews serve [--addr 127.0.0.1:8080] [--with-sync]
   reviews discover-site-urls

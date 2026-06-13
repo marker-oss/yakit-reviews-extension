@@ -78,3 +78,32 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatal("expected deleted session to be gone")
 	}
 }
+
+func TestDeleteSessionsByUser(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	user, err := st.CreateAdminUser(ctx, "admin", "h")
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	other, err := st.CreateAdminUser(ctx, "other", "h")
+	if err != nil {
+		t.Fatalf("create other user: %v", err)
+	}
+	expires := time.Now().Add(time.Hour)
+	if err := st.CreateSession(ctx, "tok-1", user.ID, expires); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := st.CreateSession(ctx, "tok-2", other.ID, expires); err != nil {
+		t.Fatalf("create other session: %v", err)
+	}
+	if err := st.DeleteSessionsByUser(ctx, user.ID); err != nil {
+		t.Fatalf("delete user sessions: %v", err)
+	}
+	if _, err := st.GetValidSession(ctx, "tok-1", time.Now()); err == nil {
+		t.Fatal("expected user session deleted")
+	}
+	if _, err := st.GetValidSession(ctx, "tok-2", time.Now()); err != nil {
+		t.Fatalf("expected other session to remain: %v", err)
+	}
+}

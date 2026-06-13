@@ -5,6 +5,38 @@
     ozon: "Ozon",
   };
 
+  const defaultConfig = {
+    theme: {
+      accent: "#2f7a5b",
+      accentInk: "#ffffff",
+      text: "#1f2520",
+      muted: "#687067",
+      panel: "#ffffff",
+      border: "#d9ded7",
+      dark: false,
+    },
+    typography: {
+      fontFamily: "inherit",
+      scale: 1,
+      radius: 8,
+      density: "comfortable",
+    },
+    layout: {
+      mode: "list",
+      columns: 2,
+      pageSize: 3,
+      pagination: "more",
+    },
+    visibility: {
+      photos: true,
+      sellerAnswers: true,
+      prosCons: true,
+      marketplaceBadges: true,
+      ratingDistribution: true,
+      filters: true,
+    },
+  };
+
   const sampleReviews = [
     {
       marketplace: "wb",
@@ -107,19 +139,22 @@
       throw new Error("ReviewsWidget root is required");
     }
     options = options || {};
+    const config = normalizeConfig(options.config);
 
     const state = {
       reviews: normalizeReviews(options.reviews || []),
+      config,
       marketplace: "all",
       rating: "all",
       sort: options.initialSort || "newest",
-      visible: 3,
+      visible: config.layout.pageSize,
       loading: Boolean(options.source),
       error: "",
     };
 
     root.innerHTML = "";
-    root.appendChild(renderShell(options.productName || "Отзывы"));
+    applyConfig(root, state.config);
+    root.appendChild(renderShell(options.productName || "Отзывы", state.config));
     bind(root, state);
     render(root, state);
 
@@ -196,7 +231,7 @@
     });
 
     root.querySelector('[data-role="load-more"]').addEventListener("click", () => {
-      state.visible += 3;
+      state.visible += state.config.layout.pageSize;
       render(root, state);
     });
   }
@@ -250,6 +285,11 @@
   function renderSegments(root, state, reviews) {
     const marketplaces = ["all", ...unique(reviews.map((review) => review.marketplace))];
     const marketplaceRoot = root.querySelector('[data-role="marketplaces"]');
+    if (!state.config.visibility.filters) {
+      marketplaceRoot.innerHTML = "";
+      root.querySelector('[data-role="ratings"]').innerHTML = "";
+      return;
+    }
     marketplaceRoot.innerHTML = "";
     marketplaces.forEach((value) => {
       marketplaceRoot.appendChild(segmentButton(labelMarketplace(value), state.marketplace === value, () => {
@@ -323,11 +363,11 @@
           </div>
           <time class="rw-date" datetime="${review.createdAt.toISOString()}">${formatDate(review.createdAt)}</time>
         </div>
-        ${renderMeta(review)}
+        ${renderMeta(review, root.__reviewsWidgetConfig)}
         ${review.text ? `<p class="rw-card-text">${escapeHTML(review.text)}</p>` : ""}
-        ${renderProsCons(review)}
-        ${renderMedia(review.media)}
-        ${renderAnswer(review.answer)}
+        ${renderProsCons(review, root.__reviewsWidgetConfig)}
+        ${renderMedia(review.media, root.__reviewsWidgetConfig)}
+        ${renderAnswer(review.answer, root.__reviewsWidgetConfig)}
       `;
       if (marketplaceLink) {
         card.addEventListener("click", (event) => {
@@ -347,7 +387,7 @@
     });
   }
 
-  function renderMeta(review) {
+  function renderMeta(review, config) {
     const sellerArticle = review.sellerArticle || "не сопоставлен";
     const marketplaceArticle = review.externalProductId || "без артикула";
     const sellerProduct = review.sellerProductUrl && review.sellerArticle
@@ -376,7 +416,10 @@
     `;
   }
 
-  function renderProsCons(review) {
+  function renderProsCons(review, config) {
+    if (!config.visibility.prosCons) {
+      return "";
+    }
     const items = [];
     if (review.pros) {
       items.push(`<div class="rw-note"><strong>Плюсы</strong>${escapeHTML(review.pros)}</div>`);
@@ -387,8 +430,8 @@
     return items.length ? `<div class="rw-pros-cons">${items.join("")}</div>` : "";
   }
 
-  function renderMedia(media) {
-    if (!media.length) {
+  function renderMedia(media, config) {
+    if (!config.visibility.photos || !media.length) {
       return "";
     }
     return `
@@ -408,8 +451,8 @@
     `;
   }
 
-  function renderAnswer(answer) {
-    if (!answer || !answer.text) {
+  function renderAnswer(answer, config) {
+    if (!config.visibility.sellerAnswers || !answer || !answer.text) {
       return "";
     }
     return `
@@ -437,6 +480,55 @@
       createdAt: new Date(review.createdAt),
       media: review.media || [],
     }));
+  }
+
+  function normalizeConfig(config) {
+    config = config || {};
+    const merged = {
+      theme: { ...defaultConfig.theme, ...(config.theme || {}) },
+      typography: { ...defaultConfig.typography, ...(config.typography || {}) },
+      layout: { ...defaultConfig.layout, ...(config.layout || {}) },
+      visibility: { ...defaultConfig.visibility, ...(config.visibility || {}) },
+    };
+    merged.typography.scale = clampNumber(merged.typography.scale, 0.85, 1.25, 1);
+    merged.typography.radius = clampNumber(merged.typography.radius, 0, 24, 8);
+    merged.layout.columns = Math.round(clampNumber(merged.layout.columns, 1, 4, 2));
+    merged.layout.pageSize = Math.round(clampNumber(merged.layout.pageSize, 1, 24, 3));
+    if (!["comfortable", "compact"].includes(merged.typography.density)) {
+      merged.typography.density = "comfortable";
+    }
+    if (!["list", "grid", "carousel"].includes(merged.layout.mode)) {
+      merged.layout.mode = "list";
+    }
+    return merged;
+  }
+
+  function applyConfig(root, config) {
+    root.__reviewsWidgetConfig = config;
+    root.style.setProperty("--rw-text", config.theme.text);
+    root.style.setProperty("--rw-muted", config.theme.muted);
+    root.style.setProperty("--rw-border", config.theme.border);
+    root.style.setProperty("--rw-panel", config.theme.panel);
+    root.style.setProperty("--rw-accent", config.theme.accent);
+    root.style.setProperty("--rw-accent-ink", config.theme.accentInk);
+    root.style.setProperty("--rw-radius", `${config.typography.radius}px`);
+    root.style.setProperty("--rw-font-scale", String(config.typography.scale));
+    root.style.setProperty("--rw-grid-columns", String(config.layout.columns));
+    if (config.typography.fontFamily && config.typography.fontFamily !== "inherit") {
+      root.style.fontFamily = config.typography.fontFamily;
+    }
+    root.classList.toggle("rw-density-compact", config.typography.density === "compact");
+    root.classList.toggle("rw-layout-grid", config.layout.mode === "grid");
+    root.classList.toggle("rw-layout-carousel", config.layout.mode === "carousel");
+    root.classList.toggle("rw-hide-distribution", !config.visibility.ratingDistribution);
+    root.classList.toggle("rw-hide-badges", !config.visibility.marketplaceBadges);
+    root.classList.toggle("rw-hide-filters", !config.visibility.filters);
+  }
+
+  function clampNumber(value, min, max, fallback) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.min(max, Math.max(min, num));
   }
 
   async function fetchReviews(source) {
@@ -530,5 +622,6 @@
     mount,
     mountShadow,
     sampleReviews,
+    defaultConfig,
   };
 })();

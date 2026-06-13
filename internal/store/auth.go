@@ -40,6 +40,10 @@ func (s *Store) UpdateAdminPassword(ctx context.Context, userID uint, passwordHa
 		Update("password_hash", passwordHash).Error
 }
 
+func (s *Store) DeleteSessionsByUser(ctx context.Context, userID uint) error {
+	return s.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&Session{}).Error
+}
+
 func (s *Store) CreateSession(ctx context.Context, token string, userID uint, expiresAt time.Time) error {
 	return s.db.WithContext(ctx).Create(&Session{Token: token, UserID: userID, ExpiresAt: expiresAt}).Error
 }

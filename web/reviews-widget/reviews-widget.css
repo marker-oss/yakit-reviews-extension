@@ -13,9 +13,13 @@
   --rw-ym: #d5a100;
   --rw-ozon: #2468df;
   --rw-danger: #9b2c2c;
+  --rw-radius: 8px;
+  --rw-font-scale: 1;
+  --rw-grid-columns: 2;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
+  font-size: calc(16px * var(--rw-font-scale));
 }
 
 * {
@@ -100,7 +104,7 @@ a {
 
 .reviews-widget {
   border: 1px solid var(--rw-border);
-  border-radius: 8px;
+  border-radius: var(--rw-radius);
   background: var(--rw-panel);
   box-shadow: 0 18px 48px rgba(38, 54, 44, 0.08);
 }
@@ -247,6 +251,7 @@ a {
 }
 
 .rw-dist-track {
+  display: block;
   height: 8px;
   overflow: hidden;
   border-radius: 999px;
@@ -254,6 +259,7 @@ a {
 }
 
 .rw-dist-fill {
+  display: block;
   height: 100%;
   border-radius: inherit;
   background: var(--rw-accent);
@@ -458,6 +464,47 @@ a {
   background: #eef2ec;
 }
 
+.reviews-widget :where(.rw-score-value, .rw-segment, .rw-load-more, .rw-sort, .rw-market-pill, .rw-card, .rw-meta-row, .rw-note, .rw-media-item) {
+  border-radius: var(--rw-radius);
+}
+
+.reviews-widget.rw-density-compact .rw-header,
+.reviews-widget.rw-density-compact .rw-list-wrap,
+.reviews-widget.rw-density-compact .rw-distribution {
+  padding: 12px;
+}
+
+.reviews-widget.rw-density-compact .rw-card {
+  gap: 8px;
+  padding: 12px;
+}
+
+.reviews-widget.rw-hide-distribution .rw-body {
+  grid-template-columns: 1fr;
+}
+
+.reviews-widget.rw-hide-distribution .rw-distribution,
+.reviews-widget.rw-hide-filters .rw-controls,
+.reviews-widget.rw-hide-badges .rw-market {
+  display: none;
+}
+
+.reviews-widget.rw-layout-grid .rw-list {
+  grid-template-columns: repeat(var(--rw-grid-columns), minmax(0, 1fr));
+}
+
+.reviews-widget.rw-layout-carousel .rw-list {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(280px, 420px);
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scroll-snap-type: x proximity;
+}
+
+.reviews-widget.rw-layout-carousel .rw-card {
+  scroll-snap-align: start;
+}
+
 .rw-media-item img {
   display: block;
   width: 100%;
@@ -505,6 +552,10 @@ a {
   min-height: 220px;
   color: var(--rw-muted);
   text-align: center;
+}
+
+.rw-empty[hidden] {
+  display: none;
 }
 
 .rw-footer {

@@ -2,16 +2,33 @@ import { useEffect, useState } from 'react'
 import { apiGet, apiWrite } from '../api'
 import type { MarketplaceStatus } from '../types'
 
+const fieldLabels: Record<string, Record<string, string>> = {
+  wb: { token: 'WB token' },
+  ym: {
+    api_key: 'API key',
+    oauth_token: 'OAuth token',
+    business_id: 'Business ID',
+    campaign_id: 'Campaign ID',
+  },
+  ozon: {
+    client_id: 'Client ID',
+    api_key: 'API key',
+  },
+}
+
 export default function Marketplaces() {
   const [items, setItems] = useState<MarketplaceStatus[]>([])
+  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({})
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
 
-  useEffect(() => {
+  function load() {
     apiGet<{ marketplaces: MarketplaceStatus[] }>('/admin/api/marketplaces')
       .then((data) => setItems(data.marketplaces))
       .catch((err) => setMessage(err instanceof Error ? err.message : 'Запрос не выполнен'))
-  }, [])
+  }
+
+  useEffect(load, [])
 
   async function sync(marketplace?: string) {
     setBusy(marketplace ?? 'all')
@@ -24,6 +41,28 @@ export default function Marketplaces() {
     } finally {
       setBusy('')
     }
+  }
+
+  async function save(item: MarketplaceStatus, enabled = item.enabled) {
+    setBusy(`save-${item.id}`)
+    setMessage('')
+    try {
+      await apiWrite('PUT', `/admin/api/marketplaces/${item.id}/credentials`, {
+        enabled,
+        values: drafts[item.id] ?? {},
+      })
+      setDrafts({ ...drafts, [item.id]: {} })
+      setMessage('Доступы сохранены')
+      load()
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Запрос не выполнен')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  function setDraft(id: string, key: string, value: string) {
+    setDrafts({ ...drafts, [id]: { ...(drafts[id] ?? {}), [key]: value } })
   }
 
   return (
@@ -42,18 +81,40 @@ export default function Marketplaces() {
             <span>Доступы</span>
             <span></span>
           </div>
-          {items.map((item) => (
-            <div className="table-row grid-marketplaces" key={item.id}>
-              <strong>{item.id}</strong>
-              <span className={item.enabled ? 'status-ok' : 'status-muted'}>{item.enabled ? 'да' : 'нет'}</span>
-              <span className={item.configured ? 'status-ok' : 'status-warn'}>
-                {item.configured ? 'настроены' : 'нет'}
-              </span>
-              <button className="secondary" onClick={() => sync(item.id)} disabled={busy !== '' || !item.enabled}>
-                Запуск
-              </button>
-            </div>
-          ))}
+          {items.map((item) => {
+            const labels = fieldLabels[item.id] ?? {}
+            return (
+              <div className="table-row grid-marketplaces" key={item.id}>
+                <strong>{item.id}</strong>
+                <label className="inline-check">
+                  <input type="checkbox" checked={item.enabled} onChange={(e) => save(item, e.target.checked)} disabled={busy !== ''} />
+                  <span className={item.enabled ? 'status-ok' : 'status-muted'}>{item.enabled ? 'да' : 'нет'}</span>
+                </label>
+                <span className={item.configured ? 'status-ok' : 'status-warn'}>
+                  {item.configured ? 'настроены' : 'нет'}
+                </span>
+                <button className="secondary" onClick={() => sync(item.id)} disabled={busy !== '' || !item.enabled}>
+                  Запуск
+                </button>
+                <div className="credential-grid">
+                  {Object.entries(labels).map(([key, label]) => (
+                    <label key={key}>
+                      <span>{label}</span>
+                      <input
+                        value={drafts[item.id]?.[key] ?? ''}
+                        onChange={(e) => setDraft(item.id, key, e.target.value)}
+                        placeholder={item.fields?.[key] ? 'уже задан' : 'не задан'}
+                        type={key.includes('token') || key.includes('key') ? 'password' : 'text'}
+                      />
+                    </label>
+                  ))}
+                  <button className="secondary" onClick={() => save(item)} disabled={busy !== ''}>
+                    Сохранить
+                  </button>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </section>
     </section>

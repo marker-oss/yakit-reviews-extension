@@ -35,6 +35,7 @@ export type MarketplaceStatus = {
   id: string
   enabled: boolean
   configured: boolean
+  fields?: Record<string, boolean>
 }
 
 export type ShowcaseRule = {

@@ -12,9 +12,13 @@
       dataBase: "https://reviews.shegida.ru/reviews-data",
       widgetJsUrl: "https://reviews.shegida.ru/reviews-widget.js",
       widgetCssUrl: "https://reviews.shegida.ru/reviews-widget.css",
+      configBase: "https://reviews.shegida.ru",
+      context: "product",
+      widgetConfig: null,
       productPathPrefix: "/products/",
       hostId: "reviews-embed-host",
       maxJsonLdReviews: 10,
+      anchorSelector: "",
       debug: false,
     },
     window.REVIEWS_EMBED_CONFIG || {},
@@ -119,9 +123,57 @@
     return value.sku || offers.sku || "";
   }
 
+  function skuFromRequestContext(value) {
+    var productCard =
+      value &&
+      value.pageModel &&
+      value.pageModel.context &&
+      value.pageModel.context.productCard;
+    var mainVariant = productCard && productCard.mainVariant;
+    if (mainVariant && mainVariant.sku) {
+      return mainVariant.sku;
+    }
+
+    var extractorContext = value && value.extractorContext;
+    if (!extractorContext) {
+      return "";
+    }
+    for (var key in extractorContext) {
+      if (!Object.prototype.hasOwnProperty.call(extractorContext, key)) {
+        continue;
+      }
+      if (key.indexOf("ProductCardExtractorFactory--") !== 0) {
+        continue;
+      }
+      var payload = extractorContext[key] && extractorContext[key].payload;
+      var extractorVariant = payload && payload.mainVariant;
+      if (extractorVariant && extractorVariant.sku) {
+        return extractorVariant.sku;
+      }
+    }
+    return "";
+  }
+
   function extractArticleFromDocument(doc) {
     if (!doc) {
       return "";
+    }
+
+    var custom = findCustomAnchor();
+    if (custom && custom.getAttribute("data-article")) {
+      return custom.getAttribute("data-article");
+    }
+
+    var requestContext = doc.getElementById("requestContext");
+    if (requestContext) {
+      try {
+        var requestContextSKU = skuFromRequestContext(JSON.parse(requestContext.textContent || ""));
+        if (requestContextSKU) {
+          return requestContextSKU;
+        }
+      } catch (_error) {
+        // Ignore unrelated or malformed Kit request context blocks.
+      }
     }
 
     var scripts = doc.querySelectorAll('script[type="application/ld+json"]');
@@ -182,12 +234,20 @@
     bundleUrl: bundleUrl,
     extractArticleFromHTML: extractArticleFromHTML,
     extractArticleFromDocument: extractArticleFromDocument,
+    skuFromRequestContext: skuFromRequestContext,
     buildJsonLd: buildJsonLd,
+    loadWidgetConfig: loadWidgetConfig,
+    findCustomAnchor: findCustomAnchor,
+    findAnchor: findAnchor,
+    collapseCustomAnchor: collapseCustomAnchor,
+    render: render,
     cfg: CFG,
     log: log,
   };
 
   var widgetLoading = null;
+  var widgetConfigLoading = null;
+  var widgetConfig = null;
   var widgetCssText = "";
   var currentArticle = null;
   var currentPath = null;
@@ -230,12 +290,67 @@
     return widgetLoading;
   }
 
+  function loadWidgetConfig() {
+    if (CFG.widgetConfig) {
+      widgetConfig = CFG.widgetConfig;
+      return Promise.resolve(widgetConfig);
+    }
+    if (widgetConfigLoading) {
+      return widgetConfigLoading;
+    }
+
+    var base = CFG.configBase || "";
+    var url = base.replace(/\/$/, "") + "/api/widget-config?context=" + encodeURIComponent(CFG.context || "product");
+    widgetConfigLoading = fetch(url, { headers: { Accept: "application/json" } })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("widget config " + response.status);
+        }
+        return response.json();
+      })
+      .then(function (config) {
+        widgetConfig = config || null;
+        return widgetConfig;
+      })
+      .catch(function (error) {
+        log("widget config skipped", error && error.message);
+        widgetConfig = null;
+        return null;
+      });
+    return widgetConfigLoading;
+  }
+
+  function findCustomAnchor() {
+    if (!CFG.anchorSelector) {
+      return null;
+    }
+    try {
+      return document.querySelector(CFG.anchorSelector);
+    } catch (error) {
+      log("invalid anchor selector", CFG.anchorSelector, error && error.message);
+      return null;
+    }
+  }
+
   function findAnchor() {
+    var custom = findCustomAnchor();
+    if (custom) {
+      return { element: custom, custom: true };
+    }
+
     var details = document.querySelector('[data-testid="ProductDetails"]');
     if (!details) {
       return null;
     }
-    return details.querySelector("main");
+    var main = details.querySelector("main");
+    return main ? { element: main, custom: false } : null;
+  }
+
+  function collapseCustomAnchor() {
+    var custom = findCustomAnchor();
+    if (custom) {
+      custom.style.minHeight = "0";
+    }
   }
 
   function removeHost() {
@@ -269,12 +384,13 @@
     var reviews = bundle && bundle.reviews ? bundle.reviews : [];
     if (!reviews.length) {
       currentArticle = null;
+      collapseCustomAnchor();
       log("empty bundle", normalizedArticle);
       return;
     }
 
     var anchor = findAnchor();
-    if (!anchor || !anchor.parentNode) {
+    if (!anchor || !anchor.element || !anchor.element.parentNode) {
       log("no anchor");
       return;
     }
@@ -285,15 +401,19 @@
     host.style.display = "block";
     host.style.width = "100%";
     host.style.maxWidth = "none";
-    host.style.margin = "32px 0";
+    host.style.margin = anchor.custom ? "0" : "32px 0";
     host.style.padding = "0";
     host.style.boxSizing = "border-box";
     host.style.gridColumn = "1 / -1";
     host.style.flexBasis = "100%";
     host.style.order = "999";
-    anchor.parentNode.insertBefore(host, anchor.nextSibling);
+    if (anchor.custom) {
+      anchor.element.appendChild(host);
+    } else {
+      anchor.element.parentNode.insertBefore(host, anchor.element.nextSibling);
+    }
 
-    window.ReviewsWidget.mountShadow(host, { styleText: widgetCssText, reviews: reviews });
+    window.ReviewsWidget.mountShadow(host, { styleText: widgetCssText, reviews: reviews, config: widgetConfig });
     injectJsonLd(bundle);
     currentArticle = normalizedArticle;
     log("rendered", normalizedArticle, reviews.length, "reviews");
@@ -330,7 +450,7 @@
     var url = bundleUrl(rawArticle);
     log("fetch", url);
 
-    loadWidgetAssets()
+    Promise.all([loadWidgetAssets(), loadWidgetConfig()])
       .then(function () {
         return fetch(url, { headers: { Accept: "application/json" } });
       })
@@ -354,6 +474,7 @@
           removeHost();
           currentArticle = null;
         }
+        collapseCustomAnchor();
         log("skip", url, error && error.message);
       });
   }

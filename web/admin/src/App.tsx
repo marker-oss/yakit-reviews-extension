@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiGet, apiWrite, clearCSRF } from './api'
 import Dashboard from './pages/Dashboard'
+import Editor from './pages/Editor'
+import Embed from './pages/Embed'
 import Marketplaces from './pages/Marketplaces'
 import Reviews from './pages/Reviews'
 import Showcase from './pages/Showcase'
 
 type Mode = 'loading' | 'setup' | 'login' | 'authed'
-type Page = 'dashboard' | 'reviews' | 'marketplaces' | 'showcase'
+type Page = 'dashboard' | 'reviews' | 'marketplaces' | 'showcase' | 'editor' | 'embed'
 
 async function postAuth(path: string, body: unknown) {
   const res = await fetch(path, {
@@ -22,7 +24,7 @@ async function postAuth(path: string, body: unknown) {
 
 function currentPage(): Page {
   const raw = window.location.hash.replace(/^#\/?/, '')
-  if (raw === 'reviews' || raw === 'marketplaces' || raw === 'showcase') return raw
+  if (raw === 'reviews' || raw === 'marketplaces' || raw === 'showcase' || raw === 'editor' || raw === 'embed') return raw
   return 'dashboard'
 }
 
@@ -60,6 +62,8 @@ export default function App() {
     if (page === 'reviews') return 'Отзывы'
     if (page === 'marketplaces') return 'Маркетплейсы'
     if (page === 'showcase') return 'Витрина'
+    if (page === 'editor') return 'Редактор'
+    if (page === 'embed') return 'Встраивание'
     return 'Сводка'
   }, [page])
 
@@ -141,6 +145,12 @@ export default function App() {
           <a className={page === 'showcase' ? 'active' : ''} href="#/showcase">
             Витрина
           </a>
+          <a className={page === 'editor' ? 'active' : ''} href="#/editor">
+            Редактор
+          </a>
+          <a className={page === 'embed' ? 'active' : ''} href="#/embed">
+            Встраивание
+          </a>
         </nav>
         <button className="secondary" onClick={logout}>
           Выйти
@@ -155,6 +165,8 @@ export default function App() {
         {page === 'reviews' && <Reviews />}
         {page === 'marketplaces' && <Marketplaces />}
         {page === 'showcase' && <Showcase />}
+        {page === 'editor' && <Editor />}
+        {page === 'embed' && <Embed />}
       </main>
     </div>
   )
