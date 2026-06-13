@@ -240,6 +240,7 @@
     findCustomAnchor: findCustomAnchor,
     findAnchor: findAnchor,
     collapseCustomAnchor: collapseCustomAnchor,
+    shouldReactToMutation: shouldReactToMutation,
     render: render,
     cfg: CFG,
     log: log,
@@ -487,6 +488,23 @@
     debounceTimer = setTimeout(handleNavigation, 400);
   }
 
+  // Decide whether a DOM mutation should re-run navigation handling.
+  // Reacting only while the host is absent is not enough: on SPA navigation the
+  // page article (#requestContext) updates late, so the widget can mount with
+  // the previous product's article. Once mounted we must keep watching and
+  // re-handle when the page's article diverges from the mounted one, otherwise
+  // stale reviews persist until a hard reload.
+  function shouldReactToMutation(doc) {
+    if (!isProductPath(location.pathname)) {
+      return false;
+    }
+    if (!document.getElementById(CFG.hostId)) {
+      return true;
+    }
+    var pageArticle = normalizeArticle(extractArticleFromDocument(doc || document));
+    return Boolean(pageArticle && pageArticle !== currentArticle);
+  }
+
   function installSpaWatch() {
     if (spaWatchInstalled || !document.body) {
       return;
@@ -505,7 +523,7 @@
     window.addEventListener("popstate", scheduleHandle);
 
     var observer = new MutationObserver(function () {
-      if (isProductPath(location.pathname) && !document.getElementById(CFG.hostId)) {
+      if (shouldReactToMutation(document)) {
         scheduleHandle();
       }
     });

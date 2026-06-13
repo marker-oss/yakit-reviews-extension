@@ -159,6 +159,38 @@
   eq("empty bundle removes host", document.getElementById(I.cfg.hostId), null);
   eq("empty bundle collapses custom anchor", customAnchor.style.minHeight, "0px");
 
+  // Regression: on SPA navigation the page article (#requestContext) updates late.
+  // Once a host is mounted the observer must keep watching and react when the
+  // mounted article no longer matches the page, otherwise stale reviews stay
+  // until a hard reload. shouldReactToMutation encodes that decision.
+  function rcDoc(sku) {
+    var d = document.implementation.createHTMLDocument("rc");
+    d.body.innerHTML =
+      '<script type="application/json" id="requestContext">' +
+      JSON.stringify({ pageModel: { context: { productCard: { mainVariant: { sku: sku } } } } }) +
+      "<\/script>";
+    return d;
+  }
+
+  cleanupLoaderFixture();
+  history.replaceState({}, "", "/products/regression-stale-article-100808");
+  I.cfg.anchorSelector = "";
+  var staleFixture = document.createElement("div");
+  staleFixture.id = "loader-fixture";
+  staleFixture.innerHTML = '<section data-testid="ProductDetails"><main></main></section>';
+  document.body.appendChild(staleFixture);
+  I.render(renderBundle, "1523"); // mounts host, currentArticle = "1523"
+
+  eq("mounted + same article: no react", I.shouldReactToMutation(rcDoc("1523")), false);
+  eq("mounted + changed article: react", I.shouldReactToMutation(rcDoc("3453")), true);
+
+  history.replaceState({}, "", "/catalog/platya");
+  eq("non-product path: no react", I.shouldReactToMutation(rcDoc("3453")), false);
+  history.replaceState({}, "", "/products/regression-stale-article-100808");
+
+  cleanupLoaderFixture();
+  eq("no host: react to mount", I.shouldReactToMutation(rcDoc("3453")), true);
+
   cleanupLoaderFixture();
 
   out.textContent += "\n" + pass + " passed, " + fail + " failed\n";
