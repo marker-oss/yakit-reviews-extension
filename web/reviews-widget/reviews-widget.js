@@ -35,6 +35,23 @@
       ratingDistribution: true,
       filters: true,
     },
+    defaults: {
+      minRating: 4,
+      requireText: true,
+      requirePhoto: false,
+      marketplace: "all",
+      initialSort: "relevance",
+      textFirst: true,
+      photoFirst: true,
+      onlyWithAnswer: false,
+    },
+    ranking: [
+      { field: "pinned", direction: "desc" },
+      { field: "hasPhoto", direction: "desc" },
+      { field: "hasText", direction: "desc" },
+      { field: "rating", direction: "desc" },
+      { field: "createdAt", direction: "desc" },
+    ],
   };
 
   const sampleReviews = [
@@ -144,9 +161,9 @@
     const state = {
       reviews: normalizeReviews(options.reviews || []),
       config,
-      marketplace: "all",
-      rating: "all",
-      sort: options.initialSort || "newest",
+      marketplace: config.defaults.marketplace || "all",
+      rating: config.defaults.minRating > 0 ? `${config.defaults.minRating}+` : "all",
+      sort: options.initialSort || config.defaults.initialSort || "newest",
       visible: config.layout.pageSize,
       loading: Boolean(options.source),
       error: "",
@@ -192,6 +209,7 @@
         <div class="rw-select-row">
           <select class="rw-sort" data-role="sort" aria-label="Сортировка">
             <option value="newest">Сначала новые</option>
+            <option value="relevance">Релевантные</option>
             <option value="highest">Сначала высокая оценка</option>
             <option value="lowest">Сначала низкая оценка</option>
             <option value="media">Сначала с медиа</option>
@@ -226,7 +244,7 @@
     sort.value = state.sort;
     sort.addEventListener("change", (event) => {
       state.sort = event.target.value;
-      state.visible = 3;
+      state.visible = state.config.layout.pageSize;
       render(root, state);
     });
 
@@ -251,10 +269,12 @@
     const filtered = sortReviews(
       all.filter((review) => {
         const marketplaceOk = state.marketplace === "all" || review.marketplace === state.marketplace;
-        const ratingOk = state.rating === "all" || review.rating === Number(state.rating);
-        return marketplaceOk && ratingOk;
+        const ratingOk = ratingMatches(review.rating, state.rating);
+        const defaultsOk = matchesDefaults(review, state.config.defaults);
+        return marketplaceOk && ratingOk && defaultsOk;
       }),
       state.sort,
+      state.config,
     );
 
     renderSummary(root, all, filtered);
@@ -299,15 +319,16 @@
       }));
     });
 
-    const ratings = ["all", 5, 4, 3, 2, 1].filter((value) => {
-      return value === "all" || reviews.some((review) => review.rating === value);
+    const ratings = ["all", "4+", 5, 4, 3, 2, 1].filter((value) => {
+      return value === "all" || value === "4+" || reviews.some((review) => review.rating === value);
     });
     const ratingRoot = root.querySelector('[data-role="ratings"]');
     ratingRoot.innerHTML = "";
     ratings.forEach((value) => {
-      ratingRoot.appendChild(segmentButton(value === "all" ? "Все оценки" : `${value} ★`, String(state.rating) === String(value), () => {
+      const label = value === "all" ? "Все оценки" : value === "4+" ? "4+ ★" : `${value} ★`;
+      ratingRoot.appendChild(segmentButton(label, String(state.rating) === String(value), () => {
         state.rating = String(value);
-        state.visible = 3;
+        state.visible = state.config.layout.pageSize;
         render(root, state);
       }));
     });
@@ -479,6 +500,7 @@
       rating: Number(review.rating || 0),
       createdAt: new Date(review.createdAt),
       media: review.media || [],
+      pinned: Boolean(review.pinned),
     }));
   }
 
@@ -489,6 +511,8 @@
       typography: { ...defaultConfig.typography, ...(config.typography || {}) },
       layout: { ...defaultConfig.layout, ...(config.layout || {}) },
       visibility: { ...defaultConfig.visibility, ...(config.visibility || {}) },
+      defaults: { ...defaultConfig.defaults, ...(config.defaults || {}) },
+      ranking: Array.isArray(config.ranking) && config.ranking.length ? config.ranking : defaultConfig.ranking,
     };
     merged.typography.scale = clampNumber(merged.typography.scale, 0.85, 1.25, 1);
     merged.typography.radius = clampNumber(merged.typography.radius, 0, 24, 8);
@@ -499,6 +523,13 @@
     }
     if (!["list", "grid", "carousel"].includes(merged.layout.mode)) {
       merged.layout.mode = "list";
+    }
+    merged.defaults.minRating = Math.round(clampNumber(merged.defaults.minRating, 0, 5, 0));
+    if (!["all", "wb", "ozon", "ym"].includes(merged.defaults.marketplace)) {
+      merged.defaults.marketplace = "all";
+    }
+    if (!["relevance", "newest", "highest", "lowest", "media"].includes(merged.defaults.initialSort)) {
+      merged.defaults.initialSort = "relevance";
     }
     return merged;
   }
@@ -545,13 +576,59 @@
     return payload.reviews || [];
   }
 
-  function sortReviews(reviews, sort) {
+  function sortReviews(reviews, sort, config) {
     return [...reviews].sort((a, b) => {
+      if (sort === "relevance") return compareByRanking(a, b, effectiveRanking(config));
       if (sort === "highest") return b.rating - a.rating || b.createdAt - a.createdAt;
       if (sort === "lowest") return a.rating - b.rating || b.createdAt - a.createdAt;
       if (sort === "media") return Number(b.media.length > 0) - Number(a.media.length > 0) || b.createdAt - a.createdAt;
       return b.createdAt - a.createdAt;
     });
+  }
+
+  function compareByRanking(a, b, ranking) {
+    const rules = ranking && ranking.length ? ranking : defaultConfig.ranking;
+    for (const rule of rules) {
+      const av = rankingValue(a, rule.field);
+      const bv = rankingValue(b, rule.field);
+      if (av === bv) continue;
+      return rule.direction === "asc" ? av - bv : bv - av;
+    }
+    return b.createdAt - a.createdAt;
+  }
+
+  function effectiveRanking(config) {
+    return (config.ranking && config.ranking.length ? config.ranking : defaultConfig.ranking).filter((rule) => {
+      if (rule.field === "hasPhoto") return config.defaults.photoFirst;
+      if (rule.field === "hasText") return config.defaults.textFirst;
+      return true;
+    });
+  }
+
+  function rankingValue(review, field) {
+    if (field === "pinned") return review.pinned ? 1 : 0;
+    if (field === "hasPhoto") return review.media.some((item) => item.kind === "photo") ? 1 : 0;
+    if (field === "hasText") return hasText(review) ? 1 : 0;
+    if (field === "rating") return review.rating;
+    if (field === "createdAt") return review.createdAt.getTime();
+    return 0;
+  }
+
+  function matchesDefaults(review, defaults) {
+    if (defaults.requireText && !hasText(review)) return false;
+    if (defaults.requirePhoto && !review.media.some((item) => item.kind === "photo")) return false;
+    if (defaults.onlyWithAnswer && (!review.answer || !review.answer.text)) return false;
+    return true;
+  }
+
+  function ratingMatches(rating, selected) {
+    if (selected === "all") return true;
+    if (String(selected).endsWith("+")) return rating >= Number(String(selected).slice(0, -1));
+    return rating === Number(selected);
+  }
+
+  function hasText(review) {
+    return Boolean(String(review.text || "").trim() || String(review.pros || "").trim() || String(review.cons || "").trim());
   }
 
   function countByRating(reviews, rating) {

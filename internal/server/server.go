@@ -127,7 +127,15 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	reviews, err := s.store.ListReviews(r.Context(), filter)
+	filter.Visibility = "visible"
+
+	var reviews []store.Review
+	defaults, ranking, useWidgetRules := s.reviewRulesForRequest(r)
+	if useWidgetRules {
+		reviews, err = s.store.ListReviewsByWidgetRules(r.Context(), filter, defaults, ranking)
+	} else {
+		reviews, err = s.store.ListReviews(r.Context(), filter)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -161,6 +169,7 @@ func parseReviewFilter(r *http.Request) (store.ReviewListFilter, error) {
 		Marketplace: query.Get("marketplace"),
 		Limit:       parseInt(query.Get("limit"), 100),
 		Offset:      parseInt(query.Get("offset"), 0),
+		SortBy:      query.Get("sort"),
 	}
 
 	if rating := query.Get("rating"); rating != "" && rating != "all" {
@@ -172,6 +181,39 @@ func parseReviewFilter(r *http.Request) (store.ReviewListFilter, error) {
 	}
 
 	return filter, nil
+}
+
+type widgetRulesPayload struct {
+	Defaults store.WidgetReviewDefaults `json:"defaults"`
+	Ranking  []store.ReviewRankingRule  `json:"ranking"`
+}
+
+func (s *Server) reviewRulesForRequest(r *http.Request) (store.WidgetReviewDefaults, []store.ReviewRankingRule, bool) {
+	query := r.URL.Query()
+	if query.Get("apply_config") == "0" || query.Get("applyConfig") == "0" {
+		return store.WidgetReviewDefaults{}, nil, false
+	}
+	contextName := query.Get("context")
+	if contextName == "" {
+		contextName = "product"
+	}
+	if err := validateWidgetContext(contextName); err != nil {
+		return store.WidgetReviewDefaults{}, nil, false
+	}
+	cfg, err := s.store.GetActiveWidgetConfig(r.Context(), contextName)
+	if err != nil {
+		return store.WidgetReviewDefaults{}, nil, false
+	}
+	var payload widgetRulesPayload
+	if err := json.Unmarshal([]byte(cfg.Payload), &payload); err != nil {
+		return store.WidgetReviewDefaults{}, nil, false
+	}
+	if payload.Defaults.InitialSort == "" && len(payload.Ranking) == 0 && payload.Defaults.MinRating == 0 &&
+		!payload.Defaults.RequireText && !payload.Defaults.RequirePhoto && !payload.Defaults.OnlyWithAnswer &&
+		payload.Defaults.Marketplace == "" {
+		return store.WidgetReviewDefaults{}, nil, false
+	}
+	return payload.Defaults, payload.Ranking, true
 }
 
 func parseInt(value string, fallback int) int {

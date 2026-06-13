@@ -17,6 +17,14 @@ const visibilityLabels: Record<keyof WidgetConfig['visibility'], string> = {
   filters: 'Фильтры',
 }
 
+const rankingLabels: Record<WidgetConfig['ranking'][number]['field'], string> = {
+  pinned: 'Закрепленные',
+  hasPhoto: 'С фото',
+  hasText: 'С текстом',
+  rating: 'Высокая оценка',
+  createdAt: 'Свежие',
+}
+
 export default function Editor() {
   const [context, setContext] = useState<WidgetContext>('product')
   const [cfg, setCfg] = useState<WidgetConfig>(defaultWidgetConfig)
@@ -78,6 +86,18 @@ export default function Editor() {
     setCfg({ ...cfg, visibility: { ...cfg.visibility, [key]: value } })
   }
 
+  function setDefaults<K extends keyof WidgetConfig['defaults']>(key: K, value: WidgetConfig['defaults'][K]) {
+    setCfg({ ...cfg, defaults: { ...cfg.defaults, [key]: value } })
+  }
+
+  function moveRanking(index: number, direction: -1 | 1) {
+    const next = [...cfg.ranking]
+    const target = index + direction
+    if (target < 0 || target >= next.length) return
+    ;[next[index], next[target]] = [next[target], next[index]]
+    setCfg({ ...cfg, ranking: next })
+  }
+
   return (
     <section className="editor-layout">
       <section className="stack">
@@ -135,6 +155,71 @@ export default function Editor() {
               <span>{visibilityLabels[key]}</span>
             </label>
           ))}
+        </section>
+
+        <section className="panel">
+          <h3>Выдача отзывов</h3>
+          <div className="form-grid">
+            <label>
+              <span>Минимальная оценка</span>
+              <select value={cfg.defaults.minRating} onChange={(e) => setDefaults('minRating', Number(e.target.value))}>
+                <option value={0}>Все</option>
+                <option value={4}>4 и выше</option>
+                <option value={5}>Только 5</option>
+              </select>
+            </label>
+            <label>
+              <span>Маркетплейс</span>
+              <select value={cfg.defaults.marketplace} onChange={(e) => setDefaults('marketplace', e.target.value as WidgetConfig['defaults']['marketplace'])}>
+                <option value="all">Все</option>
+                <option value="wb">WB</option>
+                <option value="ozon">Ozon</option>
+                <option value="ym">Яндекс Маркет</option>
+              </select>
+            </label>
+            <label>
+              <span>Сортировка</span>
+              <select value={cfg.defaults.initialSort} onChange={(e) => setDefaults('initialSort', e.target.value as WidgetConfig['defaults']['initialSort'])}>
+                <option value="relevance">Релевантные</option>
+                <option value="newest">Сначала новые</option>
+                <option value="highest">Сначала высокая оценка</option>
+                <option value="media">Сначала с медиа</option>
+                <option value="lowest">Сначала низкая оценка</option>
+              </select>
+            </label>
+          </div>
+          <div className="check-grid">
+            <label className="checkbox">
+              <input type="checkbox" checked={cfg.defaults.requireText} onChange={(e) => setDefaults('requireText', e.target.checked)} />
+              <span>Только с текстом</span>
+            </label>
+            <label className="checkbox">
+              <input type="checkbox" checked={cfg.defaults.requirePhoto} onChange={(e) => setDefaults('requirePhoto', e.target.checked)} />
+              <span>Только с фото</span>
+            </label>
+            <label className="checkbox">
+              <input type="checkbox" checked={cfg.defaults.onlyWithAnswer} onChange={(e) => setDefaults('onlyWithAnswer', e.target.checked)} />
+              <span>Только с ответом</span>
+            </label>
+            <label className="checkbox">
+              <input type="checkbox" checked={cfg.defaults.photoFirst} onChange={(e) => setDefaults('photoFirst', e.target.checked)} />
+              <span>Фото выше</span>
+            </label>
+            <label className="checkbox">
+              <input type="checkbox" checked={cfg.defaults.textFirst} onChange={(e) => setDefaults('textFirst', e.target.checked)} />
+              <span>Текст выше</span>
+            </label>
+          </div>
+          <div className="rows">
+            {cfg.ranking.map((rule, index) => (
+              <div className="row" key={rule.field}>
+                <span>{rankingLabels[rule.field]}</span>
+                <span className="status-muted">{rule.direction === 'desc' ? 'выше' : 'ниже'}</span>
+                <button className="secondary" disabled={index === 0} onClick={() => moveRanking(index, -1)}>Вверх</button>
+                <button className="secondary" disabled={index === cfg.ranking.length - 1} onClick={() => moveRanking(index, 1)}>Вниз</button>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="panel">

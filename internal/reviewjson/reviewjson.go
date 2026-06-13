@@ -41,6 +41,7 @@ type Review struct {
 	MarketplaceReviewURL  string     `json:"marketplaceReviewUrl,omitempty"`
 	MarketplaceProductURL string     `json:"marketplaceProductUrl,omitempty"`
 	SellerProductURL      string     `json:"sellerProductUrl,omitempty"`
+	Pinned                bool       `json:"pinned,omitempty"`
 }
 
 // Answer is the public JSON representation of a marketplace answer.
@@ -93,6 +94,7 @@ func (m Mapper) ToReview(review store.Review) Review {
 		MarketplaceReviewURL:  marketplaceReviewURL(review),
 		MarketplaceProductURL: marketplaceProductURL(review),
 		SellerProductURL:      m.sellerProductURL(review, sellerArticle),
+		Pinned:                review.Pinned,
 	}
 }
 
