@@ -174,6 +174,17 @@ func DefaultReviewRanking() []ReviewRankingRule {
 	}
 }
 
+func DefaultWidgetReviewDefaults() WidgetReviewDefaults {
+	return WidgetReviewDefaults{
+		MinRating:   4,
+		RequireText: true,
+		InitialSort: "relevance",
+		TextFirst:   true,
+		PhotoFirst:  true,
+		Marketplace: "all",
+	}
+}
+
 func rankingOrder(rule ReviewRankingRule) (string, bool) {
 	direction := strings.ToLower(rule.Direction)
 	if !slices.Contains([]string{"asc", "desc"}, direction) {

@@ -184,8 +184,8 @@ func parseReviewFilter(r *http.Request) (store.ReviewListFilter, error) {
 }
 
 type widgetRulesPayload struct {
-	Defaults store.WidgetReviewDefaults `json:"defaults"`
-	Ranking  []store.ReviewRankingRule  `json:"ranking"`
+	Defaults *store.WidgetReviewDefaults `json:"defaults"`
+	Ranking  []store.ReviewRankingRule   `json:"ranking"`
 }
 
 func (s *Server) reviewRulesForRequest(r *http.Request) (store.WidgetReviewDefaults, []store.ReviewRankingRule, bool) {
@@ -208,12 +208,15 @@ func (s *Server) reviewRulesForRequest(r *http.Request) (store.WidgetReviewDefau
 	if err := json.Unmarshal([]byte(cfg.Payload), &payload); err != nil {
 		return store.WidgetReviewDefaults{}, nil, false
 	}
-	if payload.Defaults.InitialSort == "" && len(payload.Ranking) == 0 && payload.Defaults.MinRating == 0 &&
-		!payload.Defaults.RequireText && !payload.Defaults.RequirePhoto && !payload.Defaults.OnlyWithAnswer &&
-		payload.Defaults.Marketplace == "" {
-		return store.WidgetReviewDefaults{}, nil, false
+	defaults := store.DefaultWidgetReviewDefaults()
+	if payload.Defaults != nil {
+		defaults = *payload.Defaults
 	}
-	return payload.Defaults, payload.Ranking, true
+	ranking := payload.Ranking
+	if len(ranking) == 0 {
+		ranking = store.DefaultReviewRanking()
+	}
+	return defaults, ranking, true
 }
 
 func parseInt(value string, fallback int) int {
