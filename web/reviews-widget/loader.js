@@ -75,6 +75,17 @@
     return base.replace(/\/$/, "") + "/api/showcase";
   }
 
+  function reviewsUrl(contextName) {
+    var base = CFG.configBase || "";
+    var url = new URL(base.replace(/\/$/, "") + "/api/reviews", location.origin);
+    if (contextName) {
+      url.searchParams.set("context", contextName);
+    }
+    url.searchParams.set("sort", "newest");
+    url.searchParams.set("limit", "24");
+    return url.toString();
+  }
+
   function extractArticleFromHTML(html) {
     if (!html) {
       return "";
@@ -253,6 +264,7 @@
     articleFileKey: articleFileKey,
     bundleUrl: bundleUrl,
     showcaseUrl: showcaseUrl,
+    reviewsUrl: reviewsUrl,
     extractArticleFromHTML: extractArticleFromHTML,
     extractArticleFromDocument: extractArticleFromDocument,
     skuFromRequestContext: skuFromRequestContext,
@@ -571,6 +583,9 @@
       aggregate: bundle && bundle.aggregate,
       config: widgetConfig,
       context: contextName || contextForPath(location.pathname),
+      fullFeedSource: (contextName || contextForPath(location.pathname)) === "homepage" ? reviewsUrl("") : "",
+      fullFeedOffset: 0,
+      fullFeedLimit: 24,
     });
     injectJsonLd(bundle);
     currentArticle = normalizedArticle;

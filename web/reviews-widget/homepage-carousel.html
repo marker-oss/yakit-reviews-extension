@@ -26,6 +26,9 @@
     <script>
       ReviewsWidget.mount(document.querySelector("#reviews-widget"), {
         source: "/api/showcase",
+        fullFeedSource: "/api/reviews?sort=newest",
+        fullFeedOffset: 0,
+        fullFeedLimit: 24,
         context: "homepage",
         productName: "Отзывы покупательниц",
         config: {

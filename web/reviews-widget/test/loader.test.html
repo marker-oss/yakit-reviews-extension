@@ -37,6 +37,8 @@
   eq("normalizeArticle trim", I.normalizeArticle("  107 "), "107");
   eq("articleFileKey space", I.articleFileKey("a b/c"), "a_b_c");
   eq("bundleUrl", I.bundleUrl("3467/Белый"), I.cfg.dataBase + "/by-article/3467.json");
+  eq("reviewsUrl full feed", new URL(I.reviewsUrl("")).pathname + new URL(I.reviewsUrl("")).search, "/api/reviews?sort=newest&limit=24");
+  eq("reviewsUrl context", new URL(I.reviewsUrl("homepage")).pathname + new URL(I.reviewsUrl("homepage")).search, "/api/reviews?context=homepage&sort=newest&limit=24");
   eq("extract sku", I.extractArticleFromHTML('x "sku":"107" y'), "107");
   eq("extract label", I.extractArticleFromHTML("Артикул: 1523"), "1523");
 
@@ -110,6 +112,8 @@
   window.ReviewsWidget = {
     mountShadow: function (host, options) {
       host.setAttribute("data-mounted-reviews", String(options.reviews.length));
+      host.setAttribute("data-full-feed-source", options.fullFeedSource || "");
+      host.setAttribute("data-full-feed-offset", String(options.fullFeedOffset ?? ""));
     },
   };
 
@@ -145,6 +149,7 @@
   eq("default anchor inserts after main", standardAnchor.nextSibling === standardHost, true);
   eq("default anchor keeps host margin", standardHost.style.marginTop, "32px");
   eq("default anchor mounts reviews", standardHost.getAttribute("data-mounted-reviews"), "1");
+  eq("product render has no full feed", standardHost.getAttribute("data-full-feed-source"), "");
 
   cleanupLoaderFixture();
   I.cfg.anchorSelector = "#reviews-widget";
@@ -171,6 +176,11 @@
   homepageFixture.innerHTML = '<div id="reviews-homepage"></div>';
   document.body.appendChild(homepageFixture);
   eq("custom anchor id without hash", I.findCustomAnchor().id, "reviews-homepage");
+  I.render(renderBundle, "homepage:/", "homepage");
+  var homepageHost = document.getElementById(I.cfg.hostId);
+  var homepageFullFeed = new URL(homepageHost.getAttribute("data-full-feed-source"));
+  eq("homepage render uses full feed", homepageFullFeed.pathname + homepageFullFeed.search, "/api/reviews?sort=newest&limit=24");
+  eq("homepage full feed starts at zero", homepageHost.getAttribute("data-full-feed-offset"), "0");
 
   cleanupLoaderFixture();
   history.replaceState({}, "", "/products/plate-letnee-povsednevnoe-lilovyiy-102212");

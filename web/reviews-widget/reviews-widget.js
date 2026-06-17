@@ -170,9 +170,19 @@
       sort: options.initialSort || config.defaults.initialSort || "newest",
       visible: initialVisible(config, context),
       expanded: context !== "homepage",
+      fullFeedSource: options.fullFeedSource || "",
+      fullFeedLimit: clampNumber(options.fullFeedLimit, 1, 100, 24),
+      fullFeedOffset: Number.isFinite(Number(options.fullFeedOffset)) ? Number(options.fullFeedOffset) : 0,
+      fullFeedOffsetExplicit: Number.isFinite(Number(options.fullFeedOffset)),
+      fullFeedExhausted: false,
+      loadingMore: false,
       loading: Boolean(options.source),
       error: "",
+      moreError: "",
     };
+    if (!state.fullFeedOffsetExplicit) {
+      state.fullFeedOffset = state.reviews.length;
+    }
 
     root.innerHTML = "";
     applyConfig(root, state.config);
@@ -187,6 +197,9 @@
         .then((payload) => {
           state.reviews = normalizeReviews(payload.reviews);
           state.aggregate = normalizeAggregate(payload.aggregate);
+          if (!state.fullFeedOffsetExplicit) {
+            state.fullFeedOffset = state.reviews.length;
+          }
           state.loading = false;
           state.error = "";
           render(root, state);
@@ -267,10 +280,17 @@
     });
 
     root.querySelector('[data-role="load-more"]').addEventListener("click", () => {
+      if (state.loadingMore) {
+        return;
+      }
       if (state.context === "homepage" && !state.expanded) {
         state.expanded = true;
-        state.visible = Math.max(state.visible, state.config.layout.pageSize);
+        state.visible = Math.max(state.visible, state.reviews.length, state.config.layout.pageSize);
         render(root, state);
+        return;
+      }
+      if (state.fullFeedSource && state.visible >= state.reviews.length && !state.fullFeedExhausted) {
+        loadMoreReviews(root, state);
         return;
       }
       state.visible += state.config.layout.pageSize;
@@ -312,12 +332,16 @@
     renderMediaStrip(root, filtered, state.config);
     renderList(root, filtered.slice(0, visibleCount));
 
-    renderStatus(root, "Отзывов с такими фильтрами нет", filtered.length === 0);
+    renderStatus(root, state.moreError || "Отзывов с такими фильтрами нет", filtered.length === 0 || Boolean(state.moreError));
     const loadMore = root.querySelector('[data-role="load-more"]');
-    loadMore.textContent = state.context === "homepage" && !state.expanded ? "Посмотреть отзывы" : "Показать ещё";
+    const canLoadRemote = Boolean(state.fullFeedSource && !state.fullFeedExhausted);
+    loadMore.textContent = state.loadingMore
+      ? "Загружаем"
+      : state.context === "homepage" && !state.expanded ? "Посмотреть отзывы" : "Показать ещё";
+    loadMore.disabled = state.loadingMore;
     loadMore.hidden = state.context === "homepage" && !state.expanded
       ? filtered.length <= visibleCount
-      : visibleCount >= filtered.length;
+      : visibleCount >= filtered.length && !canLoadRemote;
   }
 
   function renderStatus(root, text, visible) {
@@ -740,6 +764,54 @@
       return { reviews: payload, aggregate: null };
     }
     return { reviews: payload.reviews || [], aggregate: payload.aggregate || null };
+  }
+
+  async function loadMoreReviews(root, state) {
+    state.loadingMore = true;
+    state.moreError = "";
+    render(root, state);
+    try {
+      const payload = await fetchReviews(pagedSource(state.fullFeedSource, state.fullFeedOffset, state.fullFeedLimit));
+      const next = normalizeReviews(payload.reviews);
+      const existing = new Set(state.reviews.map(reviewKey));
+      const uniqueNext = next.filter((review) => {
+        const key = reviewKey(review);
+        if (existing.has(key)) {
+          return false;
+        }
+        existing.add(key);
+        return true;
+      });
+      state.reviews = state.reviews.concat(uniqueNext);
+      state.fullFeedOffset += next.length;
+      state.visible = state.reviews.length;
+      if (next.length < state.fullFeedLimit) {
+        state.fullFeedExhausted = true;
+      }
+      state.loadingMore = false;
+      render(root, state);
+    } catch (error) {
+      state.loadingMore = false;
+      state.moreError = error.message || "Не удалось загрузить отзывы";
+      render(root, state);
+    }
+  }
+
+  function pagedSource(source, offset, limit) {
+    const url = new URL(source, window.location.href);
+    url.searchParams.set("offset", String(offset));
+    url.searchParams.set("limit", String(limit));
+    return url.toString();
+  }
+
+  function reviewKey(review) {
+    if (review.id != null) {
+      return `id:${review.id}`;
+    }
+    if (review.marketplace && review.externalReviewId) {
+      return `${review.marketplace}:${review.externalReviewId}`;
+    }
+    return `${review.marketplace || ""}:${review.externalProductId || ""}:${review.createdAt ? review.createdAt.toISOString() : ""}:${review.authorName || ""}`;
   }
 
   function sortReviews(reviews, sort, config) {
