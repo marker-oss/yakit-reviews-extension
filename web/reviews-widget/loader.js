@@ -513,7 +513,7 @@
     };
   }
 
-  function render(bundle, normalizedArticle) {
+  function render(bundle, normalizedArticle, contextName) {
     removeHost();
 
     var reviews = bundle && bundle.reviews ? bundle.reviews : [];
@@ -548,7 +548,12 @@
       anchor.element.parentNode.insertBefore(host, anchor.element.nextSibling);
     }
 
-    window.ReviewsWidget.mountShadow(host, { styleText: widgetCssText, reviews: reviews, config: widgetConfig });
+    window.ReviewsWidget.mountShadow(host, {
+      styleText: widgetCssText,
+      reviews: reviews,
+      config: widgetConfig,
+      context: contextName || contextForPath(location.pathname),
+    });
     injectJsonLd(bundle);
     currentArticle = normalizedArticle;
     log("rendered", normalizedArticle, reviews.length, "reviews");
@@ -578,7 +583,7 @@
         if (seq !== requestSeq || location.pathname !== pathAtCall) {
           return;
         }
-        render(normalizeReviewsResponse(data), normalizedArticle);
+        render(normalizeReviewsResponse(data), normalizedArticle, "homepage");
       })
       .catch(function (error) {
         if (seq !== requestSeq) {
@@ -647,7 +652,7 @@
           if (seq !== requestSeq) {
             return;
           }
-          render(bundle, normalizedArticle);
+          render(bundle, normalizedArticle, "product");
         })
         .catch(function (error) {
           if (seq !== requestSeq) {

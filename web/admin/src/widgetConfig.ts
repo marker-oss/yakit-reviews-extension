@@ -48,18 +48,18 @@ export type WidgetConfig = {
 
 export const defaultWidgetConfig: WidgetConfig = {
   theme: {
-    accent: '#2f7a5b',
+    accent: '#68478D',
     accentInk: '#ffffff',
-    text: '#1f2520',
-    muted: '#687067',
+    text: '#2A2630',
+    muted: '#6E6877',
     panel: '#ffffff',
-    border: '#d9ded7',
+    border: '#E7DFD7',
     dark: false,
   },
   typography: {
-    fontFamily: 'inherit',
+    fontFamily: 'Onest, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     scale: 1,
-    radius: 8,
+    radius: 16,
     density: 'comfortable',
   },
   layout: {

@@ -1,24 +1,24 @@
 (function () {
   const marketplaceLabels = {
-    wb: "WB",
-    ym: "ЯМ",
+    wb: "Wildberries",
+    ym: "Яндекс Маркет",
     ozon: "Ozon",
   };
 
   const defaultConfig = {
     theme: {
-      accent: "#2f7a5b",
+      accent: "#68478D",
       accentInk: "#ffffff",
-      text: "#1f2520",
-      muted: "#687067",
+      text: "#2A2630",
+      muted: "#6E6877",
       panel: "#ffffff",
-      border: "#d9ded7",
+      border: "#E7DFD7",
       dark: false,
     },
     typography: {
-      fontFamily: "inherit",
+      fontFamily: 'Onest, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       scale: 1,
-      radius: 8,
+      radius: 16,
       density: "comfortable",
     },
     layout: {
@@ -64,9 +64,9 @@
       marketplaceProductUrl: "https://www.wildberries.ru/catalog/70476012/detail.aspx",
       sellerProductUrl: "https://shegida.ru/search?query=1523",
       rating: 5,
-      authorName: "Мария",
-      text: "Очень приятная ткань, после стирки форма осталась прежней. Цвет спокойный, хорошо смотрится с джинсами и жакетом.",
-      pros: "Мягкая ткань, ровные швы",
+      authorName: "Мария К.",
+      text: "Платье село по фигуре, ткань приятная и не просвечивает. Дома спокойно примерила и оставила без сомнений.",
+      pros: "Аккуратная посадка, ровные швы",
       cons: "",
       createdAt: "2026-05-28T12:20:00+03:00",
       media: [
@@ -74,7 +74,7 @@
         { kind: "photo", url: "./assets/review-outfit.svg" },
       ],
       answer: {
-        text: "Мария, спасибо за отзыв. Рады, что футболка подошла.",
+        text: "Мария, спасибо за отзыв. Рады, что платье подошло и примерка прошла спокойно.",
         state: "published",
       },
     },
@@ -87,10 +87,10 @@
       marketplaceProductUrl: "",
       sellerProductUrl: "./product.html?article=SKU-2107&marketplace=ym",
       rating: 4,
-      authorName: "Алексей",
-      text: "Материал отличный, но я бы брал на размер больше, если нужна свободная посадка.",
-      pros: "Плотность, цвет",
-      cons: "Немного маломерит",
+      authorName: "Елена",
+      text: "Заказывала к семейному вечеру. Цвет мягкий, длина удобная, но рукав оказался чуть плотнее, чем я ожидала.",
+      pros: "Красивый оттенок, хорошая длина",
+      cons: "Рукав сидит плотно",
       createdAt: "2026-05-22T09:10:00+03:00",
       media: [{ kind: "photo", url: "./assets/review-label.svg" }],
       answer: null,
@@ -104,9 +104,9 @@
       marketplaceProductUrl: "https://www.wildberries.ru/catalog/70476012/detail.aspx",
       sellerProductUrl: "https://shegida.ru/search?query=1523",
       rating: 5,
-      authorName: "Наталья",
-      text: "Брала базовую белую. Не просвечивает, ворот держит форму, под пиджак сидит аккуратно.",
-      pros: "Не просвечивает",
+      authorName: "Наталья Ф.",
+      text: "На рост 164 длина хорошая, можно и на работу, и в гости. После стирки форма осталась прежней.",
+      pros: "Держит форму",
       cons: "",
       createdAt: "2026-05-18T17:42:00+03:00",
       media: [],
@@ -125,7 +125,7 @@
       sellerProductUrl: "./product.html?article=OZ-771&marketplace=ozon",
       rating: 3,
       authorName: "Ирина",
-      text: "Качество хорошее, но оттенок вживую чуть теплее, чем на фото.",
+      text: "Качество пошива хорошее, но оттенок вживую чуть теплее, чем на фото. Оставила, потому что к лицу подошло.",
       pros: "Качество пошива",
       cons: "Оттенок отличается",
       createdAt: "2026-05-12T20:05:00+03:00",
@@ -142,8 +142,8 @@
       sellerProductUrl: "./product.html?article=SKU-2108&marketplace=ym",
       rating: 5,
       authorName: "Ольга",
-      text: "После двух недель носки всё отлично. Горловина не растянулась, катышков нет.",
-      pros: "Держит форму",
+      text: "Брала маме, размер подошёл с первой примерки. Ткань мягкая, не колется, смотрится аккуратно.",
+      pros: "Мягкая ткань, понятная размерность",
       cons: "",
       createdAt: "2026-05-04T14:12:00+03:00",
       media: [],
@@ -161,8 +161,10 @@
     const state = {
       reviews: normalizeReviews(options.reviews || []),
       config,
+      context: options.context || "product",
       marketplace: config.defaults.marketplace || "all",
-      rating: config.defaults.minRating > 0 ? `${config.defaults.minRating}+` : "all",
+      rating: "all",
+      mediaFilter: "all",
       sort: options.initialSort || config.defaults.initialSort || "newest",
       visible: config.layout.pageSize,
       loading: Boolean(options.source),
@@ -171,7 +173,7 @@
 
     root.innerHTML = "";
     applyConfig(root, state.config);
-    root.appendChild(renderShell(options.productName || "Отзывы", state.config));
+    root.appendChild(renderShell(options.productName || "Отзывы покупательниц", state.config));
     bind(root, state);
     render(root, state);
 
@@ -196,16 +198,31 @@
     const header = document.createElement("div");
     header.className = "rw-header";
     header.innerHTML = `
-      <div class="rw-score">
-        <div class="rw-score-value" data-role="score">0.0</div>
-        <div class="rw-score-meta">
-          <div class="rw-stars" data-role="stars" aria-label="Средний рейтинг"></div>
-          <div class="rw-summary" data-role="summary"></div>
+      <div class="rw-tabs" aria-label="Разделы отзывов">
+        <button class="rw-tab is-active" type="button">Отзывы <sup data-role="review-count">0</sup></button>
+        <button class="rw-tab" type="button" disabled>Вопросы <sup>0</sup></button>
+      </div>
+      <div class="rw-overview">
+        <div class="rw-score">
+          <div class="rw-score-value" data-role="score">0.0</div>
+          <div class="rw-score-meta">
+            <div class="rw-stars" data-role="stars" aria-label="Средний рейтинг"></div>
+            <div class="rw-summary" data-role="summary"></div>
+          </div>
+        </div>
+        <div class="rw-distribution" aria-label="Сводка отзывов">
+          <h2 class="rw-dist-title">${escapeHTML(productName)}</h2>
+          <div class="rw-dist-list" data-role="distribution"></div>
+          <div class="rw-market-counts" data-role="market-counts"></div>
         </div>
       </div>
-      <div class="rw-controls">
-        <div class="rw-segments" data-role="marketplaces" aria-label="Маркетплейс"></div>
-        <div class="rw-segments" data-role="ratings" aria-label="Рейтинг"></div>
+      <div class="rw-media-strip" data-role="media-strip"></div>
+      <div class="rw-filter-bar">
+        <div class="rw-controls">
+          <div class="rw-segments" data-role="quick-filters" aria-label="Быстрые фильтры"></div>
+          <div class="rw-segments" data-role="marketplaces" aria-label="Маркетплейс"></div>
+          <div class="rw-segments" data-role="ratings" aria-label="Рейтинг"></div>
+        </div>
         <div class="rw-select-row">
           <select class="rw-sort" data-role="sort" aria-label="Сортировка">
             <option value="newest">Сначала новые</option>
@@ -221,11 +238,6 @@
     const body = document.createElement("div");
     body.className = "rw-body";
     body.innerHTML = `
-      <aside class="rw-distribution" aria-label="Сводка отзывов">
-        <h2 class="rw-dist-title">${escapeHTML(productName)}</h2>
-        <div class="rw-dist-list" data-role="distribution"></div>
-        <div class="rw-market-counts" data-role="market-counts"></div>
-      </aside>
       <div class="rw-list-wrap">
         <div class="rw-list" data-role="list"></div>
         <div class="rw-empty" data-role="status" hidden></div>
@@ -259,6 +271,7 @@
       renderSummary(root, state.reviews, []);
       renderSegments(root, state, state.reviews);
       renderDistribution(root, state.reviews);
+      renderMediaStrip(root, state.reviews, state.config);
       renderList(root, []);
       renderStatus(root, state.loading ? "Загружаем отзывы" : state.error, true);
       root.querySelector('[data-role="load-more"]').hidden = true;
@@ -270,8 +283,9 @@
       all.filter((review) => {
         const marketplaceOk = state.marketplace === "all" || review.marketplace === state.marketplace;
         const ratingOk = ratingMatches(review.rating, state.rating);
+        const mediaOk = mediaMatches(review, state.mediaFilter);
         const defaultsOk = matchesDefaults(review, state.config.defaults);
-        return marketplaceOk && ratingOk && defaultsOk;
+        return marketplaceOk && ratingOk && mediaOk && defaultsOk;
       }),
       state.sort,
       state.config,
@@ -280,6 +294,7 @@
     renderSummary(root, all, filtered);
     renderSegments(root, state, all);
     renderDistribution(root, all);
+    renderMediaStrip(root, filtered, state.config);
     renderList(root, filtered.slice(0, state.visible));
 
     renderStatus(root, "Отзывов с такими фильтрами нет", filtered.length === 0);
@@ -298,34 +313,61 @@
       : 0;
     root.querySelector('[data-role="score"]').textContent = average.toFixed(1);
     root.querySelector('[data-role="stars"]').style.setProperty("--rating", average.toFixed(2));
+    root.querySelector('[data-role="review-count"]').textContent = String(all.length);
     root.querySelector('[data-role="summary"]').textContent =
-      `${pluralize(all.length, "отзыв", "отзыва", "отзывов")} · ${pluralize(filtered.length, "показан", "показано", "показано")}`;
+      `${pluralize(all.length, "отзыв", "отзыва", "отзывов")} покупателей · ${pluralize(filtered.length, "показан", "показано", "показано")}`;
   }
 
   function renderSegments(root, state, reviews) {
     const marketplaces = ["all", ...unique(reviews.map((review) => review.marketplace))];
     const marketplaceRoot = root.querySelector('[data-role="marketplaces"]');
     if (!state.config.visibility.filters) {
+      root.querySelector('[data-role="quick-filters"]').innerHTML = "";
       marketplaceRoot.innerHTML = "";
       root.querySelector('[data-role="ratings"]').innerHTML = "";
       return;
     }
+    const quickRoot = root.querySelector('[data-role="quick-filters"]');
+    quickRoot.innerHTML = "";
+    quickRoot.appendChild(segmentButton("Новые", state.sort === "newest", () => {
+      state.sort = "newest";
+      state.visible = state.config.layout.pageSize;
+      root.querySelector('[data-role="sort"]').value = state.sort;
+      render(root, state);
+    }));
+    quickRoot.appendChild(segmentButton("С фото", state.mediaFilter === "photo", () => {
+      state.mediaFilter = state.mediaFilter === "photo" ? "all" : "photo";
+      state.visible = state.config.layout.pageSize;
+      render(root, state);
+    }));
+    quickRoot.appendChild(segmentButton("С видео", state.mediaFilter === "video", () => {
+      state.mediaFilter = state.mediaFilter === "video" ? "all" : "video";
+      state.visible = state.config.layout.pageSize;
+      render(root, state);
+    }));
+
     marketplaceRoot.innerHTML = "";
     marketplaces.forEach((value) => {
       marketplaceRoot.appendChild(segmentButton(labelMarketplace(value), state.marketplace === value, () => {
         state.marketplace = value;
-        state.visible = 3;
+        state.visible = state.config.layout.pageSize;
         render(root, state);
       }));
     });
 
-    const ratings = ["all", "4+", 5, 4, 3, 2, 1].filter((value) => {
-      return value === "all" || value === "4+" || reviews.some((review) => review.rating === value);
+    const ratingSource = reviews.filter((review) => matchesDefaults(review, state.config.defaults));
+    const ratings = ["all", 5, 4, 3, 2, 1].filter((value) => {
+      return value === "all" || ratingSource.some((review) => review.rating === value);
     });
     const ratingRoot = root.querySelector('[data-role="ratings"]');
+    ratingRoot.hidden = state.context === "homepage";
+    if (state.context === "homepage") {
+      ratingRoot.innerHTML = "";
+      return;
+    }
     ratingRoot.innerHTML = "";
     ratings.forEach((value) => {
-      const label = value === "all" ? "Все оценки" : value === "4+" ? "4+ ★" : `${value} ★`;
+      const label = value === "all" ? "Все оценки" : `${value} ★`;
       ratingRoot.appendChild(segmentButton(label, String(state.rating) === String(value), () => {
         state.rating = String(value);
         state.visible = state.config.layout.pageSize;
@@ -360,6 +402,46 @@
     });
   }
 
+  function renderMediaStrip(root, reviews, config) {
+    const mediaRoot = root.querySelector('[data-role="media-strip"]');
+    if (!config.visibility.photos) {
+      mediaRoot.innerHTML = "";
+      mediaRoot.hidden = true;
+      return;
+    }
+    const media = reviews.flatMap((review) => {
+      return review.media.map((item) => ({
+        ...item,
+        authorName: review.authorName || "Покупатель",
+      }));
+    });
+    mediaRoot.hidden = media.length === 0;
+    if (media.length === 0) {
+      mediaRoot.innerHTML = "";
+      return;
+    }
+    mediaRoot.innerHTML = `
+      <div class="rw-media-head">
+        <strong>Фото покупателей</strong>
+        <span>${pluralize(media.length, "материал", "материала", "материалов")}</span>
+      </div>
+      <div class="rw-media-rail" tabindex="0" aria-label="Фото и видео покупателей">
+        ${media
+          .slice(0, 18)
+          .map((item) => {
+            const src = item.kind === "video" ? item.previewUrl || "./assets/review-video.svg" : item.url;
+            return `
+              <a class="rw-strip-media-item" href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">
+                <img src="${escapeAttribute(src)}" alt="${escapeAttribute(item.kind === "video" ? "Видео отзыва" : `Фото отзыва, ${item.authorName}`)}" loading="lazy" />
+                ${item.kind === "video" ? '<span class="rw-play-badge"></span>' : ""}
+              </a>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
   function renderList(root, reviews) {
     const list = root.querySelector('[data-role="list"]');
     list.innerHTML = "";
@@ -371,10 +453,11 @@
         card.classList.add("is-clickable");
         card.dataset.href = marketplaceLink;
         card.tabIndex = 0;
-        card.setAttribute("aria-label", "Открыть отзыв на маркетплейсе");
+        card.setAttribute("aria-label", "Открыть источник отзыва");
       }
       card.innerHTML = `
         <div class="rw-card-top">
+          <div class="rw-avatar" aria-hidden="true">${escapeHTML(initials(review.authorName || "Покупатель"))}</div>
           <div class="rw-author">
             <div class="rw-author-line">
               <span class="rw-name">${escapeHTML(review.authorName || "Покупатель")}</span>
@@ -419,10 +502,10 @@
       : `<span>${escapeHTML(marketplaceArticle)}</span>`;
     const marketplaceLink = review.marketplaceReviewUrl || review.marketplaceProductUrl;
     const marketplaceAction = marketplaceLink
-      ? `<a class="rw-open-market" href="${escapeAttribute(marketplaceLink)}" target="_blank" rel="noreferrer">Открыть на маркетплейсе</a>`
+      ? `<a class="rw-open-market" href="${escapeAttribute(marketplaceLink)}" target="_blank" rel="noreferrer">Открыть источник отзыва</a>`
       : "";
     const sellerAction = review.sellerProductUrl
-      ? `<a class="rw-open-store" href="${escapeAttribute(review.sellerProductUrl)}" target="_blank" rel="noreferrer">Посмотреть в нашем магазине</a>`
+      ? `<a class="rw-open-store" href="${escapeAttribute(review.sellerProductUrl)}" target="_blank" rel="noreferrer">Посмотреть товар в магазине</a>`
       : "";
     const actions = marketplaceAction || sellerAction
       ? `<span class="rw-actions">${marketplaceAction}${sellerAction}</span>`
@@ -430,8 +513,8 @@
 
     return `
       <div class="rw-meta-row">
-        <span class="rw-article"><span class="rw-meta-label">Артикул продавца</span> ${sellerProduct}</span>
-        <span class="rw-article"><span class="rw-meta-label">Артикул ${labelMarketplace(review.marketplace)}</span> ${marketplaceProduct}</span>
+        <span class="rw-article"><span class="rw-meta-label">Артикул SHEGIDA</span> ${sellerProduct}</span>
+        <span class="rw-article"><span class="rw-meta-label">На площадке</span> ${marketplaceProduct}</span>
         ${actions}
       </div>
     `;
@@ -463,7 +546,7 @@
             return `
               <a class="rw-media-item" href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">
                 <img src="${escapeAttribute(src)}" alt="${item.kind === "video" ? "Видео отзыва" : "Фото отзыва"}" loading="lazy" />
-                ${item.kind === "video" ? '<span class="rw-video-badge">▶</span>' : ""}
+                ${item.kind === "video" ? '<span class="rw-video-badge" aria-hidden="true"></span>' : ""}
               </a>
             `;
           })
@@ -478,7 +561,7 @@
     }
     return `
       <div class="rw-answer">
-        <div class="rw-answer-title">Ответ продавца</div>
+        <div class="rw-answer-title">Ответ SHEGIDA</div>
         <p>${escapeHTML(answer.text)}</p>
       </div>
     `;
@@ -492,6 +575,18 @@
     button.textContent = label;
     button.addEventListener("click", onClick);
     return button;
+  }
+
+  function initials(name) {
+    const words = String(name || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    return words
+      .slice(0, 2)
+      .map((word) => word[0])
+      .join("")
+      .toUpperCase() || "П";
   }
 
   function normalizeReviews(reviews) {
@@ -615,6 +710,7 @@
   }
 
   function matchesDefaults(review, defaults) {
+    if (defaults.minRating > 0 && review.rating < defaults.minRating) return false;
     if (defaults.requireText && !hasText(review)) return false;
     if (defaults.requirePhoto && !review.media.some((item) => item.kind === "photo")) return false;
     if (defaults.onlyWithAnswer && (!review.answer || !review.answer.text)) return false;
@@ -625,6 +721,12 @@
     if (selected === "all") return true;
     if (String(selected).endsWith("+")) return rating >= Number(String(selected).slice(0, -1));
     return rating === Number(selected);
+  }
+
+  function mediaMatches(review, selected) {
+    if (selected === "photo") return review.media.some((item) => item.kind === "photo");
+    if (selected === "video") return review.media.some((item) => item.kind === "video");
+    return true;
   }
 
   function hasText(review) {

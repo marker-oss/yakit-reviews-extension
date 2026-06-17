@@ -46,7 +46,7 @@ export default function Editor() {
 
   useEffect(() => load(context), [context])
 
-  const preview = useMemo(() => previewDocument(cfg), [cfg])
+  const preview = useMemo(() => previewDocument(cfg, context), [cfg, context])
 
   async function publish() {
     setMessage('')
@@ -172,7 +172,7 @@ export default function Editor() {
               <span>Маркетплейс</span>
               <select value={cfg.defaults.marketplace} onChange={(e) => setDefaults('marketplace', e.target.value as WidgetConfig['defaults']['marketplace'])}>
                 <option value="all">Все</option>
-                <option value="wb">WB</option>
+                <option value="wb">Wildberries</option>
                 <option value="ozon">Ozon</option>
                 <option value="ym">Яндекс Маркет</option>
               </select>
@@ -258,15 +258,16 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
   )
 }
 
-function previewDocument(config: WidgetConfig) {
+function previewDocument(config: WidgetConfig, context: WidgetContext) {
   const configJson = JSON.stringify(config).replace(/</g, '\\u003c')
+  const contextJson = JSON.stringify(context)
   return `<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/reviews-widget.css">
-  <style>body{margin:0;padding:16px;background:#f4f5f1}</style>
+  <style>body{margin:0;padding:16px;background:#FBF8F4}</style>
 </head>
 <body>
   <div id="preview" class="reviews-widget reviews-widget-root"></div>
@@ -274,6 +275,8 @@ function previewDocument(config: WidgetConfig) {
   <script>
     ReviewsWidget.mount(document.getElementById('preview'), {
       reviews: ReviewsWidget.sampleReviews,
+      productName: 'Платье SHEGIDA',
+      context: ${contextJson},
       config: ${configJson}
     });
   </script>
