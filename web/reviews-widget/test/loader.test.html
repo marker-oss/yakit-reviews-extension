@@ -29,6 +29,10 @@
 
   eq("isProductPath true", I.isProductPath("/products/svitshot-100954"), true);
   eq("isProductPath false", I.isProductPath("/catalog/platya"), false);
+  eq("isHomepagePath true", I.isHomepagePath("/"), true);
+  eq("shouldHandlePath product", I.shouldHandlePath("/products/svitshot-100954"), true);
+  eq("shouldHandlePath homepage", I.shouldHandlePath("/"), true);
+  eq("shouldHandlePath catalog", I.shouldHandlePath("/catalog/platya"), false);
   eq("normalizeArticle slash", I.normalizeArticle("3467/Белый"), "3467");
   eq("normalizeArticle trim", I.normalizeArticle("  107 "), "107");
   eq("articleFileKey space", I.articleFileKey("a b/c"), "a_b_c");
@@ -158,6 +162,24 @@
   I.render({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 }, reviews: [] }, "1523");
   eq("empty bundle removes host", document.getElementById(I.cfg.hostId), null);
   eq("empty bundle collapses custom anchor", customAnchor.style.minHeight, "0px");
+
+  cleanupLoaderFixture();
+  history.replaceState({}, "", "/");
+  I.cfg.anchorSelector = "reviews-homepage";
+  var homepageFixture = document.createElement("div");
+  homepageFixture.id = "loader-fixture";
+  homepageFixture.innerHTML = '<div id="reviews-homepage"></div>';
+  document.body.appendChild(homepageFixture);
+  eq("custom anchor id without hash", I.findCustomAnchor().id, "reviews-homepage");
+
+  cleanupLoaderFixture();
+  history.replaceState({}, "", "/products/plate-letnee-povsednevnoe-lilovyiy-102212");
+  I.cfg.anchorSelector = "reviews-homepage";
+  var productCustomFixture = document.createElement("div");
+  productCustomFixture.id = "loader-fixture";
+  productCustomFixture.innerHTML = '<div id="reviews-widget"></div><div id="reviews-homepage"></div>';
+  document.body.appendChild(productCustomFixture);
+  eq("product path prefers product anchor", I.findCustomAnchor().id, "reviews-widget");
 
   // Article resolution for SPA navigation: the page context is frozen on the
   // first product during soft navigation, so the loader resolves the visited

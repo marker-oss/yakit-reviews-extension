@@ -34,6 +34,18 @@
     return typeof pathname === "string" && pathname.indexOf(CFG.productPathPrefix) === 0;
   }
 
+  function isHomepagePath(pathname) {
+    return pathname === "/" || pathname === "";
+  }
+
+  function contextForPath(pathname) {
+    return isProductPath(pathname) ? "product" : "homepage";
+  }
+
+  function shouldHandlePath(pathname) {
+    return isProductPath(pathname) || isHomepagePath(pathname);
+  }
+
   function normalizeArticle(article) {
     if (!article) {
       return "";
@@ -56,6 +68,11 @@
       return "";
     }
     return CFG.dataBase + "/by-article/" + encodeURIComponent(articleFileKey(article)) + ".json";
+  }
+
+  function showcaseUrl() {
+    var base = CFG.configBase || "";
+    return base.replace(/\/$/, "") + "/api/showcase";
   }
 
   function extractArticleFromHTML(html) {
@@ -229,9 +246,13 @@
 
   window.__reviewsEmbedInternals = {
     isProductPath: isProductPath,
+    isHomepagePath: isHomepagePath,
+    contextForPath: contextForPath,
+    shouldHandlePath: shouldHandlePath,
     normalizeArticle: normalizeArticle,
     articleFileKey: articleFileKey,
     bundleUrl: bundleUrl,
+    showcaseUrl: showcaseUrl,
     extractArticleFromHTML: extractArticleFromHTML,
     extractArticleFromDocument: extractArticleFromDocument,
     skuFromRequestContext: skuFromRequestContext,
@@ -248,7 +269,8 @@
   };
 
   var widgetLoading = null;
-  var widgetConfigLoading = null;
+  var widgetConfigLoading = {};
+  var widgetConfigs = {};
   var widgetConfig = null;
   var widgetCssText = "";
   var linkIndexLoading = null;
@@ -294,18 +316,23 @@
     return widgetLoading;
   }
 
-  function loadWidgetConfig() {
+  function loadWidgetConfig(contextName) {
+    contextName = contextName || contextForPath(location.pathname);
     if (CFG.widgetConfig) {
       widgetConfig = CFG.widgetConfig;
       return Promise.resolve(widgetConfig);
     }
-    if (widgetConfigLoading) {
-      return widgetConfigLoading;
+    if (widgetConfigs[contextName]) {
+      widgetConfig = widgetConfigs[contextName];
+      return Promise.resolve(widgetConfig);
+    }
+    if (widgetConfigLoading[contextName]) {
+      return widgetConfigLoading[contextName];
     }
 
     var base = CFG.configBase || "";
-    var url = base.replace(/\/$/, "") + "/api/widget-config?context=" + encodeURIComponent(CFG.context || "product");
-    widgetConfigLoading = fetch(url, { headers: { Accept: "application/json" } })
+    var url = base.replace(/\/$/, "") + "/api/widget-config?context=" + encodeURIComponent(contextName);
+    widgetConfigLoading[contextName] = fetch(url, { headers: { Accept: "application/json" } })
       .then(function (response) {
         if (!response.ok) {
           throw new Error("widget config " + response.status);
@@ -314,6 +341,7 @@
       })
       .then(function (config) {
         widgetConfig = config || null;
+        widgetConfigs[contextName] = widgetConfig;
         return widgetConfig;
       })
       .catch(function (error) {
@@ -321,7 +349,7 @@
         widgetConfig = null;
         return null;
       });
-    return widgetConfigLoading;
+    return widgetConfigLoading[contextName];
   }
 
   // The product page's own context (#requestContext / JSON-LD) only reflects the
@@ -385,16 +413,36 @@
     });
   }
 
-  function findCustomAnchor() {
-    if (!CFG.anchorSelector) {
+  function findElementBySelectorOrID(selector) {
+    var value = String(selector || "").trim();
+    if (!value) {
       return null;
+    }
+    if (/^[A-Za-z][A-Za-z0-9_-]*$/.test(value)) {
+      var byID = document.getElementById(value);
+      if (byID) {
+        return byID;
+      }
     }
     try {
-      return document.querySelector(CFG.anchorSelector);
+      return document.querySelector(value);
     } catch (error) {
-      log("invalid anchor selector", CFG.anchorSelector, error && error.message);
+      log("invalid anchor selector", value, error && error.message);
       return null;
     }
+  }
+
+  function findCustomAnchor() {
+    var preferred = isProductPath(location.pathname) ? ["#reviews-widget"] : ["#reviews-homepage"];
+    var fallback = isProductPath(location.pathname) ? ["#reviews-homepage"] : ["#reviews-widget"];
+    var candidates = preferred.concat([CFG.anchorSelector || ""], fallback);
+    for (var i = 0; i < candidates.length; i++) {
+      var element = findElementBySelectorOrID(candidates[i]);
+      if (element) {
+        return element;
+      }
+    }
+    return null;
   }
 
   function findAnchor() {
@@ -443,6 +491,28 @@
     document.head.appendChild(script);
   }
 
+  function aggregateReviews(reviews) {
+    var rated = reviews.filter(function (review) {
+      return review.rating != null;
+    });
+    var sum = rated.reduce(function (total, review) {
+      return total + Number(review.rating || 0);
+    }, 0);
+    return {
+      count: reviews.length,
+      ratingCount: rated.length,
+      ratingAvg: rated.length ? Math.round((sum / rated.length) * 10) / 10 : 0,
+    };
+  }
+
+  function normalizeReviewsResponse(data) {
+    var reviews = data && Array.isArray(data.reviews) ? data.reviews : [];
+    return {
+      aggregate: aggregateReviews(reviews),
+      reviews: reviews,
+    };
+  }
+
   function render(bundle, normalizedArticle) {
     removeHost();
 
@@ -484,8 +554,47 @@
     log("rendered", normalizedArticle, reviews.length, "reviews");
   }
 
+  function renderHomepage(pathAtCall) {
+    var normalizedArticle = "homepage:" + pathAtCall;
+    if (normalizedArticle === currentArticle && document.getElementById(CFG.hostId)) {
+      return;
+    }
+
+    var seq = ++requestSeq;
+    var url = showcaseUrl();
+    log("fetch", url);
+
+    Promise.all([loadWidgetAssets(), loadWidgetConfig("homepage")])
+      .then(function () {
+        return fetch(url, { headers: { Accept: "application/json" } });
+      })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("showcase " + response.status);
+        }
+        return response.json();
+      })
+      .then(function (data) {
+        if (seq !== requestSeq || location.pathname !== pathAtCall) {
+          return;
+        }
+        render(normalizeReviewsResponse(data), normalizedArticle);
+      })
+      .catch(function (error) {
+        if (seq !== requestSeq) {
+          return;
+        }
+        if (currentArticle !== null || document.getElementById(CFG.hostId)) {
+          removeHost();
+          currentArticle = null;
+        }
+        collapseCustomAnchor();
+        log("skip", url, error && error.message);
+      });
+  }
+
   function handleNavigation() {
-    if (!isProductPath(location.pathname)) {
+    if (!shouldHandlePath(location.pathname)) {
       if (currentArticle !== null || document.getElementById(CFG.hostId)) {
         removeHost();
         currentArticle = null;
@@ -502,6 +611,11 @@
     }
 
     var pathAtCall = location.pathname;
+    if (isHomepagePath(pathAtCall)) {
+      renderHomepage(pathAtCall);
+      return;
+    }
+
     resolveArticle(pathAtCall).then(function (normalizedArticle) {
       // A newer navigation started while we were resolving — let it win.
       if (location.pathname !== pathAtCall) {
@@ -519,7 +633,7 @@
       var url = bundleUrl(normalizedArticle);
       log("fetch", url);
 
-      Promise.all([loadWidgetAssets(), loadWidgetConfig()])
+      Promise.all([loadWidgetAssets(), loadWidgetConfig("product")])
         .then(function () {
           return fetch(url, { headers: { Accept: "application/json" } });
         })
@@ -579,7 +693,7 @@
     // the URL via the link index, so pushState/popstate already cover product
     // changes; this only needs to wait for the anchor to appear.
     var observer = new MutationObserver(function () {
-      if (isProductPath(location.pathname) && !document.getElementById(CFG.hostId)) {
+      if (shouldHandlePath(location.pathname) && !document.getElementById(CFG.hostId)) {
         scheduleHandle();
       }
     });
