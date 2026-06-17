@@ -157,30 +157,36 @@
     }
     options = options || {};
     const config = normalizeConfig(options.config);
+    const context = options.context || "product";
 
     const state = {
       reviews: normalizeReviews(options.reviews || []),
+      aggregate: normalizeAggregate(options.aggregate),
       config,
-      context: options.context || "product",
+      context,
       marketplace: config.defaults.marketplace || "all",
       rating: "all",
       mediaFilter: "all",
       sort: options.initialSort || config.defaults.initialSort || "newest",
-      visible: config.layout.pageSize,
+      visible: initialVisible(config, context),
+      expanded: context !== "homepage",
       loading: Boolean(options.source),
       error: "",
     };
 
     root.innerHTML = "";
     applyConfig(root, state.config);
+    root.classList.toggle("rw-context-homepage", state.context === "homepage");
+    root.classList.toggle("rw-is-expanded", state.expanded);
     root.appendChild(renderShell(options.productName || "Отзывы покупательниц", state.config));
     bind(root, state);
     render(root, state);
 
     if (options.source) {
       fetchReviews(options.source)
-        .then((reviews) => {
-          state.reviews = normalizeReviews(reviews);
+        .then((payload) => {
+          state.reviews = normalizeReviews(payload.reviews);
+          state.aggregate = normalizeAggregate(payload.aggregate);
           state.loading = false;
           state.error = "";
           render(root, state);
@@ -256,19 +262,26 @@
     sort.value = state.sort;
     sort.addEventListener("change", (event) => {
       state.sort = event.target.value;
-      state.visible = state.config.layout.pageSize;
+      resetListingState(state);
       render(root, state);
     });
 
     root.querySelector('[data-role="load-more"]').addEventListener("click", () => {
+      if (state.context === "homepage" && !state.expanded) {
+        state.expanded = true;
+        state.visible = Math.max(state.visible, state.config.layout.pageSize);
+        render(root, state);
+        return;
+      }
       state.visible += state.config.layout.pageSize;
       render(root, state);
     });
   }
 
   function render(root, state) {
+    root.classList.toggle("rw-is-expanded", state.expanded);
     if (state.loading || state.error) {
-      renderSummary(root, state.reviews, []);
+      renderSummary(root, state.reviews, [], state);
       renderSegments(root, state, state.reviews);
       renderDistribution(root, state.reviews);
       renderMediaStrip(root, state.reviews, state.config);
@@ -291,14 +304,20 @@
       state.config,
     );
 
-    renderSummary(root, all, filtered);
+    const visibleCount = effectiveVisibleCount(state, filtered.length);
+
+    renderSummary(root, all, filtered, state);
     renderSegments(root, state, all);
     renderDistribution(root, all);
     renderMediaStrip(root, filtered, state.config);
-    renderList(root, filtered.slice(0, state.visible));
+    renderList(root, filtered.slice(0, visibleCount));
 
     renderStatus(root, "Отзывов с такими фильтрами нет", filtered.length === 0);
-    root.querySelector('[data-role="load-more"]').hidden = state.visible >= filtered.length;
+    const loadMore = root.querySelector('[data-role="load-more"]');
+    loadMore.textContent = state.context === "homepage" && !state.expanded ? "Посмотреть отзывы" : "Показать ещё";
+    loadMore.hidden = state.context === "homepage" && !state.expanded
+      ? filtered.length <= visibleCount
+      : visibleCount >= filtered.length;
   }
 
   function renderStatus(root, text, visible) {
@@ -307,15 +326,16 @@
     status.hidden = !visible;
   }
 
-  function renderSummary(root, all, filtered) {
-    const average = all.length
-      ? all.reduce((sum, review) => sum + review.rating, 0) / all.length
-      : 0;
+  function renderSummary(root, all, filtered, state) {
+    const aggregate = summaryAggregate(all, state);
+    const total = aggregate.totalReviews;
+    const average = aggregate.averageRating;
     root.querySelector('[data-role="score"]').textContent = average.toFixed(1);
     root.querySelector('[data-role="stars"]').style.setProperty("--rating", average.toFixed(2));
-    root.querySelector('[data-role="review-count"]').textContent = String(all.length);
-    root.querySelector('[data-role="summary"]').textContent =
-      `${pluralize(all.length, "отзыв", "отзыва", "отзывов")} покупателей · ${pluralize(filtered.length, "показан", "показано", "показано")}`;
+    root.querySelector('[data-role="review-count"]').textContent = String(total);
+    root.querySelector('[data-role="summary"]').textContent = state.context === "homepage"
+      ? pluralize(total, "отзыв", "отзыва", "отзывов")
+      : `${pluralize(total, "отзыв", "отзыва", "отзывов")} покупателей · ${pluralize(filtered.length, "показан", "показано", "показано")}`;
   }
 
   function renderSegments(root, state, reviews) {
@@ -331,18 +351,18 @@
     quickRoot.innerHTML = "";
     quickRoot.appendChild(segmentButton("Новые", state.sort === "newest", () => {
       state.sort = "newest";
-      state.visible = state.config.layout.pageSize;
+      resetListingState(state);
       root.querySelector('[data-role="sort"]').value = state.sort;
       render(root, state);
     }));
     quickRoot.appendChild(segmentButton("С фото", state.mediaFilter === "photo", () => {
       state.mediaFilter = state.mediaFilter === "photo" ? "all" : "photo";
-      state.visible = state.config.layout.pageSize;
+      resetListingState(state);
       render(root, state);
     }));
     quickRoot.appendChild(segmentButton("С видео", state.mediaFilter === "video", () => {
       state.mediaFilter = state.mediaFilter === "video" ? "all" : "video";
-      state.visible = state.config.layout.pageSize;
+      resetListingState(state);
       render(root, state);
     }));
 
@@ -350,7 +370,7 @@
     marketplaces.forEach((value) => {
       marketplaceRoot.appendChild(segmentButton(labelMarketplace(value), state.marketplace === value, () => {
         state.marketplace = value;
-        state.visible = state.config.layout.pageSize;
+        resetListingState(state);
         render(root, state);
       }));
     });
@@ -370,7 +390,7 @@
       const label = value === "all" ? "Все оценки" : `${value} ★`;
       ratingRoot.appendChild(segmentButton(label, String(state.rating) === String(value), () => {
         state.rating = String(value);
-        state.visible = state.config.layout.pageSize;
+        resetListingState(state);
         render(root, state);
       }));
     });
@@ -599,6 +619,20 @@
     }));
   }
 
+  function normalizeAggregate(aggregate) {
+    if (!aggregate) {
+      return null;
+    }
+    const totalReviews = Number(aggregate.totalReviews ?? aggregate.count ?? 0);
+    const ratingCount = Number(aggregate.ratingCount ?? totalReviews);
+    const averageRating = Number(aggregate.averageRating ?? aggregate.ratingAvg ?? 0);
+    return {
+      totalReviews: Number.isFinite(totalReviews) ? totalReviews : 0,
+      ratingCount: Number.isFinite(ratingCount) ? ratingCount : 0,
+      averageRating: Number.isFinite(averageRating) ? averageRating : 0,
+    };
+  }
+
   function normalizeConfig(config) {
     config = config || {};
     const merged = {
@@ -627,6 +661,43 @@
       merged.defaults.initialSort = "relevance";
     }
     return merged;
+  }
+
+  function initialVisible(config, context) {
+    if (context === "homepage") {
+      return Math.max(1, Math.min(config.layout.pageSize, 4));
+    }
+    return config.layout.pageSize;
+  }
+
+  function resetListingState(state) {
+    state.visible = initialVisible(state.config, state.context);
+    state.expanded = state.context !== "homepage";
+  }
+
+  function effectiveVisibleCount(state, total) {
+    if (state.context === "homepage" && !state.expanded) {
+      return Math.min(total, initialVisible(state.config, state.context));
+    }
+    return Math.min(total, state.visible);
+  }
+
+  function summaryAggregate(reviews, state) {
+    const fallback = aggregateFromReviews(reviews);
+    if (state.context === "homepage" && state.aggregate && state.aggregate.totalReviews > 0) {
+      return state.aggregate;
+    }
+    return fallback;
+  }
+
+  function aggregateFromReviews(reviews) {
+    const rated = reviews.filter((review) => review.rating > 0);
+    const sum = rated.reduce((total, review) => total + review.rating, 0);
+    return {
+      totalReviews: reviews.length,
+      ratingCount: rated.length,
+      averageRating: rated.length ? sum / rated.length : 0,
+    };
   }
 
   function applyConfig(root, config) {
@@ -666,9 +737,9 @@
     }
     const payload = await response.json();
     if (Array.isArray(payload)) {
-      return payload;
+      return { reviews: payload, aggregate: null };
     }
-    return payload.reviews || [];
+    return { reviews: payload.reviews || [], aggregate: payload.aggregate || null };
   }
 
   function sortReviews(reviews, sort, config) {

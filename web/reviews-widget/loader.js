@@ -505,10 +505,27 @@
     };
   }
 
+  function normalizeAggregate(aggregate, reviews) {
+    var fallback = aggregateReviews(reviews);
+    if (!aggregate) {
+      return fallback;
+    }
+    return {
+      count: numberOrFallback(aggregate.count, numberOrFallback(aggregate.totalReviews, fallback.count)),
+      ratingCount: numberOrFallback(aggregate.ratingCount, fallback.ratingCount),
+      ratingAvg: numberOrFallback(aggregate.ratingAvg, numberOrFallback(aggregate.averageRating, fallback.ratingAvg)),
+    };
+  }
+
+  function numberOrFallback(value, fallback) {
+    var number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  }
+
   function normalizeReviewsResponse(data) {
     var reviews = data && Array.isArray(data.reviews) ? data.reviews : [];
     return {
-      aggregate: aggregateReviews(reviews),
+      aggregate: normalizeAggregate(data && data.aggregate, reviews),
       reviews: reviews,
     };
   }
@@ -551,6 +568,7 @@
     window.ReviewsWidget.mountShadow(host, {
       styleText: widgetCssText,
       reviews: reviews,
+      aggregate: bundle && bundle.aggregate,
       config: widgetConfig,
       context: contextName || contextForPath(location.pathname),
     });

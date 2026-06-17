@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"reviews/internal/store"
 )
 
 func TestShowcaseRuleEndpoints(t *testing.T) {
@@ -54,6 +57,14 @@ func TestShowcaseRuleEndpoints(t *testing.T) {
 func TestPublicShowcaseEndpoint(t *testing.T) {
 	s := newAuthTestServer(t)
 	seedAdminReview(t, s, "w1", 5)
+	seedAdminReview(t, s, "w2", 3)
+	if err := s.store.SaveShowcaseRule(context.Background(), store.ShowcaseRule{
+		MinRating: 4,
+		Limit:     1,
+		SortBy:    "recent",
+	}); err != nil {
+		t.Fatalf("save showcase rule: %v", err)
+	}
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/showcase", nil)
@@ -63,7 +74,17 @@ func TestPublicShowcaseEndpoint(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("showcase status = %d, body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"count":1`) {
-		t.Fatalf("expected one review: %s", rec.Body.String())
+	var response showcaseResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode showcase: %v", err)
+	}
+	if response.Count != 1 || len(response.Reviews) != 1 {
+		t.Fatalf("expected one showcased review: %+v", response)
+	}
+	if response.Aggregate.TotalReviews != 2 || response.Aggregate.RatingCount != 2 {
+		t.Fatalf("unexpected aggregate counts: %+v", response.Aggregate)
+	}
+	if response.Aggregate.AverageRating != 4 {
+		t.Fatalf("average rating = %v, want 4", response.Aggregate.AverageRating)
 	}
 }

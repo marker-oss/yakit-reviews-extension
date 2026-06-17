@@ -43,10 +43,35 @@ func (s *Server) handleShowcase(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	aggregate, err := s.store.VisibleReviewAggregate(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 	mapper := reviewjson.Mapper{ProductURLTemplate: s.cfg.ProductURLTemplate, ProductLinks: s.cfg.ProductLinks}
 	items := make([]reviewjson.Review, 0, len(reviews))
 	for _, rv := range reviews {
 		items = append(items, mapper.ToReview(rv))
 	}
-	writeJSON(w, http.StatusOK, reviewsResponse{Reviews: items, Count: len(items)})
+	writeJSON(w, http.StatusOK, showcaseResponse{
+		Reviews: items,
+		Count:   len(items),
+		Aggregate: reviewAggregateResponse{
+			TotalReviews:  aggregate.TotalReviews,
+			RatingCount:   aggregate.RatingCount,
+			AverageRating: aggregate.AverageRating,
+		},
+	})
+}
+
+type showcaseResponse struct {
+	Reviews   []reviewjson.Review     `json:"reviews"`
+	Count     int                     `json:"count"`
+	Aggregate reviewAggregateResponse `json:"aggregate"`
+}
+
+type reviewAggregateResponse struct {
+	TotalReviews  int64   `json:"totalReviews"`
+	RatingCount   int64   `json:"ratingCount"`
+	AverageRating float64 `json:"averageRating"`
 }

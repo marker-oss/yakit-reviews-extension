@@ -47,6 +47,36 @@ type Stats struct {
 	ByMarketplace map[string]int64
 }
 
+type ReviewAggregate struct {
+	TotalReviews  int64
+	RatingCount   int64
+	AverageRating float64
+}
+
+func (s *Store) VisibleReviewAggregate(ctx context.Context) (ReviewAggregate, error) {
+	var aggregate ReviewAggregate
+	db := s.db.WithContext(ctx).Model(&Review{}).Where("visibility = ?", "visible")
+
+	if err := db.Count(&aggregate.TotalReviews).Error; err != nil {
+		return ReviewAggregate{}, err
+	}
+
+	var ratings struct {
+		RatingCount   int64
+		AverageRating *float64
+	}
+	if err := db.
+		Select("COUNT(rating) AS rating_count, AVG(rating) AS average_rating").
+		Scan(&ratings).Error; err != nil {
+		return ReviewAggregate{}, err
+	}
+	aggregate.RatingCount = ratings.RatingCount
+	if ratings.AverageRating != nil {
+		aggregate.AverageRating = *ratings.AverageRating
+	}
+	return aggregate, nil
+}
+
 func (s *Store) DashboardStats(ctx context.Context) (Stats, error) {
 	stats := Stats{ByMarketplace: map[string]int64{}}
 	db := s.db.WithContext(ctx)
