@@ -185,6 +185,7 @@
     }
 
     root.innerHTML = "";
+    root.classList.add("reviews-widget", "reviews-widget-root");
     applyConfig(root, state.config);
     root.classList.toggle("rw-context-homepage", state.context === "homepage");
     root.classList.toggle("rw-is-expanded", state.expanded);

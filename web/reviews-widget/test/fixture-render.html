@@ -68,8 +68,10 @@
     var jsonLd = document.getElementById("reviews-embed-host-jsonld");
     var productMain = document.querySelector('[data-testid="ProductDetails"] main');
     var card = host && ((host.shadowRoot && host.shadowRoot.querySelector(".rw-card")) || host.querySelector(".rw-card"));
+    var noShadow = new URLSearchParams(location.search).has("noShadow");
     var rendered =
       host &&
+      (!noShadow || host.classList.contains("reviews-widget")) &&
       card &&
       jsonLd &&
       jsonLd.textContent.indexOf("AggregateRating") > -1 &&
