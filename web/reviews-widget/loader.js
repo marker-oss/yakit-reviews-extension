@@ -19,6 +19,7 @@
       hostId: "reviews-embed-host",
       maxJsonLdReviews: 10,
       anchorSelector: "",
+      useShadowDom: true,
       debug: false,
     },
     window.REVIEWS_EMBED_CONFIG || {},
@@ -276,6 +277,7 @@
     loadLinkIndex: loadLinkIndex,
     resolveArticleFromIndex: resolveArticleFromIndex,
     render: render,
+    shouldUseShadowDom: shouldUseShadowDom,
     cfg: CFG,
     log: log,
   };
@@ -542,6 +544,36 @@
     };
   }
 
+  function shouldUseShadowDom() {
+    return CFG.useShadowDom !== false;
+  }
+
+  function ensureDocumentStyle(cssText) {
+    if (!cssText) {
+      return;
+    }
+    var styleID = CFG.hostId + "-style";
+    var style = document.getElementById(styleID);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = styleID;
+      style.setAttribute("data-reviews-widget-style", "true");
+      document.head.appendChild(style);
+    }
+    if (style.textContent !== cssText) {
+      style.textContent = cssText;
+    }
+  }
+
+  function mountWidget(host, options) {
+    if (shouldUseShadowDom() && window.ReviewsWidget.mountShadow) {
+      window.ReviewsWidget.mountShadow(host, options);
+      return;
+    }
+    ensureDocumentStyle(options.styleText);
+    window.ReviewsWidget.mount(host, options);
+  }
+
   function render(bundle, normalizedArticle, contextName) {
     removeHost();
 
@@ -577,7 +609,7 @@
       anchor.element.parentNode.insertBefore(host, anchor.element.nextSibling);
     }
 
-    window.ReviewsWidget.mountShadow(host, {
+    mountWidget(host, {
       styleText: widgetCssText,
       reviews: reviews,
       aggregate: bundle && bundle.aggregate,

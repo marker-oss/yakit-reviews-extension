@@ -31,7 +31,10 @@
   font-size: calc(17px * var(--rw-font-scale));
 }
 
-* {
+.rw-demo-page,
+.rw-demo-page *,
+.reviews-widget,
+.reviews-widget * {
   box-sizing: border-box;
 }
 
@@ -42,12 +45,15 @@
   color: var(--rw-text);
 }
 
-button,
-select {
+.rw-demo-page button,
+.rw-demo-page select,
+.reviews-widget button,
+.reviews-widget select {
   font: inherit;
 }
 
-a {
+.rw-demo-page a,
+.reviews-widget a {
   color: inherit;
 }
 

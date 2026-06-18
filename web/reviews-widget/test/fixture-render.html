@@ -40,6 +40,7 @@
     dataBase: "/reviews-data",
     widgetJsUrl: "/reviews-widget.js",
     widgetCssUrl: "/reviews-widget.css",
+    useShadowDom: !new URLSearchParams(location.search).has("noShadow"),
     debug: true,
   };
   history.replaceState({}, "", "/products/svitshot-hlopkovyiy-100954");
@@ -66,10 +67,10 @@
     var host = document.getElementById("reviews-embed-host");
     var jsonLd = document.getElementById("reviews-embed-host-jsonld");
     var productMain = document.querySelector('[data-testid="ProductDetails"] main');
+    var card = host && ((host.shadowRoot && host.shadowRoot.querySelector(".rw-card")) || host.querySelector(".rw-card"));
     var rendered =
       host &&
-      host.shadowRoot &&
-      host.shadowRoot.querySelector(".rw-card") &&
+      card &&
       jsonLd &&
       jsonLd.textContent.indexOf("AggregateRating") > -1 &&
       productMain &&

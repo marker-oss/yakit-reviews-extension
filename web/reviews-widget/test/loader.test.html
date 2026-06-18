@@ -112,6 +112,13 @@
   window.ReviewsWidget = {
     mountShadow: function (host, options) {
       host.setAttribute("data-mounted-reviews", String(options.reviews.length));
+      host.setAttribute("data-mount-mode", "shadow");
+      host.setAttribute("data-full-feed-source", options.fullFeedSource || "");
+      host.setAttribute("data-full-feed-offset", String(options.fullFeedOffset ?? ""));
+    },
+    mount: function (host, options) {
+      host.setAttribute("data-mounted-reviews", String(options.reviews.length));
+      host.setAttribute("data-mount-mode", "light");
       host.setAttribute("data-full-feed-source", options.fullFeedSource || "");
       host.setAttribute("data-full-feed-offset", String(options.fullFeedOffset ?? ""));
     },
@@ -149,7 +156,20 @@
   eq("default anchor inserts after main", standardAnchor.nextSibling === standardHost, true);
   eq("default anchor keeps host margin", standardHost.style.marginTop, "32px");
   eq("default anchor mounts reviews", standardHost.getAttribute("data-mounted-reviews"), "1");
+  eq("default render uses shadow dom", standardHost.getAttribute("data-mount-mode"), "shadow");
   eq("product render has no full feed", standardHost.getAttribute("data-full-feed-source"), "");
+
+  cleanupLoaderFixture();
+  I.cfg.useShadowDom = false;
+  var lightFixture = document.createElement("div");
+  lightFixture.id = "loader-fixture";
+  lightFixture.innerHTML = '<section data-testid="ProductDetails"><main id="light-anchor"></main></section>';
+  document.body.appendChild(lightFixture);
+  I.render(renderBundle, "1523");
+  var lightHost = document.getElementById(I.cfg.hostId);
+  eq("light render disables shadow dom", I.shouldUseShadowDom(), false);
+  eq("light render uses mount", lightHost.getAttribute("data-mount-mode"), "light");
+  I.cfg.useShadowDom = true;
 
   cleanupLoaderFixture();
   I.cfg.anchorSelector = "#reviews-widget";
