@@ -14,3 +14,8 @@ coverage.out
 # Editor / language-server caches
 /.clj-kondo/
 /.lsp/
+
+# Local agent/tool workspaces
+/.claude/
+/.codex/
+/.playwright-mcp/
