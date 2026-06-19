@@ -13,6 +13,14 @@ type PublishResponse = {
   reviews: number
 }
 
+type ReviewMedia = Review['media'][number]
+
+type MediaViewerState = {
+  items: ReviewMedia[]
+  index: number
+  title: string
+}
+
 const PAGE_SIZE = 25
 const SEARCH_DELAY_MS = 350
 
@@ -33,6 +41,7 @@ export default function Reviews() {
   const [error, setError] = useState('')
   const [publishMessage, setPublishMessage] = useState('')
   const [publishing, setPublishing] = useState(false)
+  const [mediaViewer, setMediaViewer] = useState<MediaViewerState | null>(null)
 
   function load(nextOffset = offset) {
     setSelected(new Set())
@@ -64,6 +73,17 @@ export default function Reviews() {
     }, SEARCH_DELAY_MS)
     return () => window.clearTimeout(timer)
   }, [searchDraft, articleDraft])
+
+  useEffect(() => {
+    if (!mediaViewer) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setMediaViewer(null)
+      if (event.key === 'ArrowLeft') shiftMedia(-1)
+      if (event.key === 'ArrowRight') shiftMedia(1)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [mediaViewer])
 
   // Reset to the first page whenever a filter/sort narrows the result set.
   function resetTo(setter: (v: string) => void) {
@@ -214,6 +234,24 @@ export default function Reviews() {
     })
   }
 
+  function openMedia(review: Review, index: number) {
+    if (!review.media.length) return
+    setMediaViewer({
+      items: review.media,
+      index,
+      title: `${review.authorName || review.marketplace} · ${review.marketplace}`,
+    })
+  }
+
+  function shiftMedia(direction: number) {
+    setMediaViewer((prev) => {
+      if (!prev || prev.items.length === 0) return prev
+      return { ...prev, index: (prev.index + direction + prev.items.length) % prev.items.length }
+    })
+  }
+
+  const activeMedia = mediaViewer?.items[mediaViewer.index] ?? null
+
   return (
     <section className="stack">
       <div className="toolbar">
@@ -323,6 +361,22 @@ export default function Reviews() {
                 <small>
                   {review.marketplace} · {highlight(review.sellerArticle || review.externalProductId, highlightTerms)}
                 </small>
+                {review.media.length > 0 && (
+                  <div className="review-media-strip" aria-label="Медиа отзыва">
+                    {review.media.slice(0, 6).map((item, index) => (
+                      <button
+                        className={`review-media-thumb ${item.kind === 'video' ? 'is-video' : ''}`}
+                        type="button"
+                        key={`${item.url}-${index}`}
+                        onClick={() => openMedia(review, index)}
+                        aria-label={item.kind === 'video' ? 'Открыть видео отзыва' : 'Открыть фото отзыва'}
+                      >
+                        {mediaThumbnail(item) ? <img src={mediaThumbnail(item)} alt="" loading="lazy" /> : <span>Видео</span>}
+                      </button>
+                    ))}
+                    {review.media.length > 6 && <span className="review-media-more">+{review.media.length - 6}</span>}
+                  </div>
+                )}
               </div>
               <span>{review.rating ?? '-'} / 5</span>
               <span className={review.visibility === 'visible' ? 'status-ok' : 'status-muted'}>
@@ -386,8 +440,66 @@ export default function Reviews() {
           </button>
         </div>
       )}
+      {mediaViewer && activeMedia && (
+        <div className="admin-media-viewer" role="presentation">
+          <div className="admin-media-backdrop" onClick={() => setMediaViewer(null)} />
+          <div className="admin-media-dialog" role="dialog" aria-modal="true" aria-label="Просмотр медиа отзыва">
+            <div className="admin-media-top">
+              <strong>{mediaViewer.title}</strong>
+              <a href={activeMedia.url} target="_blank" rel="noreferrer">
+                {activeMedia.kind === 'video' ? 'Открыть видео' : 'Открыть оригинал'}
+              </a>
+              <button className="secondary clear-button" onClick={() => setMediaViewer(null)} aria-label="Закрыть просмотр">
+                ×
+              </button>
+            </div>
+            {mediaViewer.items.length > 1 && (
+              <button className="admin-media-nav admin-media-prev" onClick={() => shiftMedia(-1)} aria-label="Предыдущее медиа">
+                ‹
+              </button>
+            )}
+            <div className="admin-media-stage">
+              {activeMedia.kind === 'video' && isPlayableVideo(activeMedia.url) ? (
+                <video src={activeMedia.url} controls playsInline />
+              ) : mediaPreview(activeMedia) ? (
+                <img src={mediaPreview(activeMedia)} alt={activeMedia.kind === 'video' ? 'Видео отзыва' : 'Фото отзыва'} />
+              ) : (
+                <a className="admin-media-placeholder" href={activeMedia.url} target="_blank" rel="noreferrer">
+                  Открыть медиа
+                </a>
+              )}
+            </div>
+            {mediaViewer.items.length > 1 && (
+              <button className="admin-media-nav admin-media-next" onClick={() => shiftMedia(1)} aria-label="Следующее медиа">
+                ›
+              </button>
+            )}
+            <div className="admin-media-count">
+              {mediaViewer.index + 1} / {mediaViewer.items.length}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
+}
+
+function mediaThumbnail(item: ReviewMedia) {
+  if (item.kind === 'video') return item.previewUrl || ''
+  return item.previewUrl || item.url
+}
+
+function mediaPreview(item: ReviewMedia) {
+  if (item.kind === 'video' && !isImageLike(item.url)) return item.previewUrl || ''
+  return item.previewUrl || item.url
+}
+
+function isPlayableVideo(url: string) {
+  return /\.(mp4|webm|ogg|ogv|m3u8)(\?|#|$)/i.test(url)
+}
+
+function isImageLike(url: string) {
+  return /\.(avif|gif|jpe?g|png|svg|webp)(\?|#|$)/i.test(url)
 }
 
 function highlight(value: string, terms: string[]): ReactNode {

@@ -267,11 +267,78 @@
       </div>
     `;
 
-    fragment.append(header, body);
+    const viewer = document.createElement("div");
+    viewer.className = "rw-media-viewer";
+    viewer.hidden = true;
+    viewer.setAttribute("aria-hidden", "true");
+    viewer.setAttribute("data-role", "media-viewer");
+    viewer.innerHTML = `
+      <div class="rw-media-viewer-backdrop" data-role="viewer-close"></div>
+      <div class="rw-media-dialog" role="dialog" aria-modal="true" aria-label="Просмотр медиа отзыва">
+        <div class="rw-media-dialog-top">
+          <div class="rw-media-dialog-caption" data-role="viewer-caption"></div>
+          <a class="rw-media-original" data-role="viewer-original" href="#" target="_blank" rel="noreferrer">Открыть оригинал</a>
+          <button class="rw-media-close" type="button" data-role="viewer-close" aria-label="Закрыть просмотр">×</button>
+        </div>
+        <button class="rw-media-nav rw-media-prev" type="button" data-role="viewer-prev" aria-label="Предыдущее медиа">‹</button>
+        <div class="rw-media-stage" data-role="viewer-stage"></div>
+        <button class="rw-media-nav rw-media-next" type="button" data-role="viewer-next" aria-label="Следующее медиа">›</button>
+        <div class="rw-media-counter" data-role="viewer-counter"></div>
+      </div>
+    `;
+
+    fragment.append(header, body, viewer);
     return fragment;
   }
 
   function bind(root, state) {
+    if (root.__reviewsWidgetKeydown) {
+      root.ownerDocument.removeEventListener("keydown", root.__reviewsWidgetKeydown);
+    }
+    root.__reviewsWidgetKeydown = (event) => {
+      const viewer = root.querySelector('[data-role="media-viewer"]');
+      if (!viewer || viewer.hidden) {
+        return;
+      }
+      if (event.key === "Escape") {
+        closeMediaViewer(root);
+      }
+      if (event.key === "ArrowLeft") {
+        shiftMediaViewer(root, -1);
+      }
+      if (event.key === "ArrowRight") {
+        shiftMediaViewer(root, 1);
+      }
+    };
+    root.ownerDocument.addEventListener("keydown", root.__reviewsWidgetKeydown);
+
+    if (root.__reviewsWidgetMediaClick) {
+      root.removeEventListener("click", root.__reviewsWidgetMediaClick);
+    }
+    root.__reviewsWidgetMediaClick = (event) => {
+      const close = event.target.closest('[data-role="viewer-close"]');
+      if (close && root.contains(close)) {
+        event.preventDefault();
+        closeMediaViewer(root);
+        return;
+      }
+
+      const nav = event.target.closest('[data-role="viewer-prev"], [data-role="viewer-next"]');
+      if (nav && root.contains(nav)) {
+        event.preventDefault();
+        shiftMediaViewer(root, nav.getAttribute("data-role") === "viewer-prev" ? -1 : 1);
+        return;
+      }
+
+      const trigger = event.target.closest("[data-media-viewer]");
+      if (trigger && root.contains(trigger)) {
+        event.preventDefault();
+        event.stopPropagation();
+        openMediaViewer(root, trigger);
+      }
+    };
+    root.addEventListener("click", root.__reviewsWidgetMediaClick);
+
     const sort = root.querySelector('[data-role="sort"]');
     sort.value = state.sort;
     sort.addEventListener("change", (event) => {
@@ -475,8 +542,9 @@
           .slice(0, 18)
           .map((item) => {
             const src = item.kind === "video" ? item.previewUrl || "./assets/review-video.svg" : item.url;
+            const caption = item.kind === "video" ? `Видео отзыва, ${item.authorName}` : `Фото отзыва, ${item.authorName}`;
             return `
-              <a class="rw-strip-media-item" href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">
+              <a class="rw-strip-media-item" href="${escapeAttribute(item.url)}" ${mediaTriggerAttributes(item, caption)}>
                 <img src="${escapeAttribute(src)}" alt="${escapeAttribute(item.kind === "video" ? "Видео отзыва" : `Фото отзыва, ${item.authorName}`)}" loading="lazy" />
                 ${item.kind === "video" ? '<span class="rw-play-badge"></span>' : ""}
               </a>
@@ -588,8 +656,9 @@
         ${media
           .map((item) => {
             const src = item.kind === "video" ? item.previewUrl || "./assets/review-video.svg" : item.url;
+            const caption = item.kind === "video" ? "Видео отзыва" : "Фото отзыва";
             return `
-              <a class="rw-media-item" href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">
+              <a class="rw-media-item" href="${escapeAttribute(item.url)}" ${mediaTriggerAttributes(item, caption)}>
                 <img src="${escapeAttribute(src)}" alt="${item.kind === "video" ? "Видео отзыва" : "Фото отзыва"}" loading="lazy" />
                 ${item.kind === "video" ? '<span class="rw-video-badge" aria-hidden="true"></span>' : ""}
               </a>
@@ -598,6 +667,126 @@
           .join("")}
       </div>
     `;
+  }
+
+  function mediaTriggerAttributes(item, caption) {
+    const key = `${item.kind || "media"}:${item.url || ""}`;
+    return [
+      'data-media-viewer="true"',
+      `data-media-key="${escapeAttribute(key)}"`,
+      `data-media-kind="${escapeAttribute(item.kind || "photo")}"`,
+      `data-media-url="${escapeAttribute(item.url || "")}"`,
+      `data-media-preview="${escapeAttribute(item.previewUrl || "")}"`,
+      `data-media-caption="${escapeAttribute(caption || "")}"`,
+      'target="_blank"',
+      'rel="noreferrer"',
+    ].join(" ");
+  }
+
+  function openMediaViewer(root, trigger) {
+    const viewer = root.querySelector('[data-role="media-viewer"]');
+    if (!viewer) {
+      return;
+    }
+    const items = collectRenderedMedia(root);
+    if (items.length === 0) {
+      return;
+    }
+    const key = trigger.getAttribute("data-media-key");
+    const index = Math.max(0, items.findIndex((item) => item.key === key));
+    viewer.__items = items;
+    viewer.__index = index;
+    viewer.__previousFocus = root.ownerDocument.activeElement;
+    viewer.hidden = false;
+    viewer.setAttribute("aria-hidden", "false");
+    root.classList.add("rw-viewer-open");
+    renderMediaViewer(root);
+    const close = viewer.querySelector(".rw-media-close");
+    if (close && typeof close.focus === "function") {
+      close.focus();
+    }
+  }
+
+  function closeMediaViewer(root) {
+    const viewer = root.querySelector('[data-role="media-viewer"]');
+    if (!viewer || viewer.hidden) {
+      return;
+    }
+    viewer.hidden = true;
+    viewer.setAttribute("aria-hidden", "true");
+    root.classList.remove("rw-viewer-open");
+    const previousFocus = viewer.__previousFocus;
+    if (previousFocus && typeof previousFocus.focus === "function") {
+      previousFocus.focus();
+    }
+  }
+
+  function shiftMediaViewer(root, direction) {
+    const viewer = root.querySelector('[data-role="media-viewer"]');
+    if (!viewer || viewer.hidden || !viewer.__items || viewer.__items.length === 0) {
+      return;
+    }
+    viewer.__index = (viewer.__index + direction + viewer.__items.length) % viewer.__items.length;
+    renderMediaViewer(root);
+  }
+
+  function renderMediaViewer(root) {
+    const viewer = root.querySelector('[data-role="media-viewer"]');
+    const items = viewer.__items || [];
+    const item = items[viewer.__index];
+    if (!item) {
+      closeMediaViewer(root);
+      return;
+    }
+    const stage = viewer.querySelector('[data-role="viewer-stage"]');
+    const caption = viewer.querySelector('[data-role="viewer-caption"]');
+    const original = viewer.querySelector('[data-role="viewer-original"]');
+    const counter = viewer.querySelector('[data-role="viewer-counter"]');
+    const prev = viewer.querySelector('[data-role="viewer-prev"]');
+    const next = viewer.querySelector('[data-role="viewer-next"]');
+    const canPlayVideo = item.kind === "video" && isLikelyVideoURL(item.url);
+    const canShowImage = item.kind !== "video" || item.previewUrl || isLikelyImageURL(item.url);
+    const preview = item.previewUrl || item.url;
+    caption.textContent = item.caption || (item.kind === "video" ? "Видео отзыва" : "Фото отзыва");
+    original.href = item.url;
+    original.textContent = item.kind === "video" ? "Открыть видео" : "Открыть оригинал";
+    counter.textContent = `${viewer.__index + 1} / ${items.length}`;
+    prev.hidden = items.length < 2;
+    next.hidden = items.length < 2;
+    stage.innerHTML = canPlayVideo
+      ? `<video class="rw-media-viewer-video" src="${escapeAttribute(item.url)}" controls playsinline></video>`
+      : canShowImage ? `
+        <img class="rw-media-viewer-image" src="${escapeAttribute(preview)}" alt="${escapeAttribute(caption.textContent)}" />
+        ${item.kind === "video" ? '<span class="rw-media-viewer-play" aria-hidden="true"></span>' : ""}
+      `
+        : `<a class="rw-media-viewer-placeholder" href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">Открыть медиа</a>`;
+  }
+
+  function collectRenderedMedia(root) {
+    const seen = new Set();
+    return Array.from(root.querySelectorAll("[data-media-viewer]"))
+      .map((node) => ({
+        key: node.getAttribute("data-media-key") || node.getAttribute("data-media-url") || node.href,
+        kind: node.getAttribute("data-media-kind") || "photo",
+        url: node.getAttribute("data-media-url") || node.href,
+        previewUrl: node.getAttribute("data-media-preview") || "",
+        caption: node.getAttribute("data-media-caption") || "",
+      }))
+      .filter((item) => {
+        if (!item.url || seen.has(item.key)) {
+          return false;
+        }
+        seen.add(item.key);
+        return true;
+      });
+  }
+
+  function isLikelyVideoURL(url) {
+    return /\.(mp4|webm|ogg|ogv|m3u8)(\?|#|$)/i.test(String(url || ""));
+  }
+
+  function isLikelyImageURL(url) {
+    return /\.(avif|gif|jpe?g|png|svg|webp)(\?|#|$)/i.test(String(url || ""));
   }
 
   function renderAnswer(answer, config) {
