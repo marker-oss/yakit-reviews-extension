@@ -40,7 +40,8 @@ func (s *Server) handleAdminReviews(w http.ResponseWriter, r *http.Request) {
 		Marketplace:   q.Get("marketplace"),
 		Status:        status,
 		Visibility:    q.Get("visibility"),
-		SellerArticle: q.Get("article"),
+		SellerArticle: q.Get("article_exact"),
+		ArticleSearch: firstNonEmpty(q.Get("article_search"), q.Get("article")),
 		Search:        q.Get("search"),
 		HasPhoto:      q.Get("has_photo") == "true",
 		SortBy:        adminSortBy(q.Get("sort")),
@@ -78,6 +79,15 @@ func (s *Server) handleAdminReviews(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 	writeJSON(w, http.StatusOK, adminReviewsResponse{Reviews: items, Total: total})
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func adminStatus(value string) (string, bool) {

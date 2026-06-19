@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { apiGet, apiWrite } from '../api'
 import type { Review } from '../types'
 
@@ -8,6 +8,7 @@ type ListResponse = {
 }
 
 const PAGE_SIZE = 25
+const SEARCH_DELAY_MS = 350
 
 export default function Reviews() {
   const [data, setData] = useState<ListResponse>({ reviews: [], total: 0 })
@@ -16,7 +17,9 @@ export default function Reviews() {
   const [status, setStatus] = useState('')
   const [sort, setSort] = useState('')
   const [search, setSearch] = useState('')
+  const [searchDraft, setSearchDraft] = useState('')
   const [article, setArticle] = useState('')
+  const [articleDraft, setArticleDraft] = useState('')
   const [offset, setOffset] = useState(0)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [articlePins, setArticlePins] = useState<Set<number>>(new Set())
@@ -31,7 +34,7 @@ export default function Reviews() {
     if (status) query.set('status', status)
     if (sort) query.set('sort', sort)
     if (search) query.set('search', search)
-    if (article.trim()) query.set('article', article.trim())
+    if (article) query.set('article_search', article)
     query.set('limit', String(PAGE_SIZE))
     query.set('offset', String(nextOffset))
     apiGet<ListResponse>(`/admin/api/reviews?${query.toString()}`)
@@ -43,7 +46,16 @@ export default function Reviews() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }
 
-  useEffect(() => load(offset), [marketplace, visibility, status, sort, offset])
+  useEffect(() => load(offset), [marketplace, visibility, status, sort, search, article, offset])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setOffset(0)
+      setSearch(searchDraft.trim())
+      setArticle(articleDraft.trim())
+    }, SEARCH_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [searchDraft, articleDraft])
 
   // Reset to the first page whenever a filter/sort narrows the result set.
   function resetTo(setter: (v: string) => void) {
@@ -54,11 +66,29 @@ export default function Reviews() {
   }
 
   function runSearch() {
+    const nextSearch = searchDraft.trim()
+    const nextArticle = articleDraft.trim()
+    setSearch(nextSearch)
+    setArticle(nextArticle)
     if (offset === 0) {
-      load(0)
+      if (nextSearch === search && nextArticle === article) {
+        load(0)
+      }
     } else {
       setOffset(0)
     }
+  }
+
+  function clearSearch() {
+    setSearchDraft('')
+    setSearch('')
+    setOffset(0)
+  }
+
+  function clearArticle() {
+    setArticleDraft('')
+    setArticle('')
+    setOffset(0)
   }
 
   async function loadPins() {
@@ -75,6 +105,7 @@ export default function Reviews() {
   const to = Math.min(offset + PAGE_SIZE, data.total)
   const hasPrev = offset > 0
   const hasNext = offset + PAGE_SIZE < data.total
+  const highlightTerms = useMemo(() => tokenizeHighlightTerms(search, article), [search, article])
 
   async function moderate(id: number, body: { visibility?: 'visible' | 'hidden'; pinned?: boolean }) {
     setError('')
@@ -185,17 +216,29 @@ export default function Reviews() {
           <option value="media">Сначала с фото</option>
         </select>
         <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          className="search-input"
+          value={searchDraft}
+          onChange={(e) => setSearchDraft(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && runSearch()}
           placeholder="Поиск по тексту"
         />
+        {searchDraft && (
+          <button className="secondary clear-button" onClick={clearSearch} aria-label="Очистить поиск по тексту">
+            ×
+          </button>
+        )}
         <input
-          value={article}
-          onChange={(e) => setArticle(e.target.value)}
+          className="search-input"
+          value={articleDraft}
+          onChange={(e) => setArticleDraft(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-          placeholder="Артикул"
+          placeholder="Артикул или часть"
         />
+        {articleDraft && (
+          <button className="secondary clear-button" onClick={clearArticle} aria-label="Очистить поиск по артикулу">
+            ×
+          </button>
+        )}
         <button className="secondary" onClick={runSearch}>
           Найти
         </button>
@@ -248,8 +291,10 @@ export default function Reviews() {
               </span>
               <div>
                 <strong>{review.authorName || review.marketplace}</strong>
-                <p>{review.text || review.pros || review.cons || review.externalReviewId}</p>
-                <small>{review.marketplace} · {review.sellerArticle || review.externalProductId}</small>
+                <p>{highlight(review.text || review.pros || review.cons || review.externalReviewId, highlightTerms)}</p>
+                <small>
+                  {review.marketplace} · {highlight(review.sellerArticle || review.externalProductId, highlightTerms)}
+                </small>
               </div>
               <span>{review.rating ?? '-'} / 5</span>
               <span className={review.visibility === 'visible' ? 'status-ok' : 'status-muted'}>
@@ -315,4 +360,43 @@ export default function Reviews() {
       )}
     </section>
   )
+}
+
+function highlight(value: string, terms: string[]): ReactNode {
+  if (!value || terms.length === 0) return value
+  const needles = terms
+    .map((term) => term.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+  if (needles.length === 0) return value
+
+  const pattern = new RegExp(`(${needles.map(escapeRegExp).join('|')})`, 'gi')
+  return value.split(pattern).map((part, index) => {
+    if (!part) return null
+    if (needles.some((term) => part.toLowerCase() === term.toLowerCase())) {
+      return (
+        <mark className="search-hit" key={`${part}-${index}`}>
+          {part}
+        </mark>
+      )
+    }
+    return part
+  })
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function tokenizeHighlightTerms(...values: string[]) {
+  const terms = new Set<string>()
+  for (const value of values) {
+    const trimmed = value.trim()
+    if (!trimmed) continue
+    terms.add(trimmed)
+    for (const part of trimmed.split(/[\s/_-]+/)) {
+      if (part.length >= 2) terms.add(part)
+    }
+  }
+  return [...terms]
 }

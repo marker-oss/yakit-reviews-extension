@@ -34,6 +34,7 @@ type ReviewListFilter struct {
 	Status        string
 	Visibility    string
 	SellerArticle string
+	ArticleSearch string
 	HasPhoto      bool
 	HasText       bool
 	HasAnswer     bool
@@ -127,6 +128,26 @@ func (s *Store) applyReviewFilters(query *gorm.DB, filter ReviewListFilter) (*go
 	if filter.SellerArticle != "" {
 		query = query.Where("seller_article = ?", filter.SellerArticle)
 	}
+	if filter.ArticleSearch != "" {
+		raw := strings.TrimSpace(filter.ArticleSearch)
+		like := "%" + strings.ToLower(raw) + "%"
+		rawLike := "%" + raw + "%"
+		normalized := stripArticleSearchSeparators(raw)
+		normalizedLower := strings.ToLower(normalized)
+		normalizedLike := "%" + normalized + "%"
+		normalizedLowerLike := "%" + normalizedLower + "%"
+		query = query.Where(
+			`seller_article LIKE ?
+				OR external_product_id LIKE ?
+				OR LOWER(seller_article) LIKE ?
+				OR LOWER(external_product_id) LIKE ?
+				OR REPLACE(REPLACE(REPLACE(REPLACE(seller_article, '/', ''), '-', ''), '_', ''), ' ', '') LIKE ?
+				OR REPLACE(REPLACE(REPLACE(REPLACE(external_product_id, '/', ''), '-', ''), '_', ''), ' ', '') LIKE ?
+				OR LOWER(REPLACE(REPLACE(REPLACE(REPLACE(seller_article, '/', ''), '-', ''), '_', ''), ' ', '')) LIKE ?
+				OR LOWER(REPLACE(REPLACE(REPLACE(REPLACE(external_product_id, '/', ''), '-', ''), '_', ''), ' ', '')) LIKE ?`,
+			rawLike, rawLike, like, like, normalizedLike, normalizedLike, normalizedLowerLike, normalizedLowerLike,
+		)
+	}
 	if filter.HasPhoto {
 		query = query.Where("id IN (?)",
 			s.db.Model(&ReviewMedia{}).Select("review_id").Where("kind = ?", "photo"))
@@ -138,13 +159,23 @@ func (s *Store) applyReviewFilters(query *gorm.DB, filter ReviewListFilter) (*go
 		query = query.Where("(mp_answer_text IS NOT NULL AND LENGTH(TRIM(mp_answer_text)) > 0) OR (admin_reply_text IS NOT NULL AND LENGTH(TRIM(admin_reply_text)) > 0)")
 	}
 	if filter.Search != "" {
-		like := "%" + filter.Search + "%"
+		like := "%" + strings.ToLower(strings.TrimSpace(filter.Search)) + "%"
 		query = query.Where(
-			"text LIKE ? OR author_name LIKE ? OR pros LIKE ? OR cons LIKE ?",
-			like, like, like, like,
+			`LOWER(text) LIKE ?
+				OR LOWER(author_name) LIKE ?
+				OR LOWER(pros) LIKE ?
+				OR LOWER(cons) LIKE ?
+				OR LOWER(external_review_id) LIKE ?
+				OR LOWER(mp_answer_text) LIKE ?
+				OR LOWER(admin_reply_text) LIKE ?`,
+			like, like, like, like, like, like, like,
 		)
 	}
 	return query, nil
+}
+
+func stripArticleSearchSeparators(value string) string {
+	return strings.NewReplacer("/", "", "-", "", "_", "", " ", "").Replace(strings.TrimSpace(value))
 }
 
 func applyReviewOrder(query *gorm.DB, filter ReviewListFilter) *gorm.DB {

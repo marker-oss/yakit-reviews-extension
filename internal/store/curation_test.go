@@ -214,6 +214,65 @@ func TestListReviewsWithCount(t *testing.T) {
 	}
 }
 
+func TestListReviewsSearchesTextAndArticleFlexibly(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	first := seedReview(t, st, "wb", "ext-search-1", 5)
+	second := seedReview(t, st, "wb", "needle-id", 4)
+	third := seedReview(t, st, "ym", "other", 3)
+	reply := "Будем рады снова видеть вас"
+
+	if err := st.db.WithContext(ctx).Model(&Review{}).Where("id = ?", first.ID).Updates(map[string]any{
+		"seller_article": "3467/Белый",
+		"text":           "Плотная ткань",
+		"author_name":    "Анна",
+	}).Error; err != nil {
+		t.Fatalf("update first: %v", err)
+	}
+	if err := st.db.WithContext(ctx).Model(&Review{}).Where("id = ?", second.ID).Updates(map[string]any{
+		"seller_article":   "6202-бежевый",
+		"text":             "Обычный отзыв",
+		"admin_reply_text": reply,
+	}).Error; err != nil {
+		t.Fatalf("update second: %v", err)
+	}
+	if err := st.db.WithContext(ctx).Model(&Review{}).Where("id = ?", third.ID).Update("seller_article", "777").Error; err != nil {
+		t.Fatalf("update third: %v", err)
+	}
+
+	items, err := st.ListReviews(ctx, ReviewListFilter{ArticleSearch: "3467 Бел"})
+	if err != nil {
+		t.Fatalf("article search: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != first.ID {
+		t.Fatalf("expected normalized article match for first, got %+v", items)
+	}
+
+	items, err = st.ListReviews(ctx, ReviewListFilter{ArticleSearch: "6202"})
+	if err != nil {
+		t.Fatalf("partial article search: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != second.ID {
+		t.Fatalf("expected partial article match for second, got %+v", items)
+	}
+
+	items, err = st.ListReviews(ctx, ReviewListFilter{Search: "рады снова"})
+	if err != nil {
+		t.Fatalf("reply text search: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != second.ID {
+		t.Fatalf("expected admin reply match for second, got %+v", items)
+	}
+
+	items, err = st.ListReviews(ctx, ReviewListFilter{Search: "NEEDLE-ID"})
+	if err != nil {
+		t.Fatalf("external id search: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != second.ID {
+		t.Fatalf("expected external id match for second, got %+v", items)
+	}
+}
+
 func TestDashboardStats(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()

@@ -101,6 +101,25 @@ textarea {
   resize: vertical;
 }
 
+.search-input {
+  width: min(240px, 100%);
+}
+
+.clear-button {
+  width: 40px;
+  min-width: 40px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.search-hit {
+  border-radius: 4px;
+  background: #fff2a8;
+  color: inherit;
+  padding: 0 2px;
+}
+
 .auth-screen {
   min-height: 100vh;
   display: grid;
