@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"reviews/internal/marketplace"
 )
 
 func seedReview(t *testing.T, st *Store, mp, extID string, rating int) Review {
@@ -85,6 +87,112 @@ func TestBulkSetVisibilityAndPinned(t *testing.T) {
 	// Empty id set is a no-op, not an error.
 	if err := st.SetReviewsVisibility(ctx, nil, "visible"); err != nil {
 		t.Fatalf("empty bulk should be no-op: %v", err)
+	}
+}
+
+func TestSoftDeleteRestoreReplyAndSyncPreservation(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	r := seedReview(t, st, "wb", "reply-delete", 5)
+
+	reply := "  Спасибо за отзыв!  "
+	if err := st.SetReviewReply(ctx, r.ID, &reply); err != nil {
+		t.Fatalf("set reply: %v", err)
+	}
+	if err := st.SoftDeleteReview(ctx, r.ID); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+
+	active, err := st.ListReviews(ctx, ReviewListFilter{})
+	if err != nil {
+		t.Fatalf("list active: %v", err)
+	}
+	if len(active) != 0 {
+		t.Fatalf("deleted review should be hidden by default, got %+v", active)
+	}
+	deleted, err := st.ListReviews(ctx, ReviewListFilter{Status: "deleted"})
+	if err != nil {
+		t.Fatalf("list deleted: %v", err)
+	}
+	if len(deleted) != 1 || deleted[0].Status != "deleted" {
+		t.Fatalf("expected deleted review, got %+v", deleted)
+	}
+	if deleted[0].AdminReplyText == nil || *deleted[0].AdminReplyText != "Спасибо за отзыв!" || deleted[0].AdminReplyAt == nil {
+		t.Fatalf("reply was not saved/trimmed: %+v", deleted[0])
+	}
+
+	nextRating := 4
+	_, err = st.UpsertReview(ctx, marketplace.Review{
+		Marketplace:       "wb",
+		ExternalReviewID:  "reply-delete",
+		ExternalProductID: "p1",
+		Rating:            &nextRating,
+		Text:              "updated by marketplace",
+		CreatedAtMP:       time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("resync review: %v", err)
+	}
+	deleted, err = st.ListReviews(ctx, ReviewListFilter{Status: "deleted"})
+	if err != nil {
+		t.Fatalf("list deleted after sync: %v", err)
+	}
+	if len(deleted) != 1 || deleted[0].AdminReplyText == nil || *deleted[0].AdminReplyText != "Спасибо за отзыв!" {
+		t.Fatalf("sync should preserve tombstone and admin reply, got %+v", deleted)
+	}
+
+	if err := st.RestoreReview(ctx, r.ID); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	active, err = st.ListReviews(ctx, ReviewListFilter{})
+	if err != nil {
+		t.Fatalf("list restored: %v", err)
+	}
+	if len(active) != 1 || active[0].Status == "deleted" {
+		t.Fatalf("restored review missing: %+v", active)
+	}
+}
+
+func TestShowcasePins(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	first := seedReview(t, st, "wb", "pin-1", 5)
+	second := seedReview(t, st, "wb", "pin-2", 4)
+
+	if err := st.SetShowcasePin(ctx, "107", first.ID, 1); err != nil {
+		t.Fatalf("set first pin: %v", err)
+	}
+	if err := st.SetShowcasePin(ctx, "107", second.ID, 0); err != nil {
+		t.Fatalf("set second pin: %v", err)
+	}
+	pins, err := st.ListShowcasePins(ctx, "107")
+	if err != nil {
+		t.Fatalf("list pins: %v", err)
+	}
+	if len(pins) != 2 || pins[0].ReviewID != second.ID || pins[1].ReviewID != first.ID {
+		t.Fatalf("unexpected pin order: %+v", pins)
+	}
+
+	if err := st.ReplaceShowcasePins(ctx, "107", []uint{first.ID}); err != nil {
+		t.Fatalf("replace pins: %v", err)
+	}
+	all, err := st.AllShowcasePins(ctx)
+	if err != nil {
+		t.Fatalf("all pins: %v", err)
+	}
+	if len(all["107"]) != 1 || all["107"][0] != first.ID {
+		t.Fatalf("unexpected all pins: %+v", all)
+	}
+
+	if err := st.RemoveShowcasePin(ctx, "107", first.ID); err != nil {
+		t.Fatalf("remove pin: %v", err)
+	}
+	pins, err = st.ListShowcasePins(ctx, "107")
+	if err != nil {
+		t.Fatalf("list after remove: %v", err)
+	}
+	if len(pins) != 0 {
+		t.Fatalf("pin should be removed: %+v", pins)
 	}
 }
 

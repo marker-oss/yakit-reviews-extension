@@ -62,7 +62,9 @@ func (m Mapper) ToReview(review store.Review) Review {
 	sellerArticle := SellerArticleForReview(review)
 
 	var answer *Answer
-	if review.MPAnswerText != nil || review.MPAnswerState != nil {
+	if review.AdminReplyText != nil && strings.TrimSpace(*review.AdminReplyText) != "" {
+		answer = &Answer{Text: *review.AdminReplyText, State: "published"}
+	} else if review.MPAnswerText != nil || review.MPAnswerState != nil {
 		answer = &Answer{Text: stringValue(review.MPAnswerText), State: stringValue(review.MPAnswerState)}
 	}
 

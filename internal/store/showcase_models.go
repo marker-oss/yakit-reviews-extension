@@ -15,3 +15,13 @@ type ShowcaseRule struct {
 	Limit        int    `gorm:"not null;default:12"`
 	UpdatedAt    time.Time
 }
+
+// ShowcasePin places a specific review at the top of one product article page.
+type ShowcasePin struct {
+	ID            uint   `gorm:"primaryKey"`
+	TenantID      uint   `gorm:"not null;default:1;uniqueIndex:idx_pin_article_review"`
+	SellerArticle string `gorm:"size:128;not null;uniqueIndex:idx_pin_article_review;index"`
+	ReviewID      uint   `gorm:"not null;uniqueIndex:idx_pin_article_review"`
+	Position      int    `gorm:"not null;default:0"`
+	CreatedAt     time.Time
+}

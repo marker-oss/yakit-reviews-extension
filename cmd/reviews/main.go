@@ -369,7 +369,12 @@ func runExport(ctx context.Context, args []string, cfg config.Config, logger *sl
 		ProductURLTemplate: *productURLTemplate,
 		ProductLinks:       loadProductLinks(cfg.Web.ProductLinksPath, logger),
 	}
-	bundles := export.BuildBundles(reviews, mapper)
+	pins, err := db.AllShowcasePins(ctx)
+	if err != nil {
+		logger.Error("list showcase pins", "error", err)
+		return exitRunError
+	}
+	bundles := export.BuildBundles(reviews, mapper, pins)
 
 	generatedAt := time.Now().UTC()
 	if err := export.Write(*outDir, bundles, generatedAt); err != nil {

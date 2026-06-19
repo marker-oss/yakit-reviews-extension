@@ -67,6 +67,28 @@ func TestBuildBundlesUsesKnownSiteArticlePrefixes(t *testing.T) {
 	}
 }
 
+func TestBuildBundlesOrdersPinnedArticleReviewsFirst(t *testing.T) {
+	reviews := []store.Review{
+		{ID: 1, Marketplace: "wb", ExternalReviewID: "new", SellerArticle: "107", Rating: ptrInt(5), CreatedAtMP: time.Unix(300, 0)},
+		{ID: 2, Marketplace: "wb", ExternalReviewID: "old-pinned", SellerArticle: "107", Rating: ptrInt(4), CreatedAtMP: time.Unix(100, 0)},
+		{ID: 3, Marketplace: "wb", ExternalReviewID: "middle-pinned", SellerArticle: "107", Rating: ptrInt(3), CreatedAtMP: time.Unix(200, 0)},
+	}
+
+	bundles := BuildBundles(reviews, reviewjson.Mapper{}, map[string][]uint{"107": {3, 2}})
+
+	got := []string{
+		bundles["107"].Reviews[0].ExternalReviewID,
+		bundles["107"].Reviews[1].ExternalReviewID,
+		bundles["107"].Reviews[2].ExternalReviewID,
+	}
+	want := []string{"middle-pinned", "old-pinned", "new"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("order = %v, want %v", got, want)
+		}
+	}
+}
+
 func TestWriteProducesFiles(t *testing.T) {
 	dir := t.TempDir()
 	reviews := []store.Review{
@@ -117,10 +139,10 @@ func TestBuildLinkIndexMapsEveryPathAndIDToArticle(t *testing.T) {
 	idx := BuildLinkIndex(links, time.Unix(1000, 0).UTC())
 
 	wantPath := map[string]string{
-		"/products/plate-naryadnoe-ofisnoe-suhaya-roza-102291":   "1777-5",
-		"/products/plate-naryadnoe-cvet-1-bejevyiy-100635":       "1777-5",
+		"/products/plate-naryadnoe-ofisnoe-suhaya-roza-102291":           "1777-5",
+		"/products/plate-naryadnoe-cvet-1-bejevyiy-100635":               "1777-5",
 		"/products/plate-naryadnoe-v-stile-boho-temno-biryzovyiy-102277": "3453",
-		"/products/slug-without-id":                              "55",
+		"/products/slug-without-id":                                      "55",
 	}
 	if len(idx.ByPath) != len(wantPath) {
 		t.Fatalf("ByPath size = %d, want %d (%v)", len(idx.ByPath), len(wantPath), idx.ByPath)

@@ -3,9 +3,11 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func (s *Store) SetReviewVisibility(ctx context.Context, id uint, visibility string) error {
@@ -42,6 +44,46 @@ func (s *Store) SetReviewsPinned(ctx context.Context, ids []uint, pinned bool) e
 		Update("pinned", pinned).Error
 }
 
+func (s *Store) SoftDeleteReview(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Model(&Review{}).
+		Where("id = ?", id).
+		Update("status", "deleted").Error
+}
+
+func (s *Store) RestoreReview(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Model(&Review{}).
+		Where("id = ?", id).
+		Update("status", "imported").Error
+}
+
+func (s *Store) SetReviewsStatus(ctx context.Context, ids []uint, status string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return s.db.WithContext(ctx).Model(&Review{}).
+		Where("id IN ?", ids).
+		Update("status", status).Error
+}
+
+func (s *Store) SetReviewReply(ctx context.Context, id uint, text *string) error {
+	value := ""
+	if text != nil {
+		value = strings.TrimSpace(*text)
+	}
+	updates := map[string]any{
+		"admin_reply_text": nil,
+		"admin_reply_at":   nil,
+	}
+	if value != "" {
+		now := time.Now().UTC()
+		updates["admin_reply_text"] = value
+		updates["admin_reply_at"] = now
+	}
+	return s.db.WithContext(ctx).Model(&Review{}).
+		Where("id = ?", id).
+		Updates(updates).Error
+}
+
 // ListReviewsWithCount returns a page of reviews plus the total matching count
 // without limit/offset for pagination.
 func (s *Store) ListReviewsWithCount(ctx context.Context, filter ReviewListFilter) ([]Review, int64, error) {
@@ -66,6 +108,7 @@ func (s *Store) ListReviewsWithCount(ctx context.Context, filter ReviewListFilte
 type Stats struct {
 	TotalReviews   int64
 	VisibleReviews int64
+	DeletedReviews int64
 	AverageRating  float64
 	ByMarketplace  map[string]int64
 }
@@ -78,7 +121,9 @@ type ReviewAggregate struct {
 
 func (s *Store) VisibleReviewAggregate(ctx context.Context) (ReviewAggregate, error) {
 	var aggregate ReviewAggregate
-	db := s.db.WithContext(ctx).Model(&Review{}).Where("visibility = ?", "visible")
+	db := s.db.WithContext(ctx).Model(&Review{}).
+		Where("visibility = ?", "visible").
+		Where("status <> ?", "deleted")
 
 	if err := db.Count(&aggregate.TotalReviews).Error; err != nil {
 		return ReviewAggregate{}, err
@@ -104,19 +149,25 @@ func (s *Store) DashboardStats(ctx context.Context) (Stats, error) {
 	stats := Stats{ByMarketplace: map[string]int64{}}
 	db := s.db.WithContext(ctx)
 
-	if err := db.Model(&Review{}).Count(&stats.TotalReviews).Error; err != nil {
+	active := db.Model(&Review{}).Where("status <> ?", "deleted")
+	if err := active.Count(&stats.TotalReviews).Error; err != nil {
 		return Stats{}, err
 	}
 
-	visible := db.Model(&Review{}).Where("visibility = ?", "visible")
+	visible := db.Model(&Review{}).
+		Where("visibility = ?", "visible").
+		Where("status <> ?", "deleted")
 	if err := visible.Count(&stats.VisibleReviews).Error; err != nil {
+		return Stats{}, err
+	}
+	if err := db.Model(&Review{}).Where("status = ?", "deleted").Count(&stats.DeletedReviews).Error; err != nil {
 		return Stats{}, err
 	}
 
 	// Average is computed over the visible set so the dashboard headline matches
 	// what the public site shows via VisibleReviewAggregate / /api/showcase.
 	var avg *float64
-	if err := db.Model(&Review{}).Where("visibility = ?", "visible").
+	if err := db.Model(&Review{}).Where("visibility = ?", "visible").Where("status <> ?", "deleted").
 		Select("AVG(rating)").Scan(&avg).Error; err != nil {
 		return Stats{}, err
 	}
@@ -130,6 +181,7 @@ func (s *Store) DashboardStats(ctx context.Context) (Stats, error) {
 	}
 	if err := db.Model(&Review{}).
 		Select("marketplace, COUNT(*) as n").
+		Where("status <> ?", "deleted").
 		Group("marketplace").
 		Scan(&rows).Error; err != nil {
 		return Stats{}, err
@@ -182,7 +234,8 @@ func (s *Store) ShowcaseReviews(ctx context.Context, rule ShowcaseRule) ([]Revie
 		Preload("Media", func(db *gorm.DB) *gorm.DB {
 			return db.Order("position asc").Order("id asc")
 		}).
-		Where("visibility = ?", "visible")
+		Where("visibility = ?", "visible").
+		Where("status <> ?", "deleted")
 	if rule.MinRating > 0 {
 		query = query.Where("rating >= ?", rule.MinRating)
 	}
@@ -212,6 +265,77 @@ func (s *Store) ShowcaseReviews(ctx context.Context, rule ShowcaseRule) ([]Revie
 	var reviews []Review
 	err := query.Limit(limit).Find(&reviews).Error
 	return reviews, err
+}
+
+func (s *Store) ListShowcasePins(ctx context.Context, article string) ([]ShowcasePin, error) {
+	var pins []ShowcasePin
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND seller_article = ?", DefaultTenantID, article).
+		Order("position asc").
+		Order("id asc").
+		Find(&pins).Error
+	return pins, err
+}
+
+func (s *Store) SetShowcasePin(ctx context.Context, article string, reviewID uint, position int) error {
+	pin := ShowcasePin{
+		TenantID:      DefaultTenantID,
+		SellerArticle: article,
+		ReviewID:      reviewID,
+		Position:      position,
+	}
+	return s.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "tenant_id"},
+			{Name: "seller_article"},
+			{Name: "review_id"},
+		},
+		DoUpdates: clause.AssignmentColumns([]string{"position"}),
+	}).Create(&pin).Error
+}
+
+func (s *Store) ReplaceShowcasePins(ctx context.Context, article string, reviewIDs []uint) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("tenant_id = ? AND seller_article = ?", DefaultTenantID, article).
+			Delete(&ShowcasePin{}).Error; err != nil {
+			return err
+		}
+		for i, reviewID := range reviewIDs {
+			pin := ShowcasePin{
+				TenantID:      DefaultTenantID,
+				SellerArticle: article,
+				ReviewID:      reviewID,
+				Position:      i,
+			}
+			if err := tx.Create(&pin).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Store) RemoveShowcasePin(ctx context.Context, article string, reviewID uint) error {
+	return s.db.WithContext(ctx).
+		Where("tenant_id = ? AND seller_article = ? AND review_id = ?", DefaultTenantID, article, reviewID).
+		Delete(&ShowcasePin{}).Error
+}
+
+func (s *Store) AllShowcasePins(ctx context.Context) (map[string][]uint, error) {
+	var pins []ShowcasePin
+	if err := s.db.WithContext(ctx).
+		Where("tenant_id = ?", DefaultTenantID).
+		Order("seller_article asc").
+		Order("position asc").
+		Order("id asc").
+		Find(&pins).Error; err != nil {
+		return nil, err
+	}
+	byArticle := make(map[string][]uint)
+	for _, pin := range pins {
+		byArticle[pin.SellerArticle] = append(byArticle[pin.SellerArticle], pin.ReviewID)
+	}
+	return byArticle, nil
 }
 
 func defaultShowcaseRule() ShowcaseRule {

@@ -80,14 +80,25 @@ button.secondary:hover {
   color: var(--admin-iris);
 }
 
+button.danger {
+  color: var(--admin-sale);
+}
+
 input,
-select {
+select,
+textarea {
   min-height: 40px;
   border: 1px solid var(--admin-border);
   border-radius: 12px;
   background: var(--admin-surface);
   color: var(--admin-text);
   padding: 0 10px;
+}
+
+textarea {
+  min-height: 76px;
+  padding: 10px;
+  resize: vertical;
 }
 
 .auth-screen {
@@ -297,7 +308,7 @@ small {
 }
 
 .grid-reviews {
-  grid-template-columns: 36px minmax(240px, 1fr) 80px 130px 170px;
+  grid-template-columns: 36px minmax(240px, 1fr) 80px 130px 260px;
 }
 
 .bulk-bar {
@@ -345,6 +356,14 @@ small {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.reply-editor {
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
 }
 
 .status-ok {
@@ -470,5 +489,10 @@ small {
 
   .actions {
     justify-content: flex-start;
+  }
+
+  .reply-editor {
+    grid-column: 1;
+    grid-template-columns: 1fr;
   }
 }

@@ -39,8 +39,13 @@ type Index struct {
 }
 
 // BuildBundles groups reviews by normalized seller article and computes
-// aggregates. Reviews without a seller article are skipped.
-func BuildBundles(reviews []store.Review, mapper reviewjson.Mapper) map[string]*Bundle {
+// aggregates. Reviews without a seller article are skipped. Optional pin maps
+// place matching review IDs first within each article bundle.
+func BuildBundles(reviews []store.Review, mapper reviewjson.Mapper, pinsByArticle ...map[string][]uint) map[string]*Bundle {
+	pins := map[string][]uint{}
+	if len(pinsByArticle) > 0 && pinsByArticle[0] != nil {
+		pins = pinsByArticle[0]
+	}
 	bundles := make(map[string]*Bundle)
 	for _, review := range reviews {
 		article := mapper.NormalizeSellerArticle(reviewjson.SellerArticleForReview(review))
@@ -57,7 +62,16 @@ func BuildBundles(reviews []store.Review, mapper reviewjson.Mapper) map[string]*
 	}
 
 	for _, bundle := range bundles {
+		pinOrder := reviewPinOrder(pins[bundle.Article])
 		sort.SliceStable(bundle.Reviews, func(i, j int) bool {
+			left, leftPinned := pinOrder[bundle.Reviews[i].ID]
+			right, rightPinned := pinOrder[bundle.Reviews[j].ID]
+			if leftPinned && rightPinned {
+				return left < right
+			}
+			if leftPinned != rightPinned {
+				return leftPinned
+			}
 			return bundle.Reviews[i].CreatedAt.After(bundle.Reviews[j].CreatedAt)
 		})
 
@@ -80,6 +94,19 @@ func BuildBundles(reviews []store.Review, mapper reviewjson.Mapper) map[string]*
 	}
 
 	return bundles
+}
+
+func reviewPinOrder(ids []uint) map[uint]int {
+	order := make(map[uint]int, len(ids))
+	for i, id := range ids {
+		if id == 0 {
+			continue
+		}
+		if _, exists := order[id]; !exists {
+			order[id] = i
+		}
+	}
+	return order
 }
 
 // Write emits by-article/<article>.json files and index.json into dir.

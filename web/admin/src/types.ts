@@ -13,11 +13,14 @@ export type Review = {
   media: { kind: string; url: string; previewUrl?: string; position: number }[]
   visibility: 'visible' | 'hidden'
   pinned: boolean
+  status: 'imported' | 'deleted'
+  adminReply?: { text: string; at?: string }
 }
 
 export type DashboardData = {
   total_reviews: number
   visible_reviews: number
+  deleted_reviews: number
   average_rating: number
   by_marketplace: Record<string, number>
   recent_syncs: {

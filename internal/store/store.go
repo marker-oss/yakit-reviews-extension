@@ -49,6 +49,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 		&AdminUser{},
 		&Session{},
 		&ShowcaseRule{},
+		&ShowcasePin{},
 		&WidgetConfig{},
 		&MarketplaceCredential{},
 	)

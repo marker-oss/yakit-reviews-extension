@@ -13,10 +13,14 @@ export default function Reviews() {
   const [data, setData] = useState<ListResponse>({ reviews: [], total: 0 })
   const [marketplace, setMarketplace] = useState('')
   const [visibility, setVisibility] = useState('')
+  const [status, setStatus] = useState('')
   const [sort, setSort] = useState('')
   const [search, setSearch] = useState('')
+  const [article, setArticle] = useState('')
   const [offset, setOffset] = useState(0)
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [articlePins, setArticlePins] = useState<Set<number>>(new Set())
+  const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({})
   const [error, setError] = useState('')
 
   function load(nextOffset = offset) {
@@ -24,16 +28,22 @@ export default function Reviews() {
     const query = new URLSearchParams()
     if (marketplace) query.set('marketplace', marketplace)
     if (visibility) query.set('visibility', visibility)
+    if (status) query.set('status', status)
     if (sort) query.set('sort', sort)
     if (search) query.set('search', search)
+    if (article.trim()) query.set('article', article.trim())
     query.set('limit', String(PAGE_SIZE))
     query.set('offset', String(nextOffset))
     apiGet<ListResponse>(`/admin/api/reviews?${query.toString()}`)
-      .then(setData)
+      .then((next) => {
+        setData(next)
+        setReplyDrafts(Object.fromEntries(next.reviews.map((review) => [review.id, review.adminReply?.text ?? ''])))
+        return loadPins()
+      })
       .catch((err) => setError(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }
 
-  useEffect(() => load(offset), [marketplace, visibility, sort, offset])
+  useEffect(() => load(offset), [marketplace, visibility, status, sort, offset])
 
   // Reset to the first page whenever a filter/sort narrows the result set.
   function resetTo(setter: (v: string) => void) {
@@ -51,6 +61,16 @@ export default function Reviews() {
     }
   }
 
+  async function loadPins() {
+    const currentArticle = article.trim()
+    if (!currentArticle) {
+      setArticlePins(new Set())
+      return
+    }
+    const data = await apiGet<{ reviewIds: number[] }>(`/admin/api/articles/${encodeURIComponent(currentArticle)}/pins`)
+    setArticlePins(new Set(data.reviewIds))
+  }
+
   const from = data.total === 0 ? 0 : offset + 1
   const to = Math.min(offset + PAGE_SIZE, data.total)
   const hasPrev = offset > 0
@@ -66,7 +86,52 @@ export default function Reviews() {
     }
   }
 
-  async function bulkModerate(body: { visibility?: 'visible' | 'hidden'; pinned?: boolean }) {
+  async function deleteReview(id: number) {
+    setError('')
+    try {
+      await apiWrite('DELETE', `/admin/api/reviews/${id}`)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+    }
+  }
+
+  async function restoreReview(id: number) {
+    setError('')
+    try {
+      await apiWrite('POST', `/admin/api/reviews/${id}/restore`)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+    }
+  }
+
+  async function saveReply(id: number) {
+    setError('')
+    try {
+      await apiWrite('PUT', `/admin/api/reviews/${id}/reply`, { text: replyDrafts[id] ?? '' })
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+    }
+  }
+
+  async function toggleArticlePin(id: number) {
+    const currentArticle = article.trim()
+    if (!currentArticle) return
+    const next = articlePins.has(id)
+      ? [...articlePins].filter((reviewID) => reviewID !== id)
+      : [...articlePins, id]
+    setError('')
+    try {
+      await apiWrite('PUT', `/admin/api/articles/${encodeURIComponent(currentArticle)}/pins`, { reviewIds: next })
+      setArticlePins(new Set(next))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+    }
+  }
+
+  async function bulkModerate(body: { visibility?: 'visible' | 'hidden'; pinned?: boolean; status?: 'deleted' }) {
     if (selected.size === 0) return
     setError('')
     try {
@@ -108,6 +173,11 @@ export default function Reviews() {
           <option value="visible">Показан</option>
           <option value="hidden">Скрыт</option>
         </select>
+        <select value={status} onChange={(e) => resetTo(setStatus)(e.target.value)}>
+          <option value="">Активные</option>
+          <option value="deleted">Удалённые</option>
+          <option value="all">Все</option>
+        </select>
         <select value={sort} onChange={(e) => resetTo(setSort)(e.target.value)}>
           <option value="">Сначала новые</option>
           <option value="highest">Высокий рейтинг</option>
@@ -119,6 +189,12 @@ export default function Reviews() {
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && runSearch()}
           placeholder="Поиск по тексту"
+        />
+        <input
+          value={article}
+          onChange={(e) => setArticle(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+          placeholder="Артикул"
         />
         <button className="secondary" onClick={runSearch}>
           Найти
@@ -140,6 +216,9 @@ export default function Reviews() {
           </button>
           <button className="secondary" onClick={() => bulkModerate({ pinned: false })}>
             Открепить
+          </button>
+          <button className="secondary danger" onClick={() => bulkModerate({ status: 'deleted' })}>
+            Удалить
           </button>
           <button className="secondary" onClick={() => setSelected(new Set())}>
             Снять выбор
@@ -174,17 +253,46 @@ export default function Reviews() {
               </div>
               <span>{review.rating ?? '-'} / 5</span>
               <span className={review.visibility === 'visible' ? 'status-ok' : 'status-muted'}>
-                {review.pinned ? 'закреплён · ' : ''}{review.visibility === 'visible' ? 'показан' : 'скрыт'}
+                {review.status === 'deleted'
+                  ? 'удалён'
+                  : `${review.pinned ? 'закреплён · ' : ''}${review.visibility === 'visible' ? 'показан' : 'скрыт'}`}
               </span>
               <div className="actions">
-                <button
-                  className="secondary"
-                  onClick={() => moderate(review.id, { visibility: review.visibility === 'visible' ? 'hidden' : 'visible' })}
-                >
-                  {review.visibility === 'visible' ? 'Скрыть' : 'Показать'}
-                </button>
-                <button className="secondary" onClick={() => moderate(review.id, { pinned: !review.pinned })}>
-                  {review.pinned ? 'Открепить' : 'Закрепить'}
+                {review.status === 'deleted' ? (
+                  <button className="secondary" onClick={() => restoreReview(review.id)}>
+                    Восстановить
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      className="secondary"
+                      onClick={() => moderate(review.id, { visibility: review.visibility === 'visible' ? 'hidden' : 'visible' })}
+                    >
+                      {review.visibility === 'visible' ? 'Скрыть' : 'Показать'}
+                    </button>
+                    <button className="secondary" onClick={() => moderate(review.id, { pinned: !review.pinned })}>
+                      {review.pinned ? 'Открепить' : 'Закрепить'}
+                    </button>
+                    {article.trim() && (
+                      <button className="secondary" onClick={() => toggleArticlePin(review.id)}>
+                        {articlePins.has(review.id) ? 'Снять с товара' : 'На страницу товара'}
+                      </button>
+                    )}
+                    <button className="secondary danger" onClick={() => deleteReview(review.id)}>
+                      Удалить
+                    </button>
+                  </>
+                )}
+              </div>
+              <div className="reply-editor">
+                <textarea
+                  value={replyDrafts[review.id] ?? ''}
+                  onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [review.id]: e.target.value }))}
+                  placeholder="Ответ SHEGIDA"
+                  rows={2}
+                />
+                <button className="secondary" onClick={() => saveReply(review.id)}>
+                  Сохранить ответ
                 </button>
               </div>
             </div>

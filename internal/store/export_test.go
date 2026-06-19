@@ -57,6 +57,20 @@ func TestListVisibleReviewsReturnsVisibleRowsWithMedia(t *testing.T) {
 	if err := s.SetReviewVisibility(ctx, hidden.Review.ID, "hidden"); err != nil {
 		t.Fatalf("hide review: %v", err)
 	}
+	deleted, err := s.UpsertReview(ctx, marketplace.Review{
+		Marketplace:       "wb",
+		ExternalReviewID:  "deleted-review",
+		ExternalProductID: "103",
+		SellerArticle:     "deleted-article",
+		Rating:            &rating,
+		CreatedAtMP:       newTime,
+	})
+	if err != nil {
+		t.Fatalf("upsert deleted review: %v", err)
+	}
+	if err := s.SoftDeleteReview(ctx, deleted.Review.ID); err != nil {
+		t.Fatalf("delete review: %v", err)
+	}
 
 	reviews, err := s.ListVisibleReviews(ctx)
 	if err != nil {
@@ -68,6 +82,9 @@ func TestListVisibleReviewsReturnsVisibleRowsWithMedia(t *testing.T) {
 	for _, rv := range reviews {
 		if rv.ExternalReviewID == "hidden-review" {
 			t.Fatalf("hidden review leaked into export set")
+		}
+		if rv.ExternalReviewID == "deleted-review" {
+			t.Fatalf("deleted review leaked into export set")
 		}
 	}
 	if reviews[0].ExternalReviewID != "new-review" {

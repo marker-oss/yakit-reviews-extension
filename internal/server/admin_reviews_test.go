@@ -202,6 +202,112 @@ func TestAdminReviewsBulkModerate(t *testing.T) {
 	}
 }
 
+func TestAdminReviewDeleteRestoreAndReply(t *testing.T) {
+	s := newAuthTestServer(t)
+	cookie := loginTestAdmin(t, s)
+	reviewID := seedAdminReview(t, s, "reply-delete", 5)
+	csrf := getCSRFToken(t, s, cookie)
+
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/admin/api/reviews/%d/reply", reviewID),
+		strings.NewReader(`{"text":"Спасибо!"}`))
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reply status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/api/reviews/%d", reviewID), nil)
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec = httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/api/reviews", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	var listed adminReviewsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode active list: %v", err)
+	}
+	if listed.Total != 0 {
+		t.Fatalf("deleted review should be hidden by default, got %+v", listed)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/api/reviews?status=deleted", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	listed = adminReviewsResponse{}
+	if err := json.NewDecoder(rec.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode deleted list: %v", err)
+	}
+	if listed.Total != 1 || listed.Reviews[0].Status != "deleted" || listed.Reviews[0].AdminReply == nil {
+		t.Fatalf("expected deleted review with reply, got %+v", listed)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/api/reviews/%d/restore", reviewID), nil)
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec = httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("restore status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminArticlePins(t *testing.T) {
+	s := newAuthTestServer(t)
+	cookie := loginTestAdmin(t, s)
+	id1 := seedAdminReview(t, s, "pin-api-1", 5)
+	id2 := seedAdminReview(t, s, "pin-api-2", 4)
+	csrf := getCSRFToken(t, s, cookie)
+
+	body := fmt.Sprintf(`{"reviewIds":[%d,%d,%d]}`, id1, id2, id1)
+	req := httptest.NewRequest(http.MethodPut, "/admin/api/articles/107/pins", strings.NewReader(body))
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("replace pins status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/api/articles/107/pins", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list pins status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var pins articlePinsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&pins); err != nil {
+		t.Fatalf("decode pins: %v", err)
+	}
+	if len(pins.ReviewIDs) != 2 || pins.ReviewIDs[0] != id1 || pins.ReviewIDs[1] != id2 {
+		t.Fatalf("unexpected pins: %+v", pins)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/api/articles/107/pins/%d", id1), nil)
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec = httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("remove pin status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func getCSRFToken(t *testing.T, s *Server, session *http.Cookie) string {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/admin/api/csrf", nil)

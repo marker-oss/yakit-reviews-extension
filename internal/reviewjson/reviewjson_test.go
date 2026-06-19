@@ -127,3 +127,27 @@ func TestNormalizeSellerArticle(t *testing.T) {
 		t.Fatalf("normalize trim = %q", got)
 	}
 }
+
+func TestAdminReplyOverridesMarketplaceAnswer(t *testing.T) {
+	mpText := "marketplace answer"
+	mpState := "published"
+	adminText := "seller answer"
+	now := time.Now().UTC()
+	review := store.Review{
+		Marketplace:      "wb",
+		ExternalReviewID: "r1",
+		MPAnswerText:     &mpText,
+		MPAnswerState:    &mpState,
+		AdminReplyText:   &adminText,
+		AdminReplyAt:     &now,
+		CreatedAtMP:      now,
+	}
+
+	mapped := Mapper{}.ToReview(review)
+	if mapped.Answer == nil {
+		t.Fatal("expected answer")
+	}
+	if mapped.Answer.Text != adminText || mapped.Answer.State != "published" {
+		t.Fatalf("answer = %+v", mapped.Answer)
+	}
+}

@@ -31,6 +31,7 @@ type ReviewListFilter struct {
 	MinRating     int
 	Limit         int
 	Offset        int
+	Status        string
 	Visibility    string
 	SellerArticle string
 	HasPhoto      bool
@@ -98,6 +99,13 @@ func (s *Store) ListReviewsByWidgetRules(ctx context.Context, filter ReviewListF
 }
 
 func (s *Store) applyReviewFilters(query *gorm.DB, filter ReviewListFilter) (*gorm.DB, error) {
+	switch filter.Status {
+	case "deleted":
+		query = query.Where("status = ?", "deleted")
+	case "all":
+	default:
+		query = query.Where("status <> ?", "deleted")
+	}
 	if filter.Marketplace != "" && filter.Marketplace != "all" {
 		query = query.Where("marketplace = ?", strings.ToLower(filter.Marketplace))
 	}
@@ -127,7 +135,7 @@ func (s *Store) applyReviewFilters(query *gorm.DB, filter ReviewListFilter) (*go
 		query = query.Where("LENGTH(TRIM(text)) > 0")
 	}
 	if filter.HasAnswer {
-		query = query.Where("mp_answer_text IS NOT NULL AND LENGTH(TRIM(mp_answer_text)) > 0")
+		query = query.Where("(mp_answer_text IS NOT NULL AND LENGTH(TRIM(mp_answer_text)) > 0) OR (admin_reply_text IS NOT NULL AND LENGTH(TRIM(admin_reply_text)) > 0)")
 	}
 	if filter.Search != "" {
 		like := "%" + filter.Search + "%"

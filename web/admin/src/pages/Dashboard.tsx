@@ -34,6 +34,10 @@ export default function Dashboard() {
           <strong>{data.visible_reviews}</strong>
         </div>
         <div className="metric">
+          <span>Удалено</span>
+          <strong>{data.deleted_reviews}</strong>
+        </div>
+        <div className="metric">
           <span>Средняя оценка (показанные)</span>
           <strong>{data.average_rating.toFixed(2)}</strong>
         </div>
