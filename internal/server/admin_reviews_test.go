@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -305,6 +307,84 @@ func TestAdminArticlePins(t *testing.T) {
 	s.adminMux().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("remove pin status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminPublishReviewsData(t *testing.T) {
+	s := newAuthTestServer(t)
+	staticDir := t.TempDir()
+	s.cfg.StaticDir = staticDir
+	cookie := loginTestAdmin(t, s)
+	ctx := context.Background()
+	rating := 5
+
+	visible, err := s.store.UpsertReview(ctx, marketplace.Review{
+		Marketplace:       "wb",
+		ExternalReviewID:  "publish-visible",
+		ExternalProductID: "p1",
+		SellerArticle:     "107",
+		Rating:            &rating,
+		Text:              "visible",
+		CreatedAtMP:       time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("seed visible: %v", err)
+	}
+	hidden, err := s.store.UpsertReview(ctx, marketplace.Review{
+		Marketplace:       "wb",
+		ExternalReviewID:  "publish-hidden",
+		ExternalProductID: "p1",
+		SellerArticle:     "107",
+		Rating:            &rating,
+		Text:              "hidden",
+		CreatedAtMP:       time.Now().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("seed hidden: %v", err)
+	}
+	if err := s.store.SetReviewVisibility(ctx, hidden.Review.ID, "hidden"); err != nil {
+		t.Fatalf("hide review: %v", err)
+	}
+	if err := s.store.SetShowcasePin(ctx, "107", visible.Review.ID, 0); err != nil {
+		t.Fatalf("pin visible: %v", err)
+	}
+
+	csrf := getCSRFToken(t, s, cookie)
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/reviews/publish", nil)
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("publish status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Status   string `json:"status"`
+		Articles int    `json:"articles"`
+		Reviews  int    `json:"reviews"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Status != "ok" || response.Articles != 1 || response.Reviews != 1 {
+		t.Fatalf("unexpected publish response: %+v", response)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(staticDir, "reviews-data", "by-article", "107.json"))
+	if err != nil {
+		t.Fatalf("read published bundle: %v", err)
+	}
+	var bundle struct {
+		Reviews []struct {
+			ExternalReviewID string `json:"externalReviewId"`
+		} `json:"reviews"`
+	}
+	if err := json.Unmarshal(raw, &bundle); err != nil {
+		t.Fatalf("decode bundle: %v", err)
+	}
+	if len(bundle.Reviews) != 1 || bundle.Reviews[0].ExternalReviewID != "publish-visible" {
+		t.Fatalf("unexpected published bundle: %+v", bundle)
 	}
 }
 

@@ -7,6 +7,12 @@ type ListResponse = {
   total: number
 }
 
+type PublishResponse = {
+  generatedAt: string
+  articles: number
+  reviews: number
+}
+
 const PAGE_SIZE = 25
 const SEARCH_DELAY_MS = 350
 
@@ -25,6 +31,8 @@ export default function Reviews() {
   const [articlePins, setArticlePins] = useState<Set<number>>(new Set())
   const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({})
   const [error, setError] = useState('')
+  const [publishMessage, setPublishMessage] = useState('')
+  const [publishing, setPublishing] = useState(false)
 
   function load(nextOffset = offset) {
     setSelected(new Set())
@@ -173,6 +181,22 @@ export default function Reviews() {
     }
   }
 
+  async function publishChanges() {
+    setError('')
+    setPublishMessage('')
+    setPublishing(true)
+    try {
+      const result = await apiWrite<PublishResponse>('POST', '/admin/api/reviews/publish')
+      setPublishMessage(
+        `Опубликовано: ${result.reviews} отзывов, ${result.articles} артикулов · ${new Date(result.generatedAt).toLocaleString()}`,
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Публикация не выполнена')
+    } finally {
+      setPublishing(false)
+    }
+  }
+
   function toggleOne(id: number) {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -242,9 +266,13 @@ export default function Reviews() {
         <button className="secondary" onClick={runSearch}>
           Найти
         </button>
+        <button className="secondary publish-button" disabled={publishing} onClick={publishChanges}>
+          {publishing ? 'Публикуем...' : 'Опубликовать изменения'}
+        </button>
         <span className="muted">Отзывов: {data.total}</span>
       </div>
       {error && <p className="error">{error}</p>}
+      {publishMessage && <p className="status-ok publish-status">{publishMessage}</p>}
       {selected.size > 0 && (
         <div className="toolbar bulk-bar">
           <span className="muted">Выбрано: {selected.size}</span>

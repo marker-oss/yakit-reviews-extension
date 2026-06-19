@@ -120,6 +120,14 @@ textarea {
   padding: 0 2px;
 }
 
+.publish-button {
+  border-color: #c8dbc7;
+}
+
+.publish-status {
+  margin: 0;
+}
+
 .auth-screen {
   min-height: 100vh;
   display: grid;
