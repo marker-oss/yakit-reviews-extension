@@ -108,6 +108,100 @@ func TestAdminReviewsListAndModerate(t *testing.T) {
 	}
 }
 
+func TestAdminReviewsSortAndPaginate(t *testing.T) {
+	s := newAuthTestServer(t)
+	cookie := loginTestAdmin(t, s)
+	seedAdminReview(t, s, "low", 2)
+	seedAdminReview(t, s, "high", 5)
+	seedAdminReview(t, s, "mid", 3)
+
+	// Sort by highest rating.
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/reviews?sort=highest", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sorted list status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var listed adminReviewsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode sorted list: %v", err)
+	}
+	if listed.Total != 3 {
+		t.Fatalf("expected total 3, got %d", listed.Total)
+	}
+	if got := listed.Reviews[0].Rating; got == nil || *got != 5 {
+		t.Fatalf("highest sort: first rating = %v, want 5", got)
+	}
+
+	// Paginate: limit 1, offset 1 still reports the full total.
+	req = httptest.NewRequest(http.MethodGet, "/admin/api/reviews?sort=highest&limit=1&offset=1", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	listed = adminReviewsResponse{}
+	if err := json.NewDecoder(rec.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode page: %v", err)
+	}
+	if listed.Total != 3 {
+		t.Fatalf("expected total 3 with pagination, got %d", listed.Total)
+	}
+	if len(listed.Reviews) != 1 {
+		t.Fatalf("expected 1 item on page, got %d", len(listed.Reviews))
+	}
+	if got := listed.Reviews[0].Rating; got == nil || *got != 3 {
+		t.Fatalf("second page item rating = %v, want 3 (mid)", got)
+	}
+}
+
+func TestAdminReviewsBulkModerate(t *testing.T) {
+	s := newAuthTestServer(t)
+	cookie := loginTestAdmin(t, s)
+	id1 := seedAdminReview(t, s, "b1", 5)
+	id2 := seedAdminReview(t, s, "b2", 4)
+	seedAdminReview(t, s, "b3", 3)
+
+	csrf := getCSRFToken(t, s, cookie)
+	body := fmt.Sprintf(`{"ids":[%d,%d],"visibility":"hidden","pinned":true}`, id1, id2)
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/reviews/bulk", strings.NewReader(body))
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bulk status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/api/reviews?visibility=hidden", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	var listed adminReviewsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode hidden list: %v", err)
+	}
+	if listed.Total != 2 {
+		t.Fatalf("expected 2 hidden after bulk, got %d", listed.Total)
+	}
+	for _, rv := range listed.Reviews {
+		if !rv.Pinned {
+			t.Fatalf("bulk-moderated review should be pinned: %+v", rv)
+		}
+	}
+
+	// Empty ids is a client error.
+	req = httptest.NewRequest(http.MethodPost, "/admin/api/reviews/bulk", strings.NewReader(`{"ids":[],"pinned":true}`))
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec = httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty ids should be 400, got %d", rec.Code)
+	}
+}
+
 func getCSRFToken(t *testing.T, s *Server, session *http.Cookie) string {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/admin/api/csrf", nil)

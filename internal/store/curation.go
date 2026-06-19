@@ -20,6 +20,28 @@ func (s *Store) SetReviewPinned(ctx context.Context, id uint, pinned bool) error
 		Update("pinned", pinned).Error
 }
 
+// SetReviewsVisibility updates visibility for every id in one statement. An
+// empty id set is a no-op.
+func (s *Store) SetReviewsVisibility(ctx context.Context, ids []uint, visibility string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return s.db.WithContext(ctx).Model(&Review{}).
+		Where("id IN ?", ids).
+		Update("visibility", visibility).Error
+}
+
+// SetReviewsPinned updates the pinned flag for every id in one statement. An
+// empty id set is a no-op.
+func (s *Store) SetReviewsPinned(ctx context.Context, ids []uint, pinned bool) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return s.db.WithContext(ctx).Model(&Review{}).
+		Where("id IN ?", ids).
+		Update("pinned", pinned).Error
+}
+
 // ListReviewsWithCount returns a page of reviews plus the total matching count
 // without limit/offset for pagination.
 func (s *Store) ListReviewsWithCount(ctx context.Context, filter ReviewListFilter) ([]Review, int64, error) {
@@ -42,9 +64,10 @@ func (s *Store) ListReviewsWithCount(ctx context.Context, filter ReviewListFilte
 }
 
 type Stats struct {
-	TotalReviews  int64
-	AverageRating float64
-	ByMarketplace map[string]int64
+	TotalReviews   int64
+	VisibleReviews int64
+	AverageRating  float64
+	ByMarketplace  map[string]int64
 }
 
 type ReviewAggregate struct {
@@ -85,8 +108,16 @@ func (s *Store) DashboardStats(ctx context.Context) (Stats, error) {
 		return Stats{}, err
 	}
 
+	visible := db.Model(&Review{}).Where("visibility = ?", "visible")
+	if err := visible.Count(&stats.VisibleReviews).Error; err != nil {
+		return Stats{}, err
+	}
+
+	// Average is computed over the visible set so the dashboard headline matches
+	// what the public site shows via VisibleReviewAggregate / /api/showcase.
 	var avg *float64
-	if err := db.Model(&Review{}).Select("AVG(rating)").Scan(&avg).Error; err != nil {
+	if err := db.Model(&Review{}).Where("visibility = ?", "visible").
+		Select("AVG(rating)").Scan(&avg).Error; err != nil {
 		return Stats{}, err
 	}
 	if avg != nil {

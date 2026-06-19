@@ -359,7 +359,7 @@ func runExport(ctx context.Context, args []string, cfg config.Config, logger *sl
 		return exitConfigError
 	}
 
-	reviews, err := db.ListAllReviews(ctx)
+	reviews, err := db.ListVisibleReviews(ctx)
 	if err != nil {
 		logger.Error("list reviews", "error", err)
 		return exitRunError

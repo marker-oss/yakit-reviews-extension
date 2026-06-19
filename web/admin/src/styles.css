@@ -252,6 +252,10 @@ small {
   gap: 10px;
 }
 
+.toolbar.pager {
+  justify-content: center;
+}
+
 .rows {
   display: grid;
   gap: 10px;
@@ -293,7 +297,13 @@ small {
 }
 
 .grid-reviews {
-  grid-template-columns: minmax(240px, 1fr) 80px 130px 170px;
+  grid-template-columns: 36px minmax(240px, 1fr) 80px 130px 170px;
+}
+
+.bulk-bar {
+  background: var(--surface, #f4f1fb);
+  border-radius: 10px;
+  padding: 10px 14px;
 }
 
 .grid-marketplaces {

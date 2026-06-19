@@ -17,6 +17,7 @@ export type Review = {
 
 export type DashboardData = {
   total_reviews: number
+  visible_reviews: number
   average_rating: number
   by_marketplace: Record<string, number>
   recent_syncs: {

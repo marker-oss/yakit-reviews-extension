@@ -29,6 +29,7 @@ func (s *Server) handleAdminReviews(w http.ResponseWriter, r *http.Request) {
 		SellerArticle: q.Get("article"),
 		Search:        q.Get("search"),
 		HasPhoto:      q.Get("has_photo") == "true",
+		SortBy:        adminSortBy(q.Get("sort")),
 		Limit:         parseInt(q.Get("limit"), 50),
 		Offset:        parseInt(q.Get("offset"), 0),
 		PinnedFirst:   true,
@@ -58,6 +59,18 @@ func (s *Server) handleAdminReviews(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, adminReviewsResponse{Reviews: items, Total: total})
+}
+
+// adminSortBy whitelists the sort values exposed in the admin reviews UI.
+// Anything else (including "newest") falls back to the store default: pinned
+// first, then newest by marketplace creation date.
+func adminSortBy(value string) string {
+	switch value {
+	case "highest", "lowest", "media":
+		return value
+	default:
+		return ""
+	}
 }
 
 type moderationRequest struct {
@@ -94,4 +107,43 @@ func (s *Server) handleAdminReviewModerate(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+type bulkModerationRequest struct {
+	IDs        []uint  `json:"ids"`
+	Visibility *string `json:"visibility"`
+	Pinned     *bool   `json:"pinned"`
+}
+
+func (s *Server) handleAdminReviewsBulkModerate(w http.ResponseWriter, r *http.Request) {
+	var req bulkModerationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid request body"))
+		return
+	}
+	if len(req.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, errors.New("ids must not be empty"))
+		return
+	}
+	if req.Visibility == nil && req.Pinned == nil {
+		writeError(w, http.StatusBadRequest, errors.New("nothing to update"))
+		return
+	}
+	if req.Visibility != nil {
+		if *req.Visibility != "visible" && *req.Visibility != "hidden" {
+			writeError(w, http.StatusBadRequest, errors.New("visibility must be visible or hidden"))
+			return
+		}
+		if err := s.store.SetReviewsVisibility(r.Context(), req.IDs, *req.Visibility); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	if req.Pinned != nil {
+		if err := s.store.SetReviewsPinned(r.Context(), req.IDs, *req.Pinned); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "updated": len(req.IDs)})
 }

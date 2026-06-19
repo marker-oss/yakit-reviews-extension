@@ -29,10 +29,11 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"total_reviews":  stats.TotalReviews,
-		"average_rating": stats.AverageRating,
-		"by_marketplace": stats.ByMarketplace,
-		"recent_syncs":   runs,
+		"total_reviews":   stats.TotalReviews,
+		"visible_reviews": stats.VisibleReviews,
+		"average_rating":  stats.AverageRating,
+		"by_marketplace":  stats.ByMarketplace,
+		"recent_syncs":    runs,
 	})
 }
 

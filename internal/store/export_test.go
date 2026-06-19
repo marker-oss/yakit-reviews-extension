@@ -8,7 +8,7 @@ import (
 	"reviews/internal/marketplace"
 )
 
-func TestListAllReviewsReturnsEveryRowWithMedia(t *testing.T) {
+func TestListVisibleReviewsReturnsVisibleRowsWithMedia(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
 	oldTime := time.Date(2026, 6, 3, 10, 0, 0, 0, time.UTC)
@@ -43,12 +43,32 @@ func TestListAllReviewsReturnsEveryRowWithMedia(t *testing.T) {
 		t.Fatalf("upsert new review: %v", err)
 	}
 
-	reviews, err := s.ListAllReviews(ctx)
+	hidden, err := s.UpsertReview(ctx, marketplace.Review{
+		Marketplace:       "wb",
+		ExternalReviewID:  "hidden-review",
+		ExternalProductID: "102",
+		SellerArticle:     "hidden-article",
+		Rating:            &rating,
+		CreatedAtMP:       newTime,
+	})
 	if err != nil {
-		t.Fatalf("list all reviews: %v", err)
+		t.Fatalf("upsert hidden review: %v", err)
+	}
+	if err := s.SetReviewVisibility(ctx, hidden.Review.ID, "hidden"); err != nil {
+		t.Fatalf("hide review: %v", err)
+	}
+
+	reviews, err := s.ListVisibleReviews(ctx)
+	if err != nil {
+		t.Fatalf("list visible reviews: %v", err)
 	}
 	if len(reviews) != 2 {
-		t.Fatalf("reviews len = %d", len(reviews))
+		t.Fatalf("reviews len = %d (hidden review must be excluded)", len(reviews))
+	}
+	for _, rv := range reviews {
+		if rv.ExternalReviewID == "hidden-review" {
+			t.Fatalf("hidden review leaked into export set")
+		}
 	}
 	if reviews[0].ExternalReviewID != "new-review" {
 		t.Fatalf("first review = %q", reviews[0].ExternalReviewID)

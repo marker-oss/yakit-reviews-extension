@@ -30,7 +30,11 @@ export default function Dashboard() {
           <strong>{data.total_reviews}</strong>
         </div>
         <div className="metric">
-          <span>Средняя оценка</span>
+          <span>Показано на сайте</span>
+          <strong>{data.visible_reviews}</strong>
+        </div>
+        <div className="metric">
+          <span>Средняя оценка (показанные)</span>
           <strong>{data.average_rating.toFixed(2)}</strong>
         </div>
       </div>

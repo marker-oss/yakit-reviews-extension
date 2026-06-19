@@ -46,6 +46,48 @@ func TestSetVisibilityAndPinned(t *testing.T) {
 	}
 }
 
+func TestBulkSetVisibilityAndPinned(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	a := seedReview(t, st, "wb", "w1", 5)
+	b := seedReview(t, st, "wb", "w2", 4)
+	c := seedReview(t, st, "ym", "y1", 3)
+
+	if err := st.SetReviewsVisibility(ctx, []uint{a.ID, b.ID}, "hidden"); err != nil {
+		t.Fatalf("bulk hide: %v", err)
+	}
+	if err := st.SetReviewsPinned(ctx, []uint{a.ID, b.ID}, true); err != nil {
+		t.Fatalf("bulk pin: %v", err)
+	}
+
+	hidden, err := st.ListReviews(ctx, ReviewListFilter{Visibility: "hidden"})
+	if err != nil {
+		t.Fatalf("list hidden: %v", err)
+	}
+	if len(hidden) != 2 {
+		t.Fatalf("expected 2 hidden, got %d", len(hidden))
+	}
+	for _, r := range hidden {
+		if !r.Pinned {
+			t.Fatalf("review %d should be pinned", r.ID)
+		}
+	}
+
+	// The untouched review keeps its defaults.
+	visible, err := st.ListReviews(ctx, ReviewListFilter{Visibility: "visible"})
+	if err != nil {
+		t.Fatalf("list visible: %v", err)
+	}
+	if len(visible) != 1 || visible[0].ID != c.ID {
+		t.Fatalf("expected only review %d visible, got %+v", c.ID, visible)
+	}
+
+	// Empty id set is a no-op, not an error.
+	if err := st.SetReviewsVisibility(ctx, nil, "visible"); err != nil {
+		t.Fatalf("empty bulk should be no-op: %v", err)
+	}
+}
+
 func TestListReviewsWithCount(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -70,19 +112,28 @@ func TestDashboardStats(t *testing.T) {
 	seedReview(t, st, "wb", "w1", 5)
 	seedReview(t, st, "wb", "w2", 3)
 	seedReview(t, st, "ym", "y1", 4)
+	hidden := seedReview(t, st, "wb", "w3", 1)
+	if err := st.SetReviewVisibility(ctx, hidden.ID, "hidden"); err != nil {
+		t.Fatalf("hide: %v", err)
+	}
 
 	stats, err := st.DashboardStats(ctx)
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
-	if stats.TotalReviews != 3 {
-		t.Fatalf("expected 3 total, got %d", stats.TotalReviews)
+	if stats.TotalReviews != 4 {
+		t.Fatalf("expected 4 total (incl hidden), got %d", stats.TotalReviews)
 	}
-	if stats.ByMarketplace["wb"] != 2 || stats.ByMarketplace["ym"] != 1 {
+	if stats.VisibleReviews != 3 {
+		t.Fatalf("expected 3 visible, got %d", stats.VisibleReviews)
+	}
+	if stats.ByMarketplace["wb"] != 3 || stats.ByMarketplace["ym"] != 1 {
 		t.Fatalf("unexpected per-marketplace counts: %+v", stats.ByMarketplace)
 	}
+	// Average must reflect the visible set (matches /api/showcase), so the
+	// hidden 1-star review must not drag it down: (5+3+4)/3 = 4.0.
 	if stats.AverageRating < 3.9 || stats.AverageRating > 4.1 {
-		t.Fatalf("expected avg ~4.0, got %v", stats.AverageRating)
+		t.Fatalf("expected visible avg ~4.0, got %v", stats.AverageRating)
 	}
 }
 
