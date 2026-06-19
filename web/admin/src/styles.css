@@ -558,6 +558,12 @@ small {
   object-fit: contain;
 }
 
+.admin-media-stage img {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
 .admin-media-stage video {
   width: min(100%, 940px);
   height: min(100%, 620px);

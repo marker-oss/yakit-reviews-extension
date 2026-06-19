@@ -989,6 +989,12 @@
 	  object-fit: contain;
 	}
 
+	.rw-media-viewer-image {
+	  width: 100%;
+	  height: 100%;
+	  background: transparent;
+	}
+
 	.rw-media-viewer-video {
 	  width: min(100%, 940px);
 	  height: min(100%, 620px);
