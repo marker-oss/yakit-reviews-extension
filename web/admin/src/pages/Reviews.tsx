@@ -491,7 +491,7 @@ function mediaThumbnail(item: ReviewMedia) {
 
 function mediaPreview(item: ReviewMedia) {
   if (item.kind === 'video' && !isImageLike(item.url)) return item.previewUrl || ''
-  return item.previewUrl || item.url
+  return item.kind === 'video' ? item.previewUrl || item.url : item.url || item.previewUrl || ''
 }
 
 function isPlayableVideo(url: string) {

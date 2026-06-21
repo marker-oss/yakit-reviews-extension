@@ -746,7 +746,7 @@
     const next = viewer.querySelector('[data-role="viewer-next"]');
     const canPlayVideo = item.kind === "video" && isLikelyVideoURL(item.url);
     const canShowImage = item.kind !== "video" || item.previewUrl || isLikelyImageURL(item.url);
-    const preview = item.previewUrl || item.url;
+    const viewerSrc = item.kind === "video" ? item.previewUrl || item.url : item.url || item.previewUrl;
     caption.textContent = item.caption || (item.kind === "video" ? "Видео отзыва" : "Фото отзыва");
     original.href = item.url;
     original.textContent = item.kind === "video" ? "Открыть видео" : "Открыть оригинал";
@@ -756,7 +756,7 @@
     stage.innerHTML = canPlayVideo
       ? `<video class="rw-media-viewer-video" src="${escapeAttribute(item.url)}" controls playsinline></video>`
       : canShowImage ? `
-        <img class="rw-media-viewer-image" src="${escapeAttribute(preview)}" alt="${escapeAttribute(caption.textContent)}" />
+        <img class="rw-media-viewer-image" src="${escapeAttribute(viewerSrc)}" alt="${escapeAttribute(caption.textContent)}" />
         ${item.kind === "video" ? '<span class="rw-media-viewer-play" aria-hidden="true"></span>' : ""}
       `
         : `<a class="rw-media-viewer-placeholder" href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">Открыть медиа</a>`;
