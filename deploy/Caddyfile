@@ -1,0 +1,42 @@
+# Caddy config for the VPS deploy path (static widget + reviews-data + API proxy).
+#
+# Two values are per-seller and read from Caddy's environment:
+#   REVIEWS_PUBLIC_DOMAIN — the reviews host, e.g. reviews.myshop.ru
+#   REVIEWS_SHOP_ORIGIN   — the shop origin allowed to fetch data cross-origin,
+#                           e.g. https://myshop.ru
+#
+# Provide them to Caddy (NOT to the reviews binary) before reload, e.g. via an
+# EnvironmentFile in the caddy systemd unit, or:
+#   export REVIEWS_PUBLIC_DOMAIN=reviews.myshop.ru
+#   export REVIEWS_SHOP_ORIGIN=https://myshop.ru
+#   sudo -E systemctl reload caddy
+#
+# Docker path note: the reviews binary itself emits CORS from REVIEWS_SHOP_ORIGIN,
+# so a reverse proxy in front of the container needs no CORS config of its own.
+
+{$REVIEWS_PUBLIC_DOMAIN} {
+	encode zstd gzip
+
+	root * /srv/reviews/web
+
+	@options method OPTIONS
+	respond @options 204
+
+	header {
+		Access-Control-Allow-Origin "{$REVIEWS_SHOP_ORIGIN}"
+		Access-Control-Allow-Methods "GET, OPTIONS"
+		Access-Control-Allow-Headers "Accept, Content-Type"
+		Vary "Origin"
+	}
+
+	@json path /reviews-data/* /reviews-data
+	header @json {
+		Content-Type "application/json; charset=utf-8"
+		Cache-Control "public, max-age=300"
+	}
+
+	@assets path /loader.js /reviews-widget.js /reviews-widget.css
+	header @assets Cache-Control "public, max-age=3600"
+
+	file_server
+}

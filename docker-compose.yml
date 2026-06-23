@@ -1,0 +1,18 @@
+services:
+  reviews:
+    build: .
+    image: reviews:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      # Keep the SQLite file on the named volume regardless of .env.
+      REVIEWS_DB_DSN: /data/reviews.db
+      REVIEWS_SITE_PRODUCT_LINKS: /data/product-links.json
+    volumes:
+      - reviews-data:/data
+
+volumes:
+  reviews-data:

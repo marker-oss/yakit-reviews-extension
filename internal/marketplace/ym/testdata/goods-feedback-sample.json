@@ -1,0 +1,63 @@
+{
+  "status": "OK",
+  "result": {
+    "feedbacks": [
+      {
+        "feedbackId": 100000001,
+        "createdAt": "2026-06-08T18:26:33.795+03:00",
+        "needReaction": true,
+        "identifiers": {
+          "orderId": 0,
+          "modelId": 1001001001,
+          "offerId": "KIT-001/Blue48"
+        },
+        "author": "Покупатель 1",
+        "description": {},
+        "media": {},
+        "statistics": {
+          "rating": 5,
+          "commentsCount": 0
+        }
+      },
+      {
+        "feedbackId": 100000002,
+        "createdAt": "2026-06-07T11:52:05.633+03:00",
+        "needReaction": true,
+        "identifiers": {
+          "orderId": 0,
+          "modelId": 1001001002,
+          "offerId": "KIT-002/Brown50"
+        },
+        "author": "Покупатель 2",
+        "description": {
+          "comment": "Размер соответствует, хорошая ткань"
+        },
+        "media": {},
+        "statistics": {
+          "rating": 5,
+          "commentsCount": 0
+        }
+      },
+      {
+        "feedbackId": 100000003,
+        "createdAt": "2026-06-07T07:16:20.904+03:00",
+        "needReaction": true,
+        "identifiers": {
+          "orderId": 0,
+          "modelId": 1001001003,
+          "offerId": "KIT-003/Red-White56"
+        },
+        "author": "Покупатель 3",
+        "description": {},
+        "media": {},
+        "statistics": {
+          "rating": 5,
+          "commentsCount": 0
+        }
+      }
+    ],
+    "paging": {
+      "nextPageToken": "eyJrZXkiOiJSRURBQ1RFRCJ9"
+    }
+  }
+}

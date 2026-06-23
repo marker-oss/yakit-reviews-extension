@@ -1,0 +1,236 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>loader unit tests</title>
+<pre id="out"></pre>
+<script>
+  window.REVIEWS_EMBED_CONFIG = { debug: true };
+</script>
+<script src="../loader.js"></script>
+<script>
+  var out = document.getElementById("out");
+  var pass = 0;
+  var fail = 0;
+
+  function eq(name, got, want) {
+    var ok = JSON.stringify(got) === JSON.stringify(want);
+    out.textContent +=
+      (ok ? "PASS " : "FAIL ") +
+      name +
+      (ok ? "" : " got=" + JSON.stringify(got) + " want=" + JSON.stringify(want)) +
+      "\n";
+    if (ok) {
+      pass++;
+    } else {
+      fail++;
+    }
+  }
+
+  var I = window.__reviewsEmbedInternals;
+
+  eq("isProductPath true", I.isProductPath("/products/svitshot-100954"), true);
+  eq("isProductPath false", I.isProductPath("/catalog/platya"), false);
+  eq("isHomepagePath true", I.isHomepagePath("/"), true);
+  eq("shouldHandlePath product", I.shouldHandlePath("/products/svitshot-100954"), true);
+  eq("shouldHandlePath homepage", I.shouldHandlePath("/"), true);
+  eq("shouldHandlePath catalog", I.shouldHandlePath("/catalog/platya"), false);
+  eq("normalizeArticle slash", I.normalizeArticle("3467/Белый"), "3467");
+  eq("normalizeArticle trim", I.normalizeArticle("  107 "), "107");
+  eq("articleFileKey space", I.articleFileKey("a b/c"), "a_b_c");
+  eq("bundleUrl", I.bundleUrl("3467/Белый"), I.cfg.dataBase + "/by-article/3467.json");
+  eq("reviewsUrl full feed", new URL(I.reviewsUrl("")).pathname + new URL(I.reviewsUrl("")).search, "/api/reviews?sort=newest&limit=24");
+  eq("reviewsUrl context", new URL(I.reviewsUrl("homepage")).pathname + new URL(I.reviewsUrl("homepage")).search, "/api/reviews?context=homepage&sort=newest&limit=24");
+  eq("extract sku", I.extractArticleFromHTML('x "sku":"107" y'), "107");
+  eq("extract label", I.extractArticleFromHTML("Артикул: 1523"), "1523");
+
+  history.replaceState({}, "", "/products/plate-v-stile-beiybi-cvet-1-bordovyiy-100808");
+  I.cfg.anchorSelector = "#reviews-widget";
+  var anchorDoc = document.implementation.createHTMLDocument("anchor");
+  anchorDoc.body.innerHTML = '<div id="reviews-widget" data-article="1777-5"></div>';
+  document.body.appendChild(anchorDoc.body.firstChild);
+  eq("extract custom anchor data article", I.extractArticleFromDocument(document), "1777-5");
+  document.getElementById("reviews-widget").remove();
+  I.cfg.anchorSelector = "";
+
+  var requestContextDoc = document.implementation.createHTMLDocument("request-context");
+  requestContextDoc.body.innerHTML =
+    '<script type="application/json" id="requestContext">' +
+    JSON.stringify({
+      pageModel: {
+        context: {
+          productCard: {
+            mainVariant: { sku: "1777-5" },
+          },
+        },
+      },
+    }) +
+    "<\/script>";
+  eq("extract Kit requestContext sku", I.extractArticleFromDocument(requestContextDoc), "1777-5");
+
+  var extractorContextDoc = document.implementation.createHTMLDocument("extractor-context");
+  extractorContextDoc.body.innerHTML =
+    '<script type="application/json" id="requestContext">' +
+    JSON.stringify({
+      extractorContext: {
+        "ProductCardExtractorFactory--plate": {
+          payload: { mainVariant: { sku: "3453" } },
+        },
+      },
+    }) +
+    "<\/script>";
+  eq("extract Kit extractorContext sku", I.extractArticleFromDocument(extractorContextDoc), "3453");
+
+  var testDoc = document.implementation.createHTMLDocument("product");
+  testDoc.body.innerHTML =
+    '<script type="application/ld+json">' +
+    JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Product",
+      url: "https://example-shop.test/products/plate-v-stile-beiybi-cvet-1-bordovyiy-100808?variant=101236",
+      sku: "3508-1",
+      offers: { sku: "3508-1" },
+    }) +
+    "<\/script>" +
+    '<div data-testid="ProductDetails">Артикул: 1523</div>' +
+    '<div>"sku":"1523"</div>';
+  eq("extract current jsonld product sku", I.extractArticleFromDocument(testDoc), "3508-1");
+
+  var ld = I.buildJsonLd(
+    {
+      aggregate: { count: 2, ratingCount: 2, ratingAvg: 4.5 },
+      reviews: [
+        { rating: 5, authorName: "A", createdAt: "2026-05-01T00:00:00Z", text: "t1" },
+        { rating: 4, authorName: "B", createdAt: "2026-04-01T00:00:00Z", text: "t2" },
+      ],
+    },
+    10,
+  );
+  eq("jsonld ratingValue", ld.ratingValue, 4.5);
+  eq("jsonld reviewCount", ld.reviewCount, 2);
+  eq("jsonld reviews len", ld.review.length, 2);
+  eq("jsonld null when empty", I.buildJsonLd({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 } }, 10), null);
+
+  window.ReviewsWidget = {
+    mountShadow: function (host, options) {
+      host.setAttribute("data-mounted-reviews", String(options.reviews.length));
+      host.setAttribute("data-mount-mode", "shadow");
+      host.setAttribute("data-full-feed-source", options.fullFeedSource || "");
+      host.setAttribute("data-full-feed-offset", String(options.fullFeedOffset ?? ""));
+    },
+    mount: function (host, options) {
+      host.setAttribute("data-mounted-reviews", String(options.reviews.length));
+      host.setAttribute("data-mount-mode", "light");
+      host.setAttribute("data-full-feed-source", options.fullFeedSource || "");
+      host.setAttribute("data-full-feed-offset", String(options.fullFeedOffset ?? ""));
+    },
+  };
+
+  function cleanupLoaderFixture() {
+    I.cfg.anchorSelector = "";
+    var host = document.getElementById(I.cfg.hostId);
+    if (host && host.parentNode) {
+      host.parentNode.removeChild(host);
+    }
+    var jsonLd = document.getElementById(I.cfg.hostId + "-jsonld");
+    if (jsonLd && jsonLd.parentNode) {
+      jsonLd.parentNode.removeChild(jsonLd);
+    }
+    var fixture = document.getElementById("loader-fixture");
+    if (fixture && fixture.parentNode) {
+      fixture.parentNode.removeChild(fixture);
+    }
+  }
+
+  var renderBundle = {
+    aggregate: { count: 1, ratingCount: 1, ratingAvg: 5 },
+    reviews: [{ rating: 5, authorName: "A", createdAt: "2026-05-01T00:00:00Z", text: "t1" }],
+  };
+
+  cleanupLoaderFixture();
+  var standardFixture = document.createElement("div");
+  standardFixture.id = "loader-fixture";
+  standardFixture.innerHTML = '<section data-testid="ProductDetails"><main id="standard-anchor"></main></section>';
+  document.body.appendChild(standardFixture);
+  I.render(renderBundle, "1523");
+  var standardHost = document.getElementById(I.cfg.hostId);
+  var standardAnchor = document.getElementById("standard-anchor");
+  eq("default anchor inserts after main", standardAnchor.nextSibling === standardHost, true);
+  eq("default anchor keeps host margin", standardHost.style.marginTop, "32px");
+  eq("default anchor mounts reviews", standardHost.getAttribute("data-mounted-reviews"), "1");
+  eq("default render uses shadow dom", standardHost.getAttribute("data-mount-mode"), "shadow");
+  eq("product render has no full feed", standardHost.getAttribute("data-full-feed-source"), "");
+
+  cleanupLoaderFixture();
+  I.cfg.useShadowDom = false;
+  var lightFixture = document.createElement("div");
+  lightFixture.id = "loader-fixture";
+  lightFixture.innerHTML = '<section data-testid="ProductDetails"><main id="light-anchor"></main></section>';
+  document.body.appendChild(lightFixture);
+  I.render(renderBundle, "1523");
+  var lightHost = document.getElementById(I.cfg.hostId);
+  eq("light render disables shadow dom", I.shouldUseShadowDom(), false);
+  eq("light render uses mount", lightHost.getAttribute("data-mount-mode"), "light");
+  I.cfg.useShadowDom = true;
+
+  cleanupLoaderFixture();
+  I.cfg.anchorSelector = "#reviews-widget";
+  var customFixture = document.createElement("div");
+  customFixture.id = "loader-fixture";
+  customFixture.innerHTML = '<div id="reviews-widget" style="min-height: 320px"></div>';
+  document.body.appendChild(customFixture);
+  I.render(renderBundle, "1523");
+  var customHost = document.getElementById(I.cfg.hostId);
+  var customAnchor = document.getElementById("reviews-widget");
+  eq("custom anchor appends host", customHost.parentNode === customAnchor, true);
+  eq("custom anchor clears host margin", customHost.style.marginTop, "0px");
+  eq("custom anchor mounts reviews", customHost.getAttribute("data-mounted-reviews"), "1");
+
+  I.render({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 }, reviews: [] }, "1523");
+  eq("empty bundle removes host", document.getElementById(I.cfg.hostId), null);
+  eq("empty bundle collapses custom anchor", customAnchor.style.minHeight, "0px");
+
+  cleanupLoaderFixture();
+  history.replaceState({}, "", "/");
+  I.cfg.anchorSelector = "reviews-homepage";
+  var homepageFixture = document.createElement("div");
+  homepageFixture.id = "loader-fixture";
+  homepageFixture.innerHTML = '<div id="reviews-homepage"></div>';
+  document.body.appendChild(homepageFixture);
+  eq("custom anchor id without hash", I.findCustomAnchor().id, "reviews-homepage");
+  I.render(renderBundle, "homepage:/", "homepage");
+  var homepageHost = document.getElementById(I.cfg.hostId);
+  var homepageFullFeed = new URL(homepageHost.getAttribute("data-full-feed-source"));
+  eq("homepage render uses full feed", homepageFullFeed.pathname + homepageFullFeed.search, "/api/reviews?sort=newest&limit=24");
+  eq("homepage full feed starts at zero", homepageHost.getAttribute("data-full-feed-offset"), "0");
+
+  cleanupLoaderFixture();
+  history.replaceState({}, "", "/products/plate-letnee-povsednevnoe-lilovyiy-102212");
+  I.cfg.anchorSelector = "reviews-homepage";
+  var productCustomFixture = document.createElement("div");
+  productCustomFixture.id = "loader-fixture";
+  productCustomFixture.innerHTML = '<div id="reviews-widget"></div><div id="reviews-homepage"></div>';
+  document.body.appendChild(productCustomFixture);
+  eq("product path prefers product anchor", I.findCustomAnchor().id, "reviews-widget");
+
+  // Article resolution for SPA navigation: the page context is frozen on the
+  // first product during soft navigation, so the loader resolves the visited
+  // product from the URL via the crawled links.json index. Many product paths
+  // can share one seller article (colour variants).
+  var idx = {
+    byPath: {
+      "/products/plate-naryadnoe-ofisnoe-suhaya-roza-102291": "1777-5",
+      "/products/plate-naryadnoe-v-stile-boho-temno-biryzovyiy-102277": "3453",
+    },
+    byID: { "102291": "1777-5", "102277": "3453", "100808": "55" },
+  };
+
+  eq("resolve by exact path", I.resolveArticleFromIndex(idx, "/products/plate-naryadnoe-ofisnoe-suhaya-roza-102291"), "1777-5");
+  eq("resolve ignores trailing slash", I.resolveArticleFromIndex(idx, "/products/plate-naryadnoe-v-stile-boho-temno-biryzovyiy-102277/"), "3453");
+  eq("resolve falls back to trailing id", I.resolveArticleFromIndex(idx, "/products/renamed-slug-102291"), "1777-5");
+  eq("resolve unknown path is empty", I.resolveArticleFromIndex(idx, "/products/totally-unknown-999999"), "");
+  eq("resolve null index is empty", I.resolveArticleFromIndex(null, "/products/anything-102291"), "");
+
+  cleanupLoaderFixture();
+
+  out.textContent += "\n" + pass + " passed, " + fail + " failed\n";
+  document.title = fail === 0 ? "ALL PASS" : "FAIL";
+</script>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Отзывы на главной — демо</title>
+    <link rel="stylesheet" href="./reviews-widget.css" />
+  </head>
+  <body class="rw-demo-page">
+    <main class="demo-shell">
+      <section class="product-strip" aria-label="Отзывы на главной">
+        <div class="product-copy">
+          <p class="product-kicker">Главная страница</p>
+          <p>Лента отобранных отзывов из витрины: спокойный блок доверия без фильтра по оценке.</p>
+        </div>
+      </section>
+
+      <section
+        id="reviews-widget"
+        class="reviews-widget"
+        aria-label="Отзывы покупательниц"
+      ></section>
+    </main>
+
+    <script src="./reviews-widget.js"></script>
+    <script>
+      ReviewsWidget.mount(document.querySelector("#reviews-widget"), {
+        source: "/api/showcase",
+        fullFeedSource: "/api/reviews?sort=newest",
+        fullFeedOffset: 0,
+        fullFeedLimit: 24,
+        context: "homepage",
+        productName: "Отзывы покупательниц",
+        config: {
+          layout: { mode: "carousel", columns: 3, pageSize: 8, pagination: "more" },
+          visibility: { ratingDistribution: false },
+          defaults: { minRating: 4, requireText: false, initialSort: "newest" },
+        },
+      });
+    </script>
+  </body>
+</html>

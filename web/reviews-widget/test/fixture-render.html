@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>fixture render</title>
+<script>
+  var nativeFetch = window.fetch.bind(window);
+  window.fetch = function (url, options) {
+    if (String(url) === "/reviews-data/by-article/107.json") {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            article: "107",
+            aggregate: { count: 1, ratingCount: 1, ratingAvg: 5 },
+            reviews: [
+              {
+                marketplace: "wb",
+                externalReviewId: "fixture-107",
+                externalProductId: "100954",
+                sellerArticle: "107",
+                rating: 5,
+                authorName: "Тестовый покупатель",
+                text: "Fixture-render проверяет вставку виджета в сохраненную страницу товара.",
+                pros: "Shadow DOM, JSON-LD",
+                cons: "",
+                createdAt: "2026-06-01T10:00:00Z",
+                media: [],
+                marketplaceReviewUrl: "",
+                marketplaceProductUrl: "",
+                sellerProductUrl: "https://example-shop.test/products/svitshot-hlopkovyiy-100954",
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }
+    return nativeFetch(url, options);
+  };
+
+  window.REVIEWS_EMBED_CONFIG = {
+    dataBase: "/reviews-data",
+    widgetJsUrl: "/reviews-widget.js",
+    widgetCssUrl: "/reviews-widget.css",
+    useShadowDom: !new URLSearchParams(location.search).has("noShadow"),
+    debug: true,
+  };
+  history.replaceState({}, "", "/products/svitshot-hlopkovyiy-100954");
+</script>
+<pre id="status">waiting</pre>
+<div id="fixture-mount"></div>
+<script>
+  fetch("/test/fixtures/kit-product-sample.html")
+    .then(function (response) {
+      return response.text();
+    })
+    .then(function (html) {
+      var match = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(html);
+      document.getElementById("fixture-mount").innerHTML = match ? match[1] : html;
+
+      var script = document.createElement("script");
+      script.src = "/loader.js";
+      document.body.appendChild(script);
+    });
+
+  var attempts = 0;
+  var timer = setInterval(function () {
+    attempts++;
+    var host = document.getElementById("reviews-embed-host");
+    var jsonLd = document.getElementById("reviews-embed-host-jsonld");
+    var productMain = document.querySelector('[data-testid="ProductDetails"] main');
+    var card = host && ((host.shadowRoot && host.shadowRoot.querySelector(".rw-card")) || host.querySelector(".rw-card"));
+    var noShadow = new URLSearchParams(location.search).has("noShadow");
+    var rendered =
+      host &&
+      (!noShadow || host.classList.contains("reviews-widget")) &&
+      card &&
+      jsonLd &&
+      jsonLd.textContent.indexOf("AggregateRating") > -1 &&
+      productMain &&
+      productMain.nextElementSibling === host;
+
+    if (rendered) {
+      document.getElementById("status").textContent = "PASS fixture render";
+      document.title = "FIXTURE PASS";
+      clearInterval(timer);
+    } else if (attempts > 50) {
+      document.getElementById("status").textContent = "FAIL fixture render";
+      document.title = "FIXTURE FAIL";
+      clearInterval(timer);
+    }
+  }, 100);
+</script>
