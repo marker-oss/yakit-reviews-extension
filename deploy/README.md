@@ -3,6 +3,25 @@
 This project is intended to run on a small VPS as one Go binary plus static
 files served by Caddy.
 
+## Install Wizard
+
+The easiest install path is the local TUI wizard:
+
+```sh
+reviews install
+```
+
+Enter the reviews domain, shop origin, VPS SSH access, first admin credentials,
+and marketplace credentials, then let the installer run the setup for you. The
+manual SSH commands below are the transparent fallback.
+
+Before starting the wizard, prepare a fresh Linux VPS, its public IP, SSH port,
+root/sudo login, SSH password or private key, a reviews domain pointing to that
+IP, the shop origin, and marketplace credentials. The user should not need to
+open an SSH session manually; the wizard will use those access details to run
+the setup. Wizard v1 targets fresh Ubuntu/Debian servers and deploys through
+Docker Compose behind Caddy.
+
 ## DNS
 
 Point `reviews.myshop.example` to the VPS IP address. Caddy will request and renew

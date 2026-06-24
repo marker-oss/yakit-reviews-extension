@@ -16,6 +16,7 @@ import (
 	"reviews/internal/collector"
 	"reviews/internal/config"
 	"reviews/internal/export"
+	"reviews/internal/installer"
 	"reviews/internal/marketplace"
 	"reviews/internal/marketplace/wb"
 	"reviews/internal/marketplace/ym"
@@ -40,6 +41,12 @@ func run(args []string) int {
 	if len(args) == 0 {
 		usage()
 		return exitConfigError
+	}
+
+	if args[0] == "install" {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return runInstall(ctx, args[1:])
 	}
 
 	cfg, err := config.LoadFromEnv()
@@ -73,6 +80,23 @@ func run(args []string) int {
 		usage()
 		return exitConfigError
 	}
+}
+
+func runInstall(ctx context.Context, args []string) int {
+	flags := flag.NewFlagSet("install", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	if err := flags.Parse(args); err != nil {
+		return exitConfigError
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintf(os.Stderr, "install does not accept positional arguments: %s\n", strings.Join(flags.Args(), " "))
+		return exitConfigError
+	}
+	if err := installer.RunTUI(ctx, installer.TUIOptions{}); err != nil {
+		fmt.Fprintf(os.Stderr, "installer error: %v\n", err)
+		return exitRunError
+	}
+	return exitOK
 }
 
 func runAdmin(ctx context.Context, args []string, cfg config.Config, logger *slog.Logger) int {
@@ -552,6 +576,7 @@ func usage() {
 	fmt.Fprint(os.Stderr, `Usage:
   reviews migrate
   reviews admin reset-password --login admin --password NEW_PASSWORD
+  reviews install
   reviews sync --once [--marketplace wb|ym|ozon]
   reviews serve [--addr 127.0.0.1:8080] [--with-sync]
   reviews discover-site-urls

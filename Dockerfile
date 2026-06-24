@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # ---- web builder ----
-FROM node:22-bookworm AS web
+# Runs on the native build platform; the SPA bundle is architecture-independent.
+FROM --platform=$BUILDPLATFORM node:22-bookworm AS web
 WORKDIR /web/admin
 COPY web/admin/package.json web/admin/package-lock.json ./
 RUN npm ci
@@ -9,15 +10,19 @@ COPY web/admin ./
 RUN npm run build
 
 # ---- builder ----
-FROM golang:1.26-bookworm AS builder
+# Runs on the native build platform and cross-compiles to the target arch
+# (CGO is disabled, so multi-arch images build without QEMU emulation).
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS builder
 WORKDIR /src
+ARG TARGETOS
+ARG TARGETARCH
 
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
 COPY --from=web /web/admin/dist ./internal/server/admin_dist
-RUN CGO_ENABLED=0 GOOS=linux go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -trimpath -ldflags "-s -w" \
     -o /out/reviews ./cmd/reviews
 RUN mkdir -p /out/data
