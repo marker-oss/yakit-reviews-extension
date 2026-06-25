@@ -332,6 +332,10 @@ export default function Reviews() {
           <button className="secondary" onClick={() => setSelected(new Set())}>
             Снять выбор
           </button>
+          <p className="muted hide-warning">
+            Скрытие — только для спама, дублей и мусора. Не скрывайте негативные отзывы ради
+            рейтинга: это риск по ЗоЗПП и закону «О рекламе».
+          </p>
         </div>
       )}
       <section className="panel">

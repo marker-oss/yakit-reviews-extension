@@ -344,6 +344,13 @@ small {
   padding: 10px 14px;
 }
 
+.hide-warning {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .review-media-strip {
   display: flex;
   flex-wrap: wrap;
