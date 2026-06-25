@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"reviews/internal/config"
+	"reviews/internal/mediaproxy"
 	"reviews/internal/reviewjson"
 	"reviews/internal/store"
 )
@@ -34,6 +36,8 @@ type Config struct {
 	// AllowedOrigins lists shop origins permitted to fetch public reviews
 	// data cross-origin (the embedding site). Empty disables CORS.
 	AllowedOrigins []string
+	// Media configures the face-blur image proxy (/media route).
+	Media config.MediaConfig
 }
 
 type Server struct {
@@ -86,6 +90,11 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /api/showcase", s.handleShowcase)
 	mux.HandleFunc("GET /api/widget-config", s.handlePublicWidgetConfig)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	if mediaHandler, err := mediaproxy.NewHandler(s.cfg.Media, nil); err == nil {
+		mux.Handle("GET /media", mediaHandler)
+	} else {
+		s.logger.Error("media proxy disabled", "error", err)
+	}
 	mux.Handle("/admin/", s.adminMux())
 	mux.Handle("/", http.FileServer(http.Dir(s.cfg.StaticDir)))
 

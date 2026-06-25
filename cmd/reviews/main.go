@@ -305,6 +305,7 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		TriggerSync:        triggerSync,
 		Marketplaces:       marketplaceStatuses(effectiveCfg),
 		AllowedOrigins:     cfg.Web.ShopOrigins,
+		Media:              cfg.Media,
 	}, logger)
 	if err := httpServer.Run(ctx); err != nil {
 		logger.Error("server stopped with error", "error", err)
