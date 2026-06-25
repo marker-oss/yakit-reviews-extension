@@ -28,11 +28,11 @@ type Config struct {
 	// the in-admin "refresh products" action can rewrite it.
 	ProductLinksPath string
 	// SitemapURL is the shop sitemap crawled by the refresh action.
-	SitemapURL string
-	SessionTTL time.Duration
-	SecureCookies      bool
-	TriggerSync        func(marketplaces []string)
-	Marketplaces       []MarketplaceStatus
+	SitemapURL    string
+	SessionTTL    time.Duration
+	SecureCookies bool
+	TriggerSync   func(marketplaces []string)
+	Marketplaces  []MarketplaceStatus
 	// AllowedOrigins lists shop origins permitted to fetch public reviews
 	// data cross-origin (the embedding site). Empty disables CORS.
 	AllowedOrigins []string

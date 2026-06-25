@@ -17,9 +17,9 @@ func TestHostAllowed(t *testing.T) {
 	}
 	bad := []string{
 		"https://evil.com/x.jpg",
-		"http://wbbasket.ru.evil.com/x",          // suffix-spoof
-		"https://localhost/x",                     // SSRF
-		"ftp://wbbasket.ru/x",                     // wrong scheme
+		"http://wbbasket.ru.evil.com/x", // suffix-spoof
+		"https://localhost/x",           // SSRF
+		"ftp://wbbasket.ru/x",           // wrong scheme
 		"not a url",
 	}
 	for _, u := range bad {
