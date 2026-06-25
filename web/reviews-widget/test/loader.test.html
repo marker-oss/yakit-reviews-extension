@@ -6,6 +6,7 @@
   window.REVIEWS_EMBED_CONFIG = { debug: true };
 </script>
 <script src="../loader.js"></script>
+<script src="../reviews-widget.js"></script>
 <script>
   var out = document.getElementById("out");
   var pass = 0;
@@ -108,6 +109,13 @@
   eq("jsonld reviewCount", ld.reviewCount, 2);
   eq("jsonld reviews len", ld.review.length, 2);
   eq("jsonld null when empty", I.buildJsonLd({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 } }, 10), null);
+
+  eq("proxy wraps url",
+     ReviewsWidget.mediaProxyURL("https://cdn.test/a.jpg", "https://rev.test"),
+     "https://rev.test/media?u=https%3A%2F%2Fcdn.test%2Fa.jpg");
+  eq("proxy passthrough when no base",
+     ReviewsWidget.mediaProxyURL("https://cdn.test/a.jpg", ""),
+     "https://cdn.test/a.jpg");
 
   window.ReviewsWidget = {
     mountShadow: function (host, options) {

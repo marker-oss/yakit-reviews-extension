@@ -184,9 +184,19 @@
       state.fullFeedOffset = state.reviews.length;
     }
 
+    let proxyBase = "";
+    try {
+      if (options.source) {
+        proxyBase = new URL(options.source, window.location.href).origin;
+      }
+    } catch (e) {
+      proxyBase = "";
+    }
+
     root.innerHTML = "";
     root.classList.add("reviews-widget", "reviews-widget-root");
     applyConfig(root, state.config);
+    root.__reviewsProxyBase = proxyBase;
     root.classList.toggle("rw-context-homepage", state.context === "homepage");
     root.classList.toggle("rw-is-expanded", state.expanded);
     root.appendChild(renderShell(options.productName || "Отзывы покупательниц", state.config));
@@ -541,7 +551,8 @@
         ${media
           .slice(0, 18)
           .map((item) => {
-            const src = item.kind === "video" ? item.previewUrl || "./assets/review-video.svg" : item.url;
+            const rawSrc = item.kind === "video" ? item.previewUrl || "./assets/review-video.svg" : item.url;
+            const src = item.kind === "video" ? rawSrc : mediaProxyURL(rawSrc, root.__reviewsProxyBase);
             const caption = item.kind === "video" ? `Видео отзыва, ${item.authorName}` : `Фото отзыва, ${item.authorName}`;
             return `
               <a class="rw-strip-media-item" href="${escapeAttribute(item.url)}" ${mediaTriggerAttributes(item, caption)}>
@@ -583,7 +594,7 @@
         ${renderMeta(review, root.__reviewsWidgetConfig)}
         ${review.text ? `<p class="rw-card-text">${escapeHTML(review.text)}</p>` : ""}
         ${renderProsCons(review, root.__reviewsWidgetConfig)}
-        ${renderMedia(review.media, root.__reviewsWidgetConfig)}
+        ${renderMedia(review.media, root.__reviewsWidgetConfig, root.__reviewsProxyBase)}
         ${renderAnswer(review.answer, root.__reviewsWidgetConfig)}
       `;
       if (marketplaceLink) {
@@ -647,7 +658,7 @@
     return items.length ? `<div class="rw-pros-cons">${items.join("")}</div>` : "";
   }
 
-  function renderMedia(media, config) {
+  function renderMedia(media, config, proxyBase) {
     if (!config.visibility.photos || !media.length) {
       return "";
     }
@@ -655,7 +666,8 @@
       <div class="rw-media">
         ${media
           .map((item) => {
-            const src = item.kind === "video" ? item.previewUrl || "./assets/review-video.svg" : item.url;
+            const rawSrc = item.kind === "video" ? item.previewUrl || "./assets/review-video.svg" : item.url;
+            const src = item.kind === "video" ? rawSrc : mediaProxyURL(rawSrc, proxyBase);
             const caption = item.kind === "video" ? "Видео отзыва" : "Фото отзыва";
             return `
               <a class="rw-media-item" href="${escapeAttribute(item.url)}" ${mediaTriggerAttributes(item, caption)}>
@@ -746,7 +758,8 @@
     const next = viewer.querySelector('[data-role="viewer-next"]');
     const canPlayVideo = item.kind === "video" && isLikelyVideoURL(item.url);
     const canShowImage = item.kind !== "video" || item.previewUrl || isLikelyImageURL(item.url);
-    const viewerSrc = item.kind === "video" ? item.previewUrl || item.url : item.url || item.previewUrl;
+    const rawViewerSrc = item.kind === "video" ? item.previewUrl || item.url : item.url || item.previewUrl;
+    const viewerSrc = item.kind === "video" ? rawViewerSrc : mediaProxyURL(rawViewerSrc, root.__reviewsProxyBase);
     caption.textContent = item.caption || (item.kind === "video" ? "Видео отзыва" : "Фото отзыва");
     original.href = item.url;
     original.textContent = item.kind === "video" ? "Открыть видео" : "Открыть оригинал";
@@ -793,9 +806,10 @@
     if (!config.visibility.sellerAnswers || !answer || !answer.text) {
       return "";
     }
+    const title = answer.kind === "seller" ? "Ответ продавца" : "Ответ магазина";
     return `
-      <div class="rw-answer">
-        <div class="rw-answer-title">Ответ магазина</div>
+      <div class="rw-answer" data-answer-kind="${escapeHTML(answer.kind || "")}">
+        <div class="rw-answer-title">${title}</div>
         <p>${escapeHTML(answer.text)}</p>
       </div>
     `;
@@ -809,6 +823,13 @@
     button.textContent = label;
     button.addEventListener("click", onClick);
     return button;
+  }
+
+  function mediaProxyURL(rawUrl, proxyBase) {
+    if (!rawUrl || !proxyBase) {
+      return rawUrl || "";
+    }
+    return proxyBase.replace(/\/$/, "") + "/media?u=" + encodeURIComponent(rawUrl);
   }
 
   function initials(name) {
@@ -1135,5 +1156,6 @@
     mountShadow,
     sampleReviews,
     defaultConfig,
+    mediaProxyURL,
   };
 })();
