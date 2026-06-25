@@ -76,6 +76,55 @@ func TestProxyMissingURL(t *testing.T) {
 	}
 }
 
+func TestProxyUpstreamErrorReturns502(t *testing.T) {
+	cfg := config.MediaConfig{Allowlist: []string{"cdn.test"}, MaxBytes: 8 << 20, CacheEntries: 8}
+	h, err := NewHandler(cfg, func(u string) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: 503,
+			Header:     http.Header{},
+			Body:       io.NopCloser(bytes.NewReader(nil)),
+		}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/media?u="+url.QueryEscape("https://cdn.test/x.jpg"), nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+func TestProxyCacheHitReusesResult(t *testing.T) {
+	calls := 0
+	cfg := config.MediaConfig{Allowlist: []string{"cdn.test"}, MaxBytes: 8 << 20, CacheEntries: 8}
+	img := jpegBytes(t)
+	h, err := NewHandler(cfg, func(u string) (*http.Response, error) {
+		calls++
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": {"image/jpeg"}},
+			Body:       io.NopCloser(bytes.NewReader(img)),
+		}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := "/media?u=" + url.QueryEscape("https://cdn.test/cached.jpg")
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest("GET", target, nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("request %d: status = %d, want 200", i+1, rec.Code)
+		}
+	}
+	if calls != 1 {
+		t.Errorf("fetch called %d times, want 1 (second should be cache hit)", calls)
+	}
+}
+
 func TestRedirectGuard(t *testing.T) {
 	allowlist := []string{"cdn.test"}
 	guard := redirectGuard(allowlist)

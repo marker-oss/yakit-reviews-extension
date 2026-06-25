@@ -103,9 +103,13 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, h.cfg.MaxBytes))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, h.cfg.MaxBytes+1))
 	if err != nil {
 		http.Error(w, "read error", http.StatusBadGateway)
+		return
+	}
+	if int64(len(body)) > h.cfg.MaxBytes {
+		http.Error(w, "image too large", http.StatusBadGateway)
 		return
 	}
 

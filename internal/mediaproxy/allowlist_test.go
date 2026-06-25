@@ -17,7 +17,8 @@ func TestHostAllowed(t *testing.T) {
 	}
 	bad := []string{
 		"https://evil.com/x.jpg",
-		"http://wbbasket.ru.evil.com/x", // suffix-spoof
+		"http://wbbasket.ru.evil.com/x",  // suffix-spoof (rejected by scheme check)
+		"https://wbbasket.ru.evil.com/x", // suffix-spoof via https (exercises host-suffix boundary)
 		"https://localhost/x",           // SSRF
 		"ftp://wbbasket.ru/x",           // wrong scheme
 		"not a url",

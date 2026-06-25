@@ -13,11 +13,13 @@ func testCtx(t *testing.T) context.Context {
 func TestScrubPersonalData(t *testing.T) {
 	s := newTestStore(t)
 	// Insert a legacy row directly: full name, populated Raw, empty SellerArticle.
-	s.db.Create(&Review{
+	if err := s.db.Create(&Review{
 		Marketplace: "wb", ExternalReviewID: "legacy1",
 		AuthorName: "Анна Котова", SellerArticle: "",
 		Raw: `{"productDetails":{"supplierArticle":"ART-9"},"userName":"Анна Котова"}`,
-	})
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 	n, err := s.ScrubPersonalData(testCtx(t))
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +39,10 @@ func TestScrubPersonalData(t *testing.T) {
 		t.Errorf("SellerArticle = %q, want ART-9", got.SellerArticle)
 	}
 	// Idempotent: second run scrubs nothing.
-	n2, _ := s.ScrubPersonalData(testCtx(t))
+	n2, err2 := s.ScrubPersonalData(testCtx(t))
+	if err2 != nil {
+		t.Fatal(err2)
+	}
 	if n2 != 0 {
 		t.Errorf("second run scrubbed = %d, want 0", n2)
 	}
