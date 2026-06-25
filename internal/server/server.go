@@ -146,6 +146,7 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.Handle("POST /admin/api/reviews/bulk", requireCSRF(http.HandlerFunc(s.handleAdminReviewsBulkModerate)))
 	protected.Handle("PATCH /admin/api/reviews/{id}", requireCSRF(http.HandlerFunc(s.handleAdminReviewModerate)))
 	protected.Handle("DELETE /admin/api/reviews/{id}", requireCSRF(http.HandlerFunc(s.handleAdminReviewDelete)))
+	protected.Handle("DELETE /admin/api/reviews/{id}/purge", requireCSRF(http.HandlerFunc(s.handleAdminReviewPurge)))
 	protected.Handle("POST /admin/api/reviews/{id}/restore", requireCSRF(http.HandlerFunc(s.handleAdminReviewRestore)))
 	protected.Handle("PUT /admin/api/reviews/{id}/reply", requireCSRF(http.HandlerFunc(s.handleAdminReviewReply)))
 	protected.HandleFunc("GET /admin/api/articles/{article}/pins", s.handleListArticlePins)

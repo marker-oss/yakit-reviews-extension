@@ -304,6 +304,26 @@ func TestDashboardStats(t *testing.T) {
 	}
 }
 
+func TestHardDeleteReview(t *testing.T) {
+	s := newTestStore(t)
+	res, err := s.UpsertReview(testCtx(t), marketplace.Review{
+		Marketplace: "wb", ExternalReviewID: "r1", AuthorName: "Анна Котова",
+		Media: []marketplace.Media{{Kind: "photo", URL: "https://cdn.test/x.jpg"}},
+	})
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := s.HardDeleteReview(testCtx(t), res.Review.ID); err != nil {
+		t.Fatal(err)
+	}
+	var rc, mc int64
+	s.db.Model(&Review{}).Where("id = ?", res.Review.ID).Count(&rc)
+	s.db.Model(&ReviewMedia{}).Where("review_id = ?", res.Review.ID).Count(&mc)
+	if rc != 0 || mc != 0 {
+		t.Errorf("rows left: review=%d media=%d, want 0/0", rc, mc)
+	}
+}
+
 func TestShowcaseRuleAndReviews(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
