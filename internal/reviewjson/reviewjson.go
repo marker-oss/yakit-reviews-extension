@@ -13,7 +13,10 @@ import (
 	"reviews/internal/store"
 )
 
-const marketplaceWB = "wb"
+const (
+	marketplaceWB = "wb"
+	marketplaceYM = "ym"
+)
 
 // Mapper holds the per-deployment configuration needed to compute outbound
 // links. Zero value is usable (no product links, empty template).
@@ -113,12 +116,14 @@ func marketplaceReviewURL(review store.Review) string {
 }
 
 func marketplaceProductURL(review store.Review) string {
+	if review.ExternalProductID == "" {
+		return ""
+	}
 	switch review.Marketplace {
 	case marketplaceWB:
-		if review.ExternalProductID == "" {
-			return ""
-		}
 		return "https://www.wildberries.ru/catalog/" + urlPathEscape(review.ExternalProductID) + "/detail.aspx"
+	case marketplaceYM:
+		return "https://market.yandex.ru/product/" + urlPathEscape(review.ExternalProductID)
 	default:
 		return ""
 	}

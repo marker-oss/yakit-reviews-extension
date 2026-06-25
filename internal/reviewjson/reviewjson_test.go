@@ -165,3 +165,15 @@ func TestAnswerKind(t *testing.T) {
 		t.Fatalf("marketplace answer kind = %+v", a)
 	}
 }
+
+func TestMarketplaceProductURL_YM(t *testing.T) {
+	r := store.Review{Marketplace: "ym", ExternalProductID: "12345"}
+	got := (Mapper{}).ToReview(r).MarketplaceProductURL
+	if got != "https://market.yandex.ru/product/12345" {
+		t.Errorf("got %q", got)
+	}
+	empty := store.Review{Marketplace: "ym", ExternalProductID: ""}
+	if got := (Mapper{}).ToReview(empty).MarketplaceProductURL; got != "" {
+		t.Errorf("got %q, want empty", got)
+	}
+}
