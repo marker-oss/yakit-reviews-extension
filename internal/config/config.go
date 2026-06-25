@@ -60,6 +60,8 @@ type WebConfig struct {
 	// articles. From REVIEWS_SITE_SITEMAP_URL, defaulting to the first shop
 	// origin + "/sitemap.xml".
 	SitemapURL string
+	// PrivacyContact is the contact shown for data-subject requests (152-ФЗ).
+	PrivacyContact string
 }
 
 type MarketplaceConfig struct {
@@ -110,6 +112,7 @@ func LoadFromEnv() (Config, error) {
 			ProductURLTemplate: envString("REVIEWS_SITE_PRODUCT_URL_TEMPLATE", ""),
 			ProductLinksPath:   envString("REVIEWS_SITE_PRODUCT_LINKS", "data/product-links.json"),
 			ShopOrigins:        envList("REVIEWS_SHOP_ORIGIN"),
+			PrivacyContact:     envString("REVIEWS_PRIVACY_CONTACT", ""),
 		},
 		Marketplaces: MarketplaceConfig{
 			WB: WBConfig{
