@@ -27,8 +27,8 @@ type Config struct {
 type MediaConfig struct {
 	// Allowlist of CDN host suffixes the image proxy may fetch from.
 	Allowlist []string
-	// MaxBytes caps a single fetched image; larger responses are streamed
-	// through unprocessed. Default 8 MiB.
+	// MaxBytes caps a single fetched image; the response body is truncated at
+	// this many bytes before processing. Default 8 MiB.
 	MaxBytes int64
 	// CacheEntries bounds the in-memory blurred-image LRU. Default 512.
 	CacheEntries int

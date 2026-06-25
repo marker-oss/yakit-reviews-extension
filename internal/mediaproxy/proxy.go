@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"image"
 	_ "image/gif"
 	"image/jpeg"
@@ -12,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"time"
 
 	"reviews/internal/config"
 
@@ -20,6 +22,27 @@ import (
 	// through to streaming the original bytes (see process).
 	_ "golang.org/x/image/webp"
 )
+
+// maxRedirects caps redirect hops the default client will follow before erroring.
+const maxRedirects = 5
+
+// redirectGuard returns an http.Client CheckRedirect policy that re-validates
+// every redirect hop against the allowlist. This closes an image-proxy SSRF:
+// the handler only checks the original u, so without this an allowlisted CDN
+// could 302 to an internal address (169.254.169.254, RFC-1918, localhost) and
+// the proxy would happily fetch it. The policy rejects any hop whose target is
+// not on the allowlist and caps the number of hops.
+func redirectGuard(allowlist []string) func(req *http.Request, via []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) >= maxRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxRedirects)
+		}
+		if !HostAllowed(req.URL.String(), allowlist) {
+			return fmt.Errorf("redirect to disallowed host: %s", req.URL.Host)
+		}
+		return nil
+	}
+}
 
 // HTTPGetter fetches a remote image. Injected for testing.
 type HTTPGetter func(url string) (*http.Response, error)
@@ -37,14 +60,18 @@ type handler struct {
 // NewHandler builds the face-blurring image proxy. It serves
 // GET /media?u=<encoded https url>: validate against the allowlist, fetch,
 // decode, blur detected faces, re-encode as JPEG, and stream with an in-memory
-// LRU cache. A nil fetch defaults to a plain http.Client.Get.
+// LRU cache. A nil fetch defaults to an http.Client with a 10s timeout and a
+// redirect policy that re-validates each hop against the allowlist (SSRF guard).
 func NewHandler(cfg config.MediaConfig, fetch HTTPGetter) (http.Handler, error) {
 	det, err := newDetector()
 	if err != nil {
 		return nil, err
 	}
 	if fetch == nil {
-		client := &http.Client{}
+		client := &http.Client{
+			Timeout:       10 * time.Second,
+			CheckRedirect: redirectGuard(cfg.Allowlist),
+		}
 		fetch = func(u string) (*http.Response, error) { return client.Get(u) }
 	}
 	return &handler{cfg: cfg, fetch: fetch, det: det, cache: map[string][]byte{}}, nil

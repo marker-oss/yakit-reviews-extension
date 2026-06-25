@@ -4,7 +4,6 @@ package mediaproxy
 import (
 	"bytes"
 	"image"
-	_ "image/jpeg"
 	"image/jpeg"
 	"io"
 	"net/http"
@@ -74,5 +73,39 @@ func TestProxyMissingURL(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestRedirectGuard(t *testing.T) {
+	allowlist := []string{"cdn.test"}
+	guard := redirectGuard(allowlist)
+
+	reqTo := func(rawURL string) *http.Request {
+		r := httptest.NewRequest("GET", rawURL, nil)
+		return r
+	}
+
+	// Allowed host within the hop cap: nil.
+	if err := guard(reqTo("https://cdn.test/a.jpg"), nil); err != nil {
+		t.Errorf("allowed host should pass, got %v", err)
+	}
+	// Subdomain of an allowlisted suffix is allowed too.
+	if err := guard(reqTo("https://img.cdn.test/a.jpg"), nil); err != nil {
+		t.Errorf("allowed subdomain should pass, got %v", err)
+	}
+
+	// Disallowed host (classic SSRF target): error.
+	if err := guard(reqTo("https://169.254.169.254/latest/meta-data"), nil); err == nil {
+		t.Error("redirect to disallowed host must error")
+	}
+	// Non-allowlisted public host: error.
+	if err := guard(reqTo("https://evil.com/x.jpg"), nil); err == nil {
+		t.Error("redirect to non-allowlisted host must error")
+	}
+
+	// Exceeding the hop cap errors even for an allowlisted target.
+	via := make([]*http.Request, maxRedirects)
+	if err := guard(reqTo("https://cdn.test/a.jpg"), via); err == nil {
+		t.Errorf("exceeding %d hops must error", maxRedirects)
 	}
 }
