@@ -48,6 +48,7 @@ type Review struct {
 type Answer struct {
 	Text  string `json:"text"`
 	State string `json:"state"`
+	Kind  string `json:"kind"` // "seller" | "marketplace"
 }
 
 // Media is the public JSON representation of review media.
@@ -63,9 +64,9 @@ func (m Mapper) ToReview(review store.Review) Review {
 
 	var answer *Answer
 	if review.AdminReplyText != nil && strings.TrimSpace(*review.AdminReplyText) != "" {
-		answer = &Answer{Text: *review.AdminReplyText, State: "published"}
+		answer = &Answer{Text: *review.AdminReplyText, State: "published", Kind: "seller"}
 	} else if review.MPAnswerText != nil || review.MPAnswerState != nil {
-		answer = &Answer{Text: stringValue(review.MPAnswerText), State: stringValue(review.MPAnswerState)}
+		answer = &Answer{Text: stringValue(review.MPAnswerText), State: stringValue(review.MPAnswerState), Kind: "marketplace"}
 	}
 
 	media := make([]Media, 0, len(review.Media))
