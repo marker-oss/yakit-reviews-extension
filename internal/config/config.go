@@ -21,6 +21,17 @@ type Config struct {
 	Log          LogConfig
 	Web          WebConfig
 	Marketplaces MarketplaceConfig
+	Media        MediaConfig
+}
+
+type MediaConfig struct {
+	// Allowlist of CDN host suffixes the image proxy may fetch from.
+	Allowlist []string
+	// MaxBytes caps a single fetched image; larger responses are streamed
+	// through unprocessed. Default 8 MiB.
+	MaxBytes int64
+	// CacheEntries bounds the in-memory blurred-image LRU. Default 512.
+	CacheEntries int
 }
 
 type DBConfig struct {
@@ -118,6 +129,15 @@ func LoadFromEnv() (Config, error) {
 				APIKey:   envFirst("REVIEWS_OZON_API_KEY", "OZON_API_KEY"),
 			},
 		},
+	}
+
+	cfg.Media = MediaConfig{
+		Allowlist:    envList("REVIEWS_MEDIA_ALLOWLIST"),
+		MaxBytes:     8 << 20,
+		CacheEntries: 512,
+	}
+	if len(cfg.Media.Allowlist) == 0 {
+		cfg.Media.Allowlist = []string{"wbbasket.ru", "images.wildberries.ru", "avatars.mds.yandex.net"}
 	}
 
 	cfg.Web.SitemapURL = envString("REVIEWS_SITE_SITEMAP_URL", "")
