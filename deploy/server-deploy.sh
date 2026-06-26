@@ -18,12 +18,29 @@ env_value() {
   grep -E "^${key}=" "$file" | tail -n 1 | cut -d= -f2- | sed 's/^"//; s/"$//; s/^'\''//; s/'\''$//'
 }
 
+caddy_cert_domain() {
+  cert_root="/var/lib/caddy/.local/share/caddy/certificates"
+  if [ ! -d "$cert_root" ]; then
+    return 0
+  fi
+  find "$cert_root" -mindepth 2 -maxdepth 2 -type d 2>/dev/null |
+    awk -F/ '{print $NF}' |
+    grep -Ev '^(localhost|)$' |
+    head -n 1
+}
+
 write_caddyfile() {
   env_file="$APP_DIR/.env"
   public_domain="$(env_value REVIEWS_PUBLIC_DOMAIN "$env_file")"
   shop_origin="$(env_value REVIEWS_SHOP_ORIGIN "$env_file")"
-  if [ "$public_domain" = "" ] || [ "$shop_origin" = "" ]; then
-    echo "skip Caddyfile update: REVIEWS_PUBLIC_DOMAIN or REVIEWS_SHOP_ORIGIN is missing in $env_file" >&2
+  if [ "$public_domain" = "" ]; then
+    public_domain="$(caddy_cert_domain)"
+  fi
+  if [ "$shop_origin" = "" ]; then
+    shop_origin="*"
+  fi
+  if [ "$public_domain" = "" ]; then
+    echo "skip Caddyfile update: REVIEWS_PUBLIC_DOMAIN is missing and no Caddy certificate domain was found" >&2
     return 0
   fi
   cat > "$SRC_DIR/.deploy/Caddyfile" <<EOF
