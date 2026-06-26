@@ -9,6 +9,57 @@ GO_BIN="${GO_BIN:-/usr/local/go/bin/go}"
 RUN_SYNC="${RUN_SYNC:-true}"
 SYNC_MARKETPLACE="${SYNC_MARKETPLACE:-}"
 
+env_value() {
+  key="$1"
+  file="$2"
+  if [ ! -f "$file" ]; then
+    return 0
+  fi
+  grep -E "^${key}=" "$file" | tail -n 1 | cut -d= -f2- | sed 's/^"//; s/"$//; s/^'\''//; s/'\''$//'
+}
+
+write_caddyfile() {
+  env_file="$APP_DIR/.env"
+  public_domain="$(env_value REVIEWS_PUBLIC_DOMAIN "$env_file")"
+  shop_origin="$(env_value REVIEWS_SHOP_ORIGIN "$env_file")"
+  if [ "$public_domain" = "" ] || [ "$shop_origin" = "" ]; then
+    echo "skip Caddyfile update: REVIEWS_PUBLIC_DOMAIN or REVIEWS_SHOP_ORIGIN is missing in $env_file" >&2
+    return 0
+  fi
+  cat > "$SRC_DIR/.deploy/Caddyfile" <<EOF
+$public_domain {
+	encode zstd gzip
+
+	root * $APP_DIR/web
+
+	@options method OPTIONS
+	respond @options 204
+
+	header {
+		Access-Control-Allow-Origin "$shop_origin"
+		Access-Control-Allow-Methods "GET, OPTIONS"
+		Access-Control-Allow-Headers "Accept, Content-Type"
+		Vary "Origin"
+	}
+
+	@json path /reviews-data/* /reviews-data
+	header @json {
+		Content-Type "application/json; charset=utf-8"
+		Cache-Control "public, max-age=300"
+	}
+
+	@assets path /loader.js /reviews-widget.js /reviews-widget.css
+	header @assets Cache-Control "public, max-age=3600"
+
+	@media path /media
+	reverse_proxy @media 127.0.0.1:8080
+
+	file_server
+}
+EOF
+  install -m 0644 "$SRC_DIR/.deploy/Caddyfile" /etc/caddy/Caddyfile
+}
+
 if [ "$(id -u)" -ne 0 ]; then
   echo "server-deploy.sh must run as root" >&2
   exit 1
@@ -58,9 +109,6 @@ if command -v systemctl >/dev/null 2>&1; then
   install -m 0644 "$SRC_DIR/deploy/systemd/reviews.service" /etc/systemd/system/reviews.service
   systemctl daemon-reload
 fi
-if [ -f /etc/caddy/Caddyfile ]; then
-  install -m 0644 "$SRC_DIR/deploy/Caddyfile" /etc/caddy/Caddyfile
-fi
 
 cd "$APP_DIR"
 ./reviews migrate
@@ -80,8 +128,13 @@ if command -v systemctl >/dev/null 2>&1; then
   systemctl restart reviews.service
 fi
 
-if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet caddy; then
-  systemctl reload caddy
+if command -v systemctl >/dev/null 2>&1 && [ -f /etc/caddy/Caddyfile ]; then
+  write_caddyfile
+  if systemctl is-active --quiet caddy; then
+    systemctl reload caddy
+  else
+    systemctl restart caddy
+  fi
 fi
 
 echo "deploy complete"
