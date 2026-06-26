@@ -54,6 +54,13 @@ fi
 install -m 0644 "$SRC_DIR/web/reviews-widget/loader.js" "$APP_DIR/web/loader.js"
 install -m 0644 "$SRC_DIR/web/reviews-widget/reviews-widget.js" "$APP_DIR/web/reviews-widget.js"
 install -m 0644 "$SRC_DIR/web/reviews-widget/reviews-widget.css" "$APP_DIR/web/reviews-widget.css"
+if command -v systemctl >/dev/null 2>&1; then
+  install -m 0644 "$SRC_DIR/deploy/systemd/reviews.service" /etc/systemd/system/reviews.service
+  systemctl daemon-reload
+fi
+if [ -f /etc/caddy/Caddyfile ]; then
+  install -m 0644 "$SRC_DIR/deploy/Caddyfile" /etc/caddy/Caddyfile
+fi
 
 cd "$APP_DIR"
 ./reviews migrate
@@ -67,6 +74,11 @@ if [ "$RUN_SYNC" = "true" ]; then
 fi
 
 ./reviews export --out "$APP_DIR/web/reviews-data"
+
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl enable --now reviews.service
+  systemctl restart reviews.service
+fi
 
 if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet caddy; then
   systemctl reload caddy
