@@ -184,9 +184,9 @@
       state.fullFeedOffset = state.reviews.length;
     }
 
-    let proxyBase = "";
+    let proxyBase = options.mediaProxyBase || "";
     try {
-      if (options.source) {
+      if (!proxyBase && options.source) {
         proxyBase = new URL(options.source, window.location.href).origin;
       }
     } catch (e) {

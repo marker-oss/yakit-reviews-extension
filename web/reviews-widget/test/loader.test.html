@@ -121,12 +121,14 @@
     mountShadow: function (host, options) {
       host.setAttribute("data-mounted-reviews", String(options.reviews.length));
       host.setAttribute("data-mount-mode", "shadow");
+      host.setAttribute("data-media-proxy-base", options.mediaProxyBase || "");
       host.setAttribute("data-full-feed-source", options.fullFeedSource || "");
       host.setAttribute("data-full-feed-offset", String(options.fullFeedOffset ?? ""));
     },
     mount: function (host, options) {
       host.setAttribute("data-mounted-reviews", String(options.reviews.length));
       host.setAttribute("data-mount-mode", "light");
+      host.setAttribute("data-media-proxy-base", options.mediaProxyBase || "");
       host.setAttribute("data-full-feed-source", options.fullFeedSource || "");
       host.setAttribute("data-full-feed-offset", String(options.fullFeedOffset ?? ""));
     },
@@ -166,6 +168,17 @@
   eq("default anchor mounts reviews", standardHost.getAttribute("data-mounted-reviews"), "1");
   eq("default render uses shadow dom", standardHost.getAttribute("data-mount-mode"), "shadow");
   eq("product render has no full feed", standardHost.getAttribute("data-full-feed-source"), "");
+
+  cleanupLoaderFixture();
+  I.cfg.dataBase = "https://reviews.test/reviews-data";
+  var proxyFixture = document.createElement("div");
+  proxyFixture.id = "loader-fixture";
+  proxyFixture.innerHTML = '<section data-testid="ProductDetails"><main id="proxy-anchor"></main></section>';
+  document.body.appendChild(proxyFixture);
+  I.render(renderBundle, "1523");
+  var proxyHost = document.getElementById(I.cfg.hostId);
+  eq("static render passes media proxy base", proxyHost.getAttribute("data-media-proxy-base"), "https://reviews.test");
+  I.cfg.dataBase = "";
 
   cleanupLoaderFixture();
   I.cfg.useShadowDom = false;

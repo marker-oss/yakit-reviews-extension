@@ -89,6 +89,25 @@
     return url.toString();
   }
 
+  function originFromURL(value) {
+    if (!value) {
+      return "";
+    }
+    try {
+      return new URL(value, location.href).origin;
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  function mediaProxyBase() {
+    if (CFG.mediaProxyBase) {
+      return String(CFG.mediaProxyBase).replace(/\/$/, "");
+    }
+    var base = CFG.configBase || CFG.dataBase || CFG.widgetJsUrl || "";
+    return originFromURL(base);
+  }
+
   function extractArticleFromHTML(html) {
     if (!html) {
       return "";
@@ -617,6 +636,7 @@
       aggregate: bundle && bundle.aggregate,
       config: widgetConfig,
       context: contextName || contextForPath(location.pathname),
+      mediaProxyBase: mediaProxyBase(),
       fullFeedSource: (contextName || contextForPath(location.pathname)) === "homepage" ? reviewsUrl("") : "",
       fullFeedOffset: 0,
       fullFeedLimit: 24,
