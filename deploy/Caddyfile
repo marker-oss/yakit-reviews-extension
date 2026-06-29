@@ -38,6 +38,9 @@
 	@assets path /loader.js /reviews-widget.js /reviews-widget.css
 	header @assets Cache-Control "public, max-age=3600"
 
+	@backend path /api /api/* /admin /admin/* /healthz
+	reverse_proxy @backend 127.0.0.1:8080
+
 	@media path /media
 	reverse_proxy @media 127.0.0.1:8080
 
