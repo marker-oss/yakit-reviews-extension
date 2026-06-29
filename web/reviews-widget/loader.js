@@ -73,13 +73,42 @@
     return CFG.dataBase + "/by-article/" + encodeURIComponent(articleFileKey(article)) + ".json";
   }
 
+  function originFromURL(value) {
+    if (!value) {
+      return "";
+    }
+    try {
+      var parsed = new URL(value, location.href);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        return parsed.origin;
+      }
+    } catch (_error) {
+      return "";
+    }
+    return "";
+  }
+
+  function serviceBase() {
+    if (CFG.configBase) {
+      return String(CFG.configBase).replace(/\/$/, "");
+    }
+    if (CFG.mediaProxyBase) {
+      return String(CFG.mediaProxyBase).replace(/\/$/, "");
+    }
+    var dataOrigin = originFromURL(CFG.dataBase);
+    if (dataOrigin && dataOrigin !== location.origin) {
+      return dataOrigin;
+    }
+    return originFromURL(CFG.widgetJsUrl);
+  }
+
   function showcaseUrl() {
-    var base = CFG.configBase || "";
+    var base = serviceBase();
     return base.replace(/\/$/, "") + "/api/showcase";
   }
 
   function reviewsUrl(contextName) {
-    var base = CFG.configBase || "";
+    var base = serviceBase();
     var url = new URL(base.replace(/\/$/, "") + "/api/reviews", location.origin);
     if (contextName) {
       url.searchParams.set("context", contextName);
@@ -89,23 +118,8 @@
     return url.toString();
   }
 
-  function originFromURL(value) {
-    if (!value) {
-      return "";
-    }
-    try {
-      return new URL(value, location.href).origin;
-    } catch (_error) {
-      return "";
-    }
-  }
-
   function mediaProxyBase() {
-    if (CFG.mediaProxyBase) {
-      return String(CFG.mediaProxyBase).replace(/\/$/, "");
-    }
-    var base = CFG.configBase || CFG.dataBase || CFG.widgetJsUrl || "";
-    return originFromURL(base);
+    return serviceBase();
   }
 
   function extractArticleFromHTML(html) {
@@ -285,6 +299,7 @@
     normalizeArticle: normalizeArticle,
     articleFileKey: articleFileKey,
     bundleUrl: bundleUrl,
+    serviceBase: serviceBase,
     showcaseUrl: showcaseUrl,
     reviewsUrl: reviewsUrl,
     extractArticleFromHTML: extractArticleFromHTML,
@@ -365,7 +380,7 @@
       return widgetConfigLoading[contextName];
     }
 
-    var base = CFG.configBase || "";
+    var base = serviceBase();
     var url = base.replace(/\/$/, "") + "/api/widget-config?context=" + encodeURIComponent(contextName);
     widgetConfigLoading[contextName] = fetch(url, { headers: { Accept: "application/json" } })
       .then(function (response) {

@@ -40,6 +40,22 @@
   eq("bundleUrl", I.bundleUrl("3467/Белый"), I.cfg.dataBase + "/by-article/3467.json");
   eq("reviewsUrl full feed", new URL(I.reviewsUrl("")).pathname + new URL(I.reviewsUrl("")).search, "/api/reviews?sort=newest&limit=24");
   eq("reviewsUrl context", new URL(I.reviewsUrl("homepage")).pathname + new URL(I.reviewsUrl("homepage")).search, "/api/reviews?context=homepage&sort=newest&limit=24");
+
+  var oldDataBase = I.cfg.dataBase;
+  var oldConfigBase = I.cfg.configBase;
+  var oldWidgetJsUrl = I.cfg.widgetJsUrl;
+  I.cfg.configBase = "";
+  I.cfg.dataBase = "https://reviews.test/reviews-data";
+  I.cfg.widgetJsUrl = "";
+  eq("service base falls back to dataBase origin", I.serviceBase(), "https://reviews.test");
+  eq("showcaseUrl uses fallback service base", new URL(I.showcaseUrl()).origin + new URL(I.showcaseUrl()).pathname, "https://reviews.test/api/showcase");
+  eq("reviewsUrl uses fallback service base", new URL(I.reviewsUrl("")).origin + new URL(I.reviewsUrl("")).pathname, "https://reviews.test/api/reviews");
+  I.cfg.configBase = "https://api.reviews.test/";
+  eq("service base prefers configBase", I.serviceBase(), "https://api.reviews.test");
+  I.cfg.dataBase = oldDataBase;
+  I.cfg.configBase = oldConfigBase;
+  I.cfg.widgetJsUrl = oldWidgetJsUrl;
+
   eq("extract sku", I.extractArticleFromHTML('x "sku":"107" y'), "107");
   eq("extract label", I.extractArticleFromHTML("Артикул: 1523"), "1523");
 
