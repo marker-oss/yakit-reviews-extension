@@ -49,15 +49,22 @@ $public_domain {
 
 	root * $APP_DIR/web
 
-	@options method OPTIONS
-	respond @options 204
-
-	header {
+	@cors path /reviews-data /reviews-data/* /loader.js /reviews-widget.js /reviews-widget.css /media
+	header @cors {
 		Access-Control-Allow-Origin "$shop_origin"
 		Access-Control-Allow-Methods "GET, OPTIONS"
 		Access-Control-Allow-Headers "Accept, Content-Type"
 		Vary "Origin"
 	}
+
+	@options method OPTIONS
+	header @options {
+		Access-Control-Allow-Origin "$shop_origin"
+		Access-Control-Allow-Methods "GET, OPTIONS"
+		Access-Control-Allow-Headers "Accept, Content-Type"
+		Vary "Origin"
+	}
+	respond @options 204
 
 	@json path /reviews-data/* /reviews-data
 	header @json {
