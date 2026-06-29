@@ -19,7 +19,7 @@
 
 	root * /srv/reviews/web
 
-	@cors path /reviews-data /reviews-data/* /loader.js /reviews-widget.js /reviews-widget.css /media
+	@cors path /reviews-data /reviews-data/* /loader.js /reviews-widget.js /reviews-widget.css
 	header @cors {
 		Access-Control-Allow-Origin "{$REVIEWS_SHOP_ORIGIN}"
 		Access-Control-Allow-Methods "GET, OPTIONS"

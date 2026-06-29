@@ -49,7 +49,7 @@ $public_domain {
 
 	root * $APP_DIR/web
 
-	@cors path /reviews-data /reviews-data/* /loader.js /reviews-widget.js /reviews-widget.css /media
+	@cors path /reviews-data /reviews-data/* /loader.js /reviews-widget.js /reviews-widget.css
 	header @cors {
 		Access-Control-Allow-Origin "$shop_origin"
 		Access-Control-Allow-Methods "GET, OPTIONS"
