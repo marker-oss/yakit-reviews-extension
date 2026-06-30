@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"reviews/internal/config"
+	"reviews/internal/marketplace"
 	"reviews/internal/mediaproxy"
 	"reviews/internal/reviewjson"
 	"reviews/internal/store"
@@ -42,14 +43,19 @@ type Config struct {
 	UploadDir      string
 	PrivacyURL     string
 	ReviewTermsURL string
+	// ReplyPublishers maps marketplace id → publisher for posting seller
+	// replies back to the marketplace. Marketplaces absent here are treated
+	// as "unsupported".
+	ReplyPublishers map[string]marketplace.ReplyPublisher
 }
 
 type Server struct {
-	store       *store.Store
-	cfg         Config
-	logger      *slog.Logger
-	server      *http.Server
-	submissions *submissionLimiter
+	store           *store.Store
+	cfg             Config
+	logger          *slog.Logger
+	server          *http.Server
+	submissions     *submissionLimiter
+	replyPublishers map[string]marketplace.ReplyPublisher
 
 	// linksMu guards cfg.ProductLinks, which the refresh-products action swaps
 	// at runtime while request handlers read it.
@@ -81,9 +87,10 @@ func New(store *store.Store, cfg Config, logger *slog.Logger) *Server {
 		cfg.SessionTTL = 24 * time.Hour
 	}
 	return &Server{
-		store:  store,
-		cfg:    cfg,
-		logger: logger,
+		store:           store,
+		cfg:             cfg,
+		logger:          logger,
+		replyPublishers: cfg.ReplyPublishers,
 	}
 }
 
@@ -157,6 +164,7 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.Handle("DELETE /admin/api/reviews/{id}/purge", requireCSRF(http.HandlerFunc(s.handleAdminReviewPurge)))
 	protected.Handle("POST /admin/api/reviews/{id}/restore", requireCSRF(http.HandlerFunc(s.handleAdminReviewRestore)))
 	protected.Handle("PUT /admin/api/reviews/{id}/reply", requireCSRF(http.HandlerFunc(s.handleAdminReviewReply)))
+	protected.Handle("POST /admin/api/reviews/{id}/reply/retry", requireCSRF(http.HandlerFunc(s.handleAdminReviewReplyRetry)))
 	protected.HandleFunc("GET /admin/api/articles/{article}/pins", s.handleListArticlePins)
 	protected.Handle("PUT /admin/api/articles/{article}/pins", requireCSRF(http.HandlerFunc(s.handleReplaceArticlePins)))
 	protected.Handle("DELETE /admin/api/articles/{article}/pins/{reviewID}", requireCSRF(http.HandlerFunc(s.handleRemoveArticlePin)))
