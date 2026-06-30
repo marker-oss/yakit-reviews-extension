@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -241,5 +242,39 @@ func TestFetchReviewsErrorsOnNon2xx(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no access") {
 		t.Fatalf("error should surface the API message, got %v", err)
+	}
+}
+
+func TestPublishReplyPostsComment(t *testing.T) {
+	var gotPath, gotBody, gotKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotKey = r.Header.Get("Api-Key")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	c := NewWithHTTPClient(config.YMConfig{APIKey: "key", BusinessID: "42"}, srv.URL, srv.Client(), 0)
+	if err := c.PublishReply(context.Background(), "1001", "Спасибо!"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if gotPath != "/v2/businesses/42/goods-feedback/comments/update" {
+		t.Fatalf("path = %s", gotPath)
+	}
+	if gotKey != "key" {
+		t.Fatalf("api-key = %q", gotKey)
+	}
+	if !strings.Contains(gotBody, `"feedbackId":1001`) || !strings.Contains(gotBody, `"text":"Спасибо!"`) {
+		t.Fatalf("body = %s", gotBody)
+	}
+}
+
+func TestPublishReplyBadID(t *testing.T) {
+	c := NewWithHTTPClient(config.YMConfig{APIKey: "key", BusinessID: "42"}, "http://unused", nil, 0)
+	if err := c.PublishReply(context.Background(), "not-a-number", "x"); err == nil {
+		t.Fatal("expected error for non-numeric feedback id")
 	}
 }

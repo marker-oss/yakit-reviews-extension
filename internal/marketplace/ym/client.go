@@ -237,3 +237,35 @@ func (f goodsFeedback) externalProductID() string {
 	}
 	return f.Identifiers.OfferID
 }
+
+func (c *Client) PublishReply(ctx context.Context, externalReviewID, text string) error {
+	feedbackID, err := strconv.ParseInt(externalReviewID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("YM publish reply: bad feedback id %q: %w", externalReviewID, err)
+	}
+	payload := map[string]any{
+		"feedbackId": feedbackID,
+		"comment":    map[string]string{"text": text},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	endpoint := fmt.Sprintf("%s/v2/businesses/%s/goods-feedback/comments/update", c.baseURL, c.businessID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Api-Key", c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("YM publish reply: status %d", resp.StatusCode)
+	}
+	return nil
+}
