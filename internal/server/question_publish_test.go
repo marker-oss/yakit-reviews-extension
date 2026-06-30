@@ -10,10 +10,10 @@ import (
 )
 
 type fakeQuestionPublisher struct {
-	calls int
-	err   error
-	lastID string
-	lastSKU string
+	calls    int
+	err      error
+	lastID   string
+	lastSKU  string
 	lastText string
 }
 

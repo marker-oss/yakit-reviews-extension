@@ -312,23 +312,23 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 	}
 
 	httpServer = server.New(db, server.Config{
-		Addr:               *addr,
-		StaticDir:          *staticDir,
-		ProductURLTemplate: *productURLTemplate,
-		ProductLinks:       loadProductLinks(cfg.Web.ProductLinksPath, logger),
-		ProductLinksPath:   cfg.Web.ProductLinksPath,
-		SitemapURL:         cfg.Web.SitemapURL,
-		SessionTTL:         24 * time.Hour,
-		SecureCookies:      os.Getenv("REVIEWS_INSECURE_COOKIES") == "",
-		TriggerSync:        triggerSync,
+		Addr:                     *addr,
+		StaticDir:                *staticDir,
+		ProductURLTemplate:       *productURLTemplate,
+		ProductLinks:             loadProductLinks(cfg.Web.ProductLinksPath, logger),
+		ProductLinksPath:         cfg.Web.ProductLinksPath,
+		SitemapURL:               cfg.Web.SitemapURL,
+		SessionTTL:               24 * time.Hour,
+		SecureCookies:            os.Getenv("REVIEWS_INSECURE_COOKIES") == "",
+		TriggerSync:              triggerSync,
 		ReplyPublishers:          publishers,
 		QuestionAnswerPublishers: qaPublishers,
-		Marketplaces:       marketplaceStatuses(effectiveCfg),
-		AllowedOrigins:     cfg.Web.ShopOrigins,
-		Media:              cfg.Media,
-		UploadDir:          cfg.Web.UploadDir,
-		PrivacyURL:         cfg.Web.PrivacyURL,
-		ReviewTermsURL:     cfg.Web.ReviewTermsURL,
+		Marketplaces:             marketplaceStatuses(effectiveCfg),
+		AllowedOrigins:           cfg.Web.ShopOrigins,
+		Media:                    cfg.Media,
+		UploadDir:                cfg.Web.UploadDir,
+		PrivacyURL:               cfg.Web.PrivacyURL,
+		ReviewTermsURL:           cfg.Web.ReviewTermsURL,
 	}, logger)
 	if err := httpServer.Run(ctx); err != nil {
 		logger.Error("server stopped with error", "error", err)

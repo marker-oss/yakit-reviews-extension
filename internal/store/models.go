@@ -120,8 +120,8 @@ type Question struct {
 	Text               string
 	AnswerText         *string
 	AnswerAt           *time.Time
-	Status             string `gorm:"size:32;not null;default:imported"` // imported | pending | answered
-	Visibility         string `gorm:"size:16;not null;default:hidden;index"`
+	Status             string    `gorm:"size:32;not null;default:imported"` // imported | pending | answered
+	Visibility         string    `gorm:"size:16;not null;default:hidden;index"`
 	CreatedAtMP        time.Time `gorm:"not null;index"`
 	AnswerPublishState *string   `gorm:"size:16;index"`
 	AnswerPublishError *string

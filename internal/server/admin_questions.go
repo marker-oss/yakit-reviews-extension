@@ -11,18 +11,18 @@ import (
 )
 
 type adminQuestion struct {
-	ID                 uint                   `json:"id"`
-	Marketplace        string                 `json:"marketplace"`
-	ExternalQuestionID string                 `json:"externalQuestionId"`
-	ExternalProductID  string                 `json:"externalProductId"`
-	SellerArticle      string                 `json:"sellerArticle"`
-	AuthorName         string                 `json:"authorName"`
-	Text               string                 `json:"text"`
-	Status             string                 `json:"status"`
-	Visibility         string                 `json:"visibility"`
-	CreatedAtMP        time.Time              `json:"createdAt"`
-	Answer             *adminQuestionAnswer   `json:"answer,omitempty"`
-	AnswerPublish      *answerPublishStatus   `json:"answerPublish,omitempty"`
+	ID                 uint                 `json:"id"`
+	Marketplace        string               `json:"marketplace"`
+	ExternalQuestionID string               `json:"externalQuestionId"`
+	ExternalProductID  string               `json:"externalProductId"`
+	SellerArticle      string               `json:"sellerArticle"`
+	AuthorName         string               `json:"authorName"`
+	Text               string               `json:"text"`
+	Status             string               `json:"status"`
+	Visibility         string               `json:"visibility"`
+	CreatedAtMP        time.Time            `json:"createdAt"`
+	Answer             *adminQuestionAnswer `json:"answer,omitempty"`
+	AnswerPublish      *answerPublishStatus `json:"answerPublish,omitempty"`
 }
 
 type adminQuestionAnswer struct {
