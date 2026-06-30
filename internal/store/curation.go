@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"time"
 
@@ -354,13 +355,24 @@ func defaultShowcaseRule() ShowcaseRule {
 
 var timeNowUTC = func() time.Time { return time.Now().UTC() }
 
-// HardDeleteReview permanently removes a review and its media. Used to fulfill
-// a data-subject erasure request — distinct from SoftDeleteReview.
+// HardDeleteReview permanently removes a review, its media DB rows, and any
+// on-disk media files. Used to fulfill a data-subject erasure request — distinct
+// from SoftDeleteReview.
 func (s *Store) HardDeleteReview(ctx context.Context, id uint) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	paths, err := s.ReviewMediaStoragePaths(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("review_id = ?", id).Delete(&ReviewMedia{}).Error; err != nil {
 			return err
 		}
 		return tx.Where("id = ?", id).Delete(&Review{}).Error
-	})
+	}); err != nil {
+		return err
+	}
+	for _, path := range paths {
+		_ = os.Remove(path)
+	}
+	return nil
 }
