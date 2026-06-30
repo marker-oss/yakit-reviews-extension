@@ -52,6 +52,9 @@ func TestSiteQuestionHiddenUntilAnswered(t *testing.T) {
 	if q.Visibility != "hidden" || q.Status != "pending" {
 		t.Fatalf("site question should start hidden/pending: %+v", q)
 	}
+	if q.ConsentPrivacyAt == nil || q.ConsentPrivacyAt.IsZero() {
+		t.Fatalf("ConsentPrivacyAt should be set, got %v", q.ConsentPrivacyAt)
+	}
 	// Not visible in the public list until answered.
 	vis, _ := s.ListQuestions(ctx, QuestionFilter{Visibility: "visible", SellerArticle: "a1"})
 	if len(vis) != 0 {

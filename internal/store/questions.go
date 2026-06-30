@@ -34,11 +34,12 @@ type QuestionFilter struct {
 
 // SiteQuestionInput carries fields for a site-submitted question.
 type SiteQuestionInput struct {
-	SellerArticle string
-	AuthorName    string
-	AuthorEmail   string
-	Text          string
-	IPHash        string
+	SellerArticle    string
+	AuthorName       string
+	AuthorEmail      string
+	Text             string
+	IPHash           string
+	ConsentPrivacyAt time.Time
 }
 
 // UpsertQuestion inserts or updates a marketplace question, anonymizing the
@@ -180,7 +181,11 @@ func (s *Store) CreateSiteQuestion(ctx context.Context, in SiteQuestionInput) (Q
 	}
 
 	now := time.Now().UTC()
+	if in.ConsentPrivacyAt.IsZero() {
+		in.ConsentPrivacyAt = now
+	}
 	emailHash := HashPII(in.AuthorEmail)
+	consentPrivacyAt := in.ConsentPrivacyAt.UTC()
 
 	q := Question{
 		TenantID:           DefaultTenantID,
@@ -195,6 +200,7 @@ func (s *Store) CreateSiteQuestion(ctx context.Context, in SiteQuestionInput) (Q
 		AuthorEmailHash:    emailHash,
 		SubmissionIPHash:   in.IPHash,
 		FetchedAt:          now,
+		ConsentPrivacyAt:   &consentPrivacyAt,
 	}
 
 	if err := s.db.WithContext(ctx).Create(&q).Error; err != nil {
