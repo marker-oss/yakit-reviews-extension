@@ -46,6 +46,21 @@ export type MarketplaceStatus = {
   fields?: Record<string, boolean>
 }
 
+export type Question = {
+  id: number
+  marketplace: string
+  externalQuestionId: string
+  externalProductId: string
+  sellerArticle?: string
+  authorName: string
+  text: string
+  status: string
+  visibility: 'visible' | 'hidden'
+  createdAt: string
+  answer?: { text: string; at?: string }
+  answerPublish?: { state: string; error?: string; publishedAt?: string }
+}
+
 export type ShowcaseRule = {
   ID?: number
   TenantID?: number

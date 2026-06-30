@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import Editor from './pages/Editor'
 import Embed from './pages/Embed'
 import Marketplaces from './pages/Marketplaces'
+import Questions from './pages/Questions'
 import Reviews from './pages/Reviews'
 import Settings from './pages/Settings'
 import Showcase from './pages/Showcase'
@@ -12,6 +13,7 @@ type Mode = 'loading' | 'setup' | 'login' | 'authed'
 type Route =
   | 'dashboard'
   | 'reviews'
+  | 'questions'
   | 'widget/showcase'
   | 'widget/editor'
   | 'widget/embed'
@@ -42,6 +44,7 @@ const LEGACY_ROUTES: Record<string, Route> = {
 const ROUTES: Route[] = [
   'dashboard',
   'reviews',
+  'questions',
   'widget/showcase',
   'widget/editor',
   'widget/embed',
@@ -56,9 +59,10 @@ function currentRoute(): Route {
   return 'dashboard'
 }
 
-function routeSection(route: Route): 'dashboard' | 'reviews' | 'widget' | 'settings' {
+function routeSection(route: Route): 'dashboard' | 'reviews' | 'questions' | 'widget' | 'settings' {
   if (route === 'dashboard') return 'dashboard'
   if (route === 'reviews') return 'reviews'
+  if (route === 'questions') return 'questions'
   return route.startsWith('widget/') ? 'widget' : 'settings'
 }
 
@@ -68,6 +72,8 @@ function routeTitle(route: Route): string {
       return 'Сводка'
     case 'reviews':
       return 'Отзывы'
+    case 'questions':
+      return 'Вопросы'
     case 'widget/showcase':
       return 'Виджет · Витрина'
     case 'widget/editor':
@@ -187,6 +193,9 @@ export default function App() {
           <a className={route === 'reviews' ? 'active' : ''} href="#/reviews">
             Отзывы
           </a>
+          <a className={route === 'questions' ? 'active' : ''} href="#/questions">
+            Вопросы
+          </a>
           <div className="nav-group">
             <span className={`nav-group-label${routeSection(route) === 'widget' ? ' active' : ''}`}>
               Виджет
@@ -224,6 +233,7 @@ export default function App() {
         </header>
         {route === 'dashboard' && <Dashboard />}
         {route === 'reviews' && <Reviews />}
+        {route === 'questions' && <Questions />}
         {route === 'widget/showcase' && <Showcase />}
         {route === 'widget/editor' && <Editor />}
         {route === 'widget/embed' && <Embed />}

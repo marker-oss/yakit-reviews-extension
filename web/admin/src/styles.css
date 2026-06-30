@@ -338,6 +338,10 @@ small {
   grid-template-columns: 36px minmax(240px, 1fr) 80px 130px 260px;
 }
 
+.grid-questions {
+  grid-template-columns: minmax(240px, 1fr) 120px 320px;
+}
+
 .bulk-bar {
   background: var(--surface, #f4f1fb);
   border-radius: 10px;
@@ -759,6 +763,7 @@ small {
   }
 
   .grid-reviews,
+  .grid-questions,
   .grid-marketplaces,
   .credential-grid {
     grid-template-columns: 1fr;
