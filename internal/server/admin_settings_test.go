@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"reviews/internal/store"
 )
 
 func TestAdminSettingsRequiresAuth(t *testing.T) {
@@ -62,6 +65,57 @@ func TestAdminSettingsRoundTrip(t *testing.T) {
 	}
 	if cfg.PrivacyURL != "https://shop.example/agreement" {
 		t.Fatalf("submission config privacyUrl = %q", cfg.PrivacyURL)
+	}
+}
+
+func TestAdminSettingsCatalogSource(t *testing.T) {
+	s := newAuthTestServer(t)
+	cookie := loginTestAdmin(t, s)
+	csrf := getCSRFToken(t, s, cookie)
+
+	req := httptest.NewRequest(http.MethodPut, "/admin/api/settings",
+		strings.NewReader(`{"shopOrigin":"https://shop.example","sitemapUrl":"https://shop.example/custom-sitemap.xml"}`))
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var got settingsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.ShopOrigin != "https://shop.example" || got.SitemapURL != "https://shop.example/custom-sitemap.xml" {
+		t.Fatalf("unexpected settings: %+v", got)
+	}
+}
+
+func TestEffectiveSitemapURL(t *testing.T) {
+	s := newAuthTestServer(t)
+	ctx := context.Background()
+	s.cfg.SitemapURL = "https://env-default.example/sitemap.xml"
+
+	// Falls back to env when nothing is stored.
+	if got := s.effectiveSitemapURL(ctx); got != "https://env-default.example/sitemap.xml" {
+		t.Fatalf("env fallback = %q", got)
+	}
+
+	// Shop origin derives <origin>/sitemap.xml.
+	if err := s.store.SetAppSetting(ctx, store.SettingShopOrigin, "https://shop.example/"); err != nil {
+		t.Fatalf("set origin: %v", err)
+	}
+	if got := s.effectiveSitemapURL(ctx); got != "https://shop.example/sitemap.xml" {
+		t.Fatalf("origin-derived = %q", got)
+	}
+
+	// Explicit sitemap URL wins over the derived origin.
+	if err := s.store.SetAppSetting(ctx, store.SettingSitemapURL, "https://shop.example/custom.xml"); err != nil {
+		t.Fatalf("set sitemap: %v", err)
+	}
+	if got := s.effectiveSitemapURL(ctx); got != "https://shop.example/custom.xml" {
+		t.Fatalf("explicit sitemap = %q", got)
 	}
 }
 

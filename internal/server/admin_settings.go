@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,10 +12,14 @@ import (
 
 type settingsResponse struct {
 	AgreementURL string `json:"agreementUrl"`
+	ShopOrigin   string `json:"shopOrigin"`
+	SitemapURL   string `json:"sitemapUrl"`
 }
 
 type settingsRequest struct {
 	AgreementURL *string `json:"agreementUrl"`
+	ShopOrigin   *string `json:"shopOrigin"`
+	SitemapURL   *string `json:"sitemapUrl"`
 }
 
 // agreementURL resolves the configured user-agreement / consent page URL,
@@ -27,13 +32,26 @@ func (s *Server) agreementURL(r *http.Request) string {
 	return s.cfg.PrivacyURL
 }
 
+// effectiveSitemapURL resolves the shop sitemap the catalog refresh crawls.
+// Priority: an explicit admin-stored sitemap URL, then a sitemap derived from
+// the admin-stored shop origin, then the env-configured default (s.cfg.SitemapURL).
+func (s *Server) effectiveSitemapURL(ctx context.Context) string {
+	if stored, err := s.store.GetAppSetting(ctx, store.SettingSitemapURL); err == nil && stored != "" {
+		return stored
+	}
+	if origin, err := s.store.GetAppSetting(ctx, store.SettingShopOrigin); err == nil && origin != "" {
+		return strings.TrimRight(origin, "/") + "/sitemap.xml"
+	}
+	return s.cfg.SitemapURL
+}
+
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
-	stored, err := s.store.GetAppSetting(r.Context(), store.SettingAgreementURL)
+	resp, err := s.loadSettings(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, settingsResponse{AgreementURL: stored})
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
@@ -42,25 +60,53 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invalid request body"))
 		return
 	}
-	if req.AgreementURL != nil {
-		value := strings.TrimSpace(*req.AgreementURL)
-		if value != "" && !validAgreementURL(value) {
-			writeError(w, http.StatusBadRequest, errors.New("agreement URL must be an http(s) URL"))
+	updates := []struct {
+		key   string
+		value *string
+		label string
+	}{
+		{store.SettingAgreementURL, req.AgreementURL, "agreement URL"},
+		{store.SettingShopOrigin, req.ShopOrigin, "shop origin"},
+		{store.SettingSitemapURL, req.SitemapURL, "sitemap URL"},
+	}
+	for _, u := range updates {
+		if u.value == nil {
+			continue
+		}
+		value := strings.TrimSpace(*u.value)
+		if value != "" && !validHTTPURL(value) {
+			writeError(w, http.StatusBadRequest, errors.New(u.label+" must be an http(s) URL"))
 			return
 		}
-		if err := s.store.SetAppSetting(r.Context(), store.SettingAgreementURL, value); err != nil {
+		if err := s.store.SetAppSetting(r.Context(), u.key, value); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 	}
-	stored, err := s.store.GetAppSetting(r.Context(), store.SettingAgreementURL)
+	resp, err := s.loadSettings(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, settingsResponse{AgreementURL: stored})
+	writeJSON(w, http.StatusOK, resp)
 }
 
-func validAgreementURL(value string) bool {
+func (s *Server) loadSettings(ctx context.Context) (settingsResponse, error) {
+	agreement, err := s.store.GetAppSetting(ctx, store.SettingAgreementURL)
+	if err != nil {
+		return settingsResponse{}, err
+	}
+	origin, err := s.store.GetAppSetting(ctx, store.SettingShopOrigin)
+	if err != nil {
+		return settingsResponse{}, err
+	}
+	sitemap, err := s.store.GetAppSetting(ctx, store.SettingSitemapURL)
+	if err != nil {
+		return settingsResponse{}, err
+	}
+	return settingsResponse{AgreementURL: agreement, ShopOrigin: origin, SitemapURL: sitemap}, nil
+}
+
+func validHTTPURL(value string) bool {
 	return strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://")
 }
