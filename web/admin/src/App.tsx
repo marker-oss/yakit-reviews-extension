@@ -181,27 +181,37 @@ export default function App() {
           <h1>Админка</h1>
         </div>
         <nav>
-          <a className={page === 'dashboard' ? 'active' : ''} href="#/dashboard">
+          <a className={route === 'dashboard' ? 'active' : ''} href="#/dashboard">
             Сводка
           </a>
-          <a className={page === 'reviews' ? 'active' : ''} href="#/reviews">
+          <a className={route === 'reviews' ? 'active' : ''} href="#/reviews">
             Отзывы
           </a>
-          <a className={page === 'marketplaces' ? 'active' : ''} href="#/marketplaces">
-            Маркетплейсы
-          </a>
-          <a className={page === 'showcase' ? 'active' : ''} href="#/showcase">
-            Витрина
-          </a>
-          <a className={page === 'editor' ? 'active' : ''} href="#/editor">
-            Редактор
-          </a>
-          <a className={page === 'embed' ? 'active' : ''} href="#/embed">
-            Встраивание
-          </a>
-          <a className={page === 'settings' ? 'active' : ''} href="#/settings">
-            Настройки
-          </a>
+          <div className="nav-group">
+            <span className={`nav-group-label${routeSection(route) === 'widget' ? ' active' : ''}`}>
+              Виджет
+            </span>
+            <a className={`nav-sub${route === 'widget/showcase' ? ' active' : ''}`} href="#/widget/showcase">
+              Витрина
+            </a>
+            <a className={`nav-sub${route === 'widget/editor' ? ' active' : ''}`} href="#/widget/editor">
+              Редактор
+            </a>
+            <a className={`nav-sub${route === 'widget/embed' ? ' active' : ''}`} href="#/widget/embed">
+              Встраивание
+            </a>
+          </div>
+          <div className="nav-group">
+            <span className={`nav-group-label${routeSection(route) === 'settings' ? ' active' : ''}`}>
+              Настройки
+            </span>
+            <a className={`nav-sub${route === 'settings/general' ? ' active' : ''}`} href="#/settings/general">
+              Общие
+            </a>
+            <a className={`nav-sub${route === 'settings/marketplaces' ? ' active' : ''}`} href="#/settings/marketplaces">
+              Маркетплейсы
+            </a>
+          </div>
         </nav>
         <button className="secondary" onClick={logout}>
           Выйти
