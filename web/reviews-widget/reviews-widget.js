@@ -34,6 +34,7 @@
       marketplaceBadges: true,
       ratingDistribution: true,
       filters: true,
+      questions: true,
     },
     defaults: {
       minRating: 4,
@@ -178,6 +179,20 @@
       loadingMore: false,
       submissionUrl: options.submissionUrl || "",
       sellerArticle: options.sellerArticle || "",
+      activeTab: "reviews",
+      questions: {
+        items: [],
+        loading: false,
+        loaded: false,
+        error: "",
+      },
+      questionForm: {
+        expanded: false,
+        sending: false,
+        message: "",
+        error: "",
+        openedAt: Date.now(),
+      },
       submission: {
         config: options.submissionConfig || null,
         loading: Boolean(options.submissionConfigUrl && context === "product"),
@@ -204,13 +219,29 @@
       proxyBase = "";
     }
 
+    // Derive the API base for questions from the source URL origin (same server
+    // that serves reviews). Falls back to submissionUrl origin, then empty.
+    let questionsApiBase = options.questionsApiBase || "";
+    if (!questionsApiBase) {
+      try {
+        if (options.source) {
+          questionsApiBase = new URL(options.source, window.location.href).origin;
+        } else if (options.submissionUrl) {
+          questionsApiBase = new URL(options.submissionUrl, window.location.href).origin;
+        }
+      } catch (e) {
+        questionsApiBase = "";
+      }
+    }
+    state._questionsApiBase = questionsApiBase;
+
     root.innerHTML = "";
     root.classList.add("reviews-widget", "reviews-widget-root");
     applyConfig(root, state.config);
     root.__reviewsProxyBase = proxyBase;
     root.classList.toggle("rw-context-homepage", state.context === "homepage");
     root.classList.toggle("rw-is-expanded", state.expanded);
-    root.appendChild(renderShell(options.productName || "Отзывы покупательниц", state.config));
+    root.appendChild(renderShell(options.productName || "Отзывы покупательниц", config));
     bind(root, state);
     render(root, state);
 
@@ -246,14 +277,15 @@
     }
   }
 
-  function renderShell(productName) {
+  function renderShell(productName, config) {
     const fragment = document.createDocumentFragment();
     const header = document.createElement("div");
     header.className = "rw-header";
+    const showQuestions = !config || config.visibility.questions !== false;
     header.innerHTML = `
       <div class="rw-tabs" aria-label="Разделы отзывов">
-        <button class="rw-tab is-active" type="button">Отзывы <sup data-role="review-count">0</sup></button>
-        <button class="rw-tab" type="button" disabled>Вопросы <sup>0</sup></button>
+        <button class="rw-tab is-active" type="button" data-role="tab-reviews">Отзывы <sup data-role="review-count">0</sup></button>
+        ${showQuestions ? `<button class="rw-tab" type="button" data-role="tab-questions">Вопросы <sup data-role="question-count">0</sup></button>` : ""}
       </div>
       <div class="rw-overview">
         <div class="rw-score">
@@ -291,13 +323,18 @@
     const body = document.createElement("div");
     body.className = "rw-body";
     body.innerHTML = `
-      <div class="rw-list-wrap">
+      <div class="rw-list-wrap" data-role="panel-reviews">
         <div class="rw-list" data-role="list"></div>
         <div class="rw-empty" data-role="status" hidden></div>
         <div class="rw-footer">
           <button class="rw-load-more" type="button" data-role="load-more">Показать ещё</button>
         </div>
         <div class="rw-submit" data-role="submit"></div>
+      </div>
+      <div class="rw-questions-panel" data-role="panel-questions" hidden>
+        <div class="rw-qa-list" data-role="qa-list"></div>
+        <div class="rw-empty" data-role="qa-status" hidden></div>
+        <div class="rw-qa-submit" data-role="qa-submit"></div>
       </div>
     `;
 
@@ -379,17 +416,56 @@
         state.submission.error = "";
         state.submission.message = "";
         render(root, state);
+        return;
+      }
+
+      const qaToggle = event.target.closest('[data-role="qa-submit-toggle"]');
+      if (qaToggle && root.contains(qaToggle)) {
+        event.preventDefault();
+        state.questionForm.expanded = !state.questionForm.expanded;
+        state.questionForm.error = "";
+        state.questionForm.message = "";
+        render(root, state);
+        return;
+      }
+
+      const tabReviews = event.target.closest('[data-role="tab-reviews"]');
+      if (tabReviews && root.contains(tabReviews)) {
+        event.preventDefault();
+        if (state.activeTab !== "reviews") {
+          state.activeTab = "reviews";
+          render(root, state);
+        }
+        return;
+      }
+
+      const tabQuestions = event.target.closest('[data-role="tab-questions"]');
+      if (tabQuestions && root.contains(tabQuestions)) {
+        event.preventDefault();
+        if (state.activeTab !== "questions") {
+          state.activeTab = "questions";
+          render(root, state);
+          if (!state.questions.loaded && !state.questions.loading) {
+            loadQuestions(root, state);
+          }
+        }
+        return;
       }
     };
     root.addEventListener("click", root.__reviewsWidgetMediaClick);
 
     root.addEventListener("submit", (event) => {
       const form = event.target.closest('[data-role="submit-form"]');
-      if (!form || !root.contains(form)) {
+      if (form && root.contains(form)) {
+        event.preventDefault();
+        submitReview(root, state, form);
         return;
       }
-      event.preventDefault();
-      submitReview(root, state, form);
+      const qaForm = event.target.closest('[data-role="qa-submit-form"]');
+      if (qaForm && root.contains(qaForm)) {
+        event.preventDefault();
+        submitQuestion(root, state, qaForm);
+      }
     });
 
     const sort = root.querySelector('[data-role="sort"]');
@@ -421,6 +497,23 @@
 
   function render(root, state) {
     root.classList.toggle("rw-is-expanded", state.expanded);
+
+    // Tab visibility
+    const tabReviewsEl = root.querySelector('[data-role="tab-reviews"]');
+    const tabQuestionsEl = root.querySelector('[data-role="tab-questions"]');
+    if (tabReviewsEl) tabReviewsEl.classList.toggle("is-active", state.activeTab === "reviews");
+    if (tabQuestionsEl) tabQuestionsEl.classList.toggle("is-active", state.activeTab === "questions");
+
+    const panelReviews = root.querySelector('[data-role="panel-reviews"]');
+    const panelQuestions = root.querySelector('[data-role="panel-questions"]');
+    if (panelReviews) panelReviews.hidden = state.activeTab !== "reviews";
+    if (panelQuestions) panelQuestions.hidden = state.activeTab !== "questions";
+
+    if (state.activeTab === "questions") {
+      renderQuestionsPanel(root, state);
+      return;
+    }
+
     if (state.loading || state.error) {
       renderSummary(root, state.reviews, [], state);
       renderSegments(root, state, state.reviews);
@@ -942,6 +1035,167 @@
       render(root, state);
     }
   }
+
+  // ── Questions tab ──────────────────────────────────────────────────────────
+
+  function renderQuestionsPanel(root, state) {
+    const qaList = root.querySelector('[data-role="qa-list"]');
+    const qaStatus = root.querySelector('[data-role="qa-status"]');
+    const qaSubmit = root.querySelector('[data-role="qa-submit"]');
+    if (!qaList) return;
+
+    // Update question count badge
+    const qCountEl = root.querySelector('[data-role="question-count"]');
+    if (qCountEl) qCountEl.textContent = String(state.questions.items.length);
+
+    if (state.questions.loading) {
+      qaList.innerHTML = "";
+      if (qaStatus) { qaStatus.textContent = "Загружаем вопросы"; qaStatus.hidden = false; }
+    } else if (state.questions.error) {
+      qaList.innerHTML = "";
+      if (qaStatus) { qaStatus.textContent = state.questions.error; qaStatus.hidden = false; }
+    } else if (state.questions.items.length === 0) {
+      qaList.innerHTML = "";
+      if (qaStatus) { qaStatus.textContent = "Вопросов пока нет"; qaStatus.hidden = false; }
+    } else {
+      if (qaStatus) qaStatus.hidden = true;
+      qaList.innerHTML = state.questions.items.map((q) => {
+        const date = q.date ? new Date(q.date) : null;
+        const dateStr = date && !isNaN(date)
+          ? date.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })
+          : "";
+        return `
+          <div class="rw-qa-item">
+            <div class="rw-qa-question">
+              <span class="rw-qa-label">Вопрос</span>
+              <p>${escapeHTML(q.question || "")}</p>
+            </div>
+            <div class="rw-qa-answer">
+              <span class="rw-qa-label">Ответ продавца</span>
+              <p>${escapeHTML(q.answer || "")}</p>
+              ${dateStr ? `<time class="rw-qa-date" datetime="${escapeAttribute(q.date || "")}">${escapeHTML(dateStr)}</time>` : ""}
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    renderQuestionForm(root, state, qaSubmit);
+  }
+
+  function renderQuestionForm(root, state, submitRoot) {
+    if (!submitRoot) return;
+    const qf = state.questionForm;
+    const apiBase = state._questionsApiBase || "";
+    // Only show question form when there is an API base to POST to.
+    if (!apiBase || state.context !== "product") {
+      submitRoot.hidden = true;
+      submitRoot.innerHTML = "";
+      return;
+    }
+    submitRoot.hidden = false;
+    const privacyUrl = state.submission.config && state.submission.config.privacyUrl
+      ? state.submission.config.privacyUrl
+      : (state._submissionConfig && state._submissionConfig.privacyUrl ? state._submissionConfig.privacyUrl : "");
+    const consentText = "Согласие на обработку персональных данных";
+    const consent = privacyUrl
+      ? `<a href="${escapeAttribute(privacyUrl)}" target="_blank" rel="noreferrer">${consentText}</a>`
+      : consentText;
+    submitRoot.innerHTML = `
+      <div class="rw-submit-head">
+        <div>
+          <h3>Задать вопрос</h3>
+          <p>Вопрос появится после ответа продавца.</p>
+          ${qf.message && !qf.expanded ? `<p class="rw-submit-ok">${escapeHTML(qf.message)}</p>` : ""}
+        </div>
+        <button class="rw-submit-toggle" type="button" data-role="qa-submit-toggle">${qf.expanded ? "Свернуть" : "Задать вопрос"}</button>
+      </div>
+      ${qf.expanded ? `
+        <form class="rw-submit-form" data-role="qa-submit-form">
+          <input type="text" name="website" class="rw-hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+          <input type="hidden" name="openedAt" value="${qf.openedAt}" />
+          <input type="hidden" name="sellerArticle" value="${escapeAttribute(state.sellerArticle)}" />
+          <div class="rw-submit-grid">
+            <label><span>Имя</span><input name="authorName" required maxlength="80" autocomplete="name" /></label>
+            <label><span>Email</span><input name="authorEmail" type="email" required maxlength="320" autocomplete="email" /></label>
+            <label class="rw-submit-wide"><span>Вопрос</span><textarea name="text" required maxlength="2000" rows="4"></textarea></label>
+          </div>
+          <label class="rw-consent"><input name="privacyConsent" type="checkbox" required /> <span>Я даю ${consent}</span></label>
+          <div class="rw-submit-actions">
+            <button class="rw-submit-send" type="submit" ${qf.sending ? "disabled" : ""}>${qf.sending ? "Отправляем" : "Отправить вопрос"}</button>
+            ${qf.message ? `<span class="rw-submit-ok">${escapeHTML(qf.message)}</span>` : ""}
+            ${qf.error ? `<span class="rw-submit-error">${escapeHTML(qf.error)}</span>` : ""}
+          </div>
+        </form>
+      ` : ""}
+    `;
+  }
+
+  async function loadQuestions(root, state) {
+    const apiBase = state._questionsApiBase || "";
+    if (!apiBase || !state.sellerArticle) {
+      state.questions.loaded = true;
+      render(root, state);
+      return;
+    }
+    state.questions.loading = true;
+    state.questions.error = "";
+    render(root, state);
+    try {
+      const url = `${apiBase}/api/questions?article=${encodeURIComponent(state.sellerArticle)}`;
+      const response = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!response.ok) {
+        throw new Error(`API вернул ${response.status}`);
+      }
+      const payload = await response.json();
+      // Server returns {"questions": [{question, answer, date}, ...]}
+      state.questions.items = Array.isArray(payload) ? payload : (payload.questions || []);
+      state.questions.loading = false;
+      state.questions.loaded = true;
+
+      // Update question count badge
+      const qCountEl = root.querySelector('[data-role="question-count"]');
+      if (qCountEl) qCountEl.textContent = String(state.questions.items.length);
+
+      render(root, state);
+    } catch (error) {
+      state.questions.loading = false;
+      state.questions.loaded = true;
+      state.questions.error = error.message || "Не удалось загрузить вопросы";
+      render(root, state);
+    }
+  }
+
+  async function submitQuestion(root, state, form) {
+    if (state.questionForm.sending) return;
+    state.questionForm.sending = true;
+    state.questionForm.error = "";
+    state.questionForm.message = "";
+    render(root, state);
+    try {
+      const formData = new FormData(form);
+      formData.set("sellerArticle", state.sellerArticle || formData.get("sellerArticle") || "");
+      formData.set("openedAt", String(state.questionForm.openedAt));
+      const apiBase = state._questionsApiBase || "";
+      const url = `${apiBase}/api/questions`;
+      const response = await fetch(url, { method: "POST", body: formData });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Не удалось отправить вопрос" }));
+        throw new Error(payload.error || "Не удалось отправить вопрос");
+      }
+      state.questionForm.sending = false;
+      state.questionForm.expanded = false;
+      state.questionForm.message = "Вопрос отправлен";
+      state.questionForm.openedAt = Date.now();
+      render(root, state);
+    } catch (error) {
+      state.questionForm.sending = false;
+      state.questionForm.error = error.message || "Не удалось отправить вопрос";
+      render(root, state);
+    }
+  }
+
+  // ── End questions tab ───────────────────────────────────────────────────────
 
   function segmentButton(label, pressed, onClick) {
     const button = document.createElement("button");
