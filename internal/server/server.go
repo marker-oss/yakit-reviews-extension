@@ -194,6 +194,9 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.HandleFunc("GET /admin/api/questions", s.handleAdminQuestions)
 	protected.Handle("PUT /admin/api/questions/{id}/answer", requireCSRF(http.HandlerFunc(s.handleAdminQuestionAnswer)))
 	protected.Handle("POST /admin/api/questions/{id}/answer/retry", requireCSRF(http.HandlerFunc(s.handleAdminQuestionAnswerRetry)))
+	protected.HandleFunc("GET /admin/api/dsr/lookup", s.handleDSRLookup)
+	protected.HandleFunc("GET /admin/api/dsr/export", s.handleDSRExport)
+	protected.Handle("POST /admin/api/dsr/delete", requireCSRF(http.HandlerFunc(s.handleDSRDelete)))
 	mux.Handle("/admin/api/", s.requireSession(protected))
 
 	mux.Handle("/admin/", s.adminSPAHandler())

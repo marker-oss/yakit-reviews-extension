@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -224,17 +223,9 @@ func (s *Server) handleAdminReviewPurge(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, errors.New("invalid review id"))
 		return
 	}
-	paths, err := s.store.ReviewMediaStoragePaths(r.Context(), uint(id))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
 	if err := s.store.HardDeleteReview(r.Context(), uint(id)); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
-	}
-	for _, path := range paths {
-		_ = os.Remove(path)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
