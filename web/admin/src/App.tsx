@@ -222,13 +222,13 @@ export default function App() {
         <header className="topbar">
           <h2>{title}</h2>
         </header>
-        {page === 'dashboard' && <Dashboard />}
-        {page === 'reviews' && <Reviews />}
-        {page === 'marketplaces' && <Marketplaces />}
-        {page === 'showcase' && <Showcase />}
-        {page === 'editor' && <Editor />}
-        {page === 'embed' && <Embed />}
-        {page === 'settings' && <Settings />}
+        {route === 'dashboard' && <Dashboard />}
+        {route === 'reviews' && <Reviews />}
+        {route === 'widget/showcase' && <Showcase />}
+        {route === 'widget/editor' && <Editor />}
+        {route === 'widget/embed' && <Embed />}
+        {route === 'settings/general' && <Settings />}
+        {route === 'settings/marketplaces' && <Marketplaces />}
       </main>
     </div>
   )
