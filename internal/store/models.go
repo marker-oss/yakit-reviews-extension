@@ -105,3 +105,30 @@ type SyncRun struct {
 	ReviewsUpserted int
 	ErrorText       *string
 }
+
+// Question is a product question from a marketplace or the shop site. Author
+// names are anonymized at ingestion (same posture as Review); no Raw blob.
+type Question struct {
+	ID                 uint   `gorm:"primaryKey"`
+	TenantID           uint   `gorm:"not null;default:1;index;uniqueIndex:idx_marketplace_question"`
+	Marketplace        string `gorm:"size:16;not null;uniqueIndex:idx_marketplace_question"`
+	ExternalQuestionID string `gorm:"size:128;not null;uniqueIndex:idx_marketplace_question"`
+	ExternalProductID  string `gorm:"size:128;index"`
+	SellerArticle      string `gorm:"size:128;index"`
+	ExternalSKU        string `gorm:"size:64"` // Ozon needs the numeric sku to answer
+	AuthorName         string
+	Text               string
+	AnswerText         *string
+	AnswerAt           *time.Time
+	Status             string `gorm:"size:32;not null;default:imported"` // imported | pending | answered
+	Visibility         string `gorm:"size:16;not null;default:hidden;index"`
+	CreatedAtMP        time.Time `gorm:"not null;index"`
+	AnswerPublishState *string   `gorm:"size:16;index"`
+	AnswerPublishError *string
+	AnswerPublishedAt  *time.Time
+	AuthorEmailHash    string `gorm:"size:64;index"` // site questions only
+	SubmissionIPHash   string `gorm:"size:64"`
+	ConsentPrivacyAt   *time.Time
+	FetchedAt          time.Time `gorm:"not null"`
+	UpdatedAt          time.Time
+}

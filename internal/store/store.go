@@ -54,6 +54,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 		&WidgetConfig{},
 		&MarketplaceCredential{},
 		&AppSetting{},
+		&Question{},
 	); err != nil {
 		return err
 	}
