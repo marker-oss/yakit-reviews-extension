@@ -185,6 +185,40 @@ func (r ozonReview) toReview() (marketplace.Review, error) {
 	}, nil
 }
 
+func (c *Client) PublishReply(ctx context.Context, externalReviewID, text string) error {
+	reviewID, err := strconv.ParseInt(externalReviewID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("Ozon publish reply: bad review id %q: %w", externalReviewID, err)
+	}
+	payload := map[string]any{
+		"review_id":                reviewID,
+		"text":                     text,
+		"mark_review_as_processed": true,
+		"parent_comment_id":        0,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/review/comment/create", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Client-Id", c.clientID)
+	req.Header.Set("Api-Key", c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("Ozon publish reply: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 type flexString string
 
 func (s *flexString) UnmarshalJSON(data []byte) error {

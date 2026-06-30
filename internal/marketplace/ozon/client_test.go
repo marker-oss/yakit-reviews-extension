@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -180,5 +181,33 @@ func TestFetchReviewsErrorsOnNon2xx(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "premium method is unavailable") {
 		t.Fatalf("error should surface the API message, got %v", err)
+	}
+}
+
+func TestPublishReplyCreatesComment(t *testing.T) {
+	var gotPath, gotBody, gotClient, gotKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotClient = r.Header.Get("Client-Id")
+		gotKey = r.Header.Get("Api-Key")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"comment_id":555}`))
+	}))
+	defer srv.Close()
+
+	c := NewWithHTTPClient(config.OzonConfig{ClientID: "cid", APIKey: "key"}, srv.URL, srv.Client(), 0)
+	if err := c.PublishReply(context.Background(), "9001", "Спасибо!"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if gotPath != "/v1/review/comment/create" {
+		t.Fatalf("path = %s", gotPath)
+	}
+	if gotClient != "cid" || gotKey != "key" {
+		t.Fatalf("headers c=%q k=%q", gotClient, gotKey)
+	}
+	if !strings.Contains(gotBody, `"review_id":9001`) || !strings.Contains(gotBody, `"text":"Спасибо!"`) {
+		t.Fatalf("body = %s", gotBody)
 	}
 }
