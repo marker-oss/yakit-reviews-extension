@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,6 +109,9 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /api/widget-config", s.handlePublicWidgetConfig)
 	mux.HandleFunc("GET /api/review-submission-config", s.handleReviewSubmissionConfig)
 	mux.HandleFunc("POST /api/review-submissions", s.handleCreateReviewSubmission)
+	mux.HandleFunc("GET /api/questions", s.handlePublicQuestions)
+	mux.HandleFunc("GET /api/question-submission-config", s.handleQuestionSubmissionConfig)
+	mux.HandleFunc("POST /api/questions", s.handleCreateQuestionSubmission)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("GET /user-media/{token}", s.handleUserMedia)
 	if mediaHandler, err := mediaproxy.NewHandler(s.cfg.Media, nil); err == nil {
@@ -229,6 +233,44 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// publicQuestion is the minimal public shape returned by GET /api/questions.
+// Static export of questions is deferred (live API only for now).
+type publicQuestion struct {
+	Question string    `json:"question"`
+	Answer   string    `json:"answer"`
+	Date     time.Time `json:"date"`
+}
+
+// handlePublicQuestions returns answered+visible questions for an article.
+// Questions are served live-API-only; static bundle inclusion is deferred.
+func (s *Server) handlePublicQuestions(w http.ResponseWriter, r *http.Request) {
+	article := strings.TrimSpace(r.URL.Query().Get("article"))
+	questions, err := s.store.ListQuestions(r.Context(), store.QuestionFilter{
+		Visibility:    "visible",
+		SellerArticle: article,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	items := make([]publicQuestion, 0, len(questions))
+	for _, q := range questions {
+		if q.AnswerText == nil || *q.AnswerText == "" {
+			continue
+		}
+		date := q.CreatedAtMP
+		if q.AnswerAt != nil {
+			date = *q.AnswerAt
+		}
+		items = append(items, publicQuestion{
+			Question: q.Text,
+			Answer:   *q.AnswerText,
+			Date:     date,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"questions": items})
 }
 
 func (s *Server) logRequests(next http.Handler) http.Handler {
