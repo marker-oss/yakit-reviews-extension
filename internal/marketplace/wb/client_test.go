@@ -136,6 +136,124 @@ func TestPublishReplyPostsAnswer(t *testing.T) {
 	}
 }
 
+func TestFetchQuestionsMapsWBResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %q, want GET", r.Method)
+		}
+		if r.URL.Path != "/api/v1/questions" {
+			t.Errorf("path = %q, want /api/v1/questions", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "tok" {
+			t.Errorf("Authorization = %q", got)
+		}
+		if got := r.URL.Query().Get("isAnswered"); got != "false" {
+			t.Errorf("isAnswered = %q", got)
+		}
+		if got := r.URL.Query().Get("take"); got != "10" {
+			t.Errorf("take = %q", got)
+		}
+		if got := r.URL.Query().Get("skip"); got != "0" {
+			t.Errorf("skip = %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"data": {
+				"questions": [
+					{
+						"id": "qst-1",
+						"text": "Есть ли в наличии?",
+						"createdDate": "2024-10-01T12:00:00+03:00",
+						"userName": "Пользователь",
+						"productDetails": {
+							"nmId": 123456,
+							"supplierArticle": "MY-ART"
+						}
+					}
+				]
+			},
+			"error": false,
+			"errorText": ""
+		}`))
+	}))
+	defer srv.Close()
+
+	c := NewWithHTTPClient(config.WBConfig{Token: "tok"}, srv.URL, srv.Client(), 10)
+	questions, nextCursor, err := c.FetchQuestions(context.Background(), time.Time{}, "")
+	if err != nil {
+		t.Fatalf("fetch questions: %v", err)
+	}
+	if nextCursor != "" {
+		t.Fatalf("next cursor = %q, want empty (fewer than pageSize)", nextCursor)
+	}
+	if len(questions) != 1 {
+		t.Fatalf("questions len = %d", len(questions))
+	}
+	q := questions[0]
+	if q.ExternalQuestionID != "qst-1" {
+		t.Errorf("ExternalQuestionID = %q", q.ExternalQuestionID)
+	}
+	if q.ExternalProductID != "123456" {
+		t.Errorf("ExternalProductID = %q", q.ExternalProductID)
+	}
+	if q.SellerArticle != "MY-ART" {
+		t.Errorf("SellerArticle = %q", q.SellerArticle)
+	}
+	if q.AuthorName != "Пользователь" {
+		t.Errorf("AuthorName = %q", q.AuthorName)
+	}
+	if q.Text != "Есть ли в наличии?" {
+		t.Errorf("Text = %q", q.Text)
+	}
+}
+
+func TestPublishQuestionAnswerWB(t *testing.T) {
+	var gotMethod, gotPath, gotAuth, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewWithHTTPClient(config.WBConfig{Token: "tok"}, srv.URL, srv.Client(), 0)
+	if err := c.PublishQuestionAnswer(context.Background(), "qst-1", "", "Да, в наличии!"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if gotMethod != http.MethodPatch {
+		t.Errorf("method = %q, want PATCH", gotMethod)
+	}
+	if gotPath != "/api/v1/questions" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if gotAuth != "tok" {
+		t.Errorf("Authorization = %q", gotAuth)
+	}
+	if !strings.Contains(gotBody, `"id":"qst-1"`) {
+		t.Errorf("body missing id: %s", gotBody)
+	}
+	if !strings.Contains(gotBody, `"text":"Да, в наличии!"`) {
+		t.Errorf("body missing answer text: %s", gotBody)
+	}
+	if !strings.Contains(gotBody, `"state":"wbRu"`) {
+		t.Errorf("body missing state: %s", gotBody)
+	}
+}
+
+func TestPublishQuestionAnswerWBError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+	c := NewWithHTTPClient(config.WBConfig{Token: "tok"}, srv.URL, srv.Client(), 0)
+	if err := c.PublishQuestionAnswer(context.Background(), "qst-1", "", "x"); err == nil {
+		t.Fatal("expected error on non-2xx")
+	}
+}
+
 func TestPublishReplyError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

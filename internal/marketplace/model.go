@@ -45,3 +45,27 @@ type Adapter interface {
 type ReplyPublisher interface {
 	PublishReply(ctx context.Context, externalReviewID, text string) error
 }
+
+// Question is a product question fetched from a marketplace.
+type Question struct {
+	ExternalQuestionID string
+	ExternalProductID  string
+	SellerArticle      string
+	ExternalSKU        string // Ozon needs numeric SKU to answer; WB leaves this empty
+	AuthorName         string
+	Text               string
+	CreatedAtMP        time.Time
+}
+
+// QuestionFetcher is implemented by adapters that can fetch unanswered product
+// questions from the marketplace.
+type QuestionFetcher interface {
+	FetchQuestions(ctx context.Context, since time.Time, cursor string) ([]Question, string, error)
+}
+
+// QuestionAnswerPublisher is implemented by adapters that can publish a seller
+// answer to a product question back to the marketplace. Adapters that cannot
+// simply do not implement it; callers treat that as "unsupported".
+type QuestionAnswerPublisher interface {
+	PublishQuestionAnswer(ctx context.Context, externalQuestionID, sku, text string) error
+}

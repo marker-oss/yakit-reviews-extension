@@ -184,6 +184,138 @@ func TestFetchReviewsErrorsOnNon2xx(t *testing.T) {
 	}
 }
 
+func TestFetchQuestionsMapsOzonResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q, want POST", r.Method)
+		}
+		if r.URL.Path != "/v1/question/list" {
+			t.Errorf("path = %q, want /v1/question/list", r.URL.Path)
+		}
+		if got := r.Header.Get("Client-Id"); got != "cid" {
+			t.Errorf("Client-Id = %q", got)
+		}
+		if got := r.Header.Get("Api-Key"); got != "key" {
+			t.Errorf("Api-Key = %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"items": [
+				{
+					"question_id": "qid-1",
+					"sku": "987654",
+					"text": "Этот товар подходит для детей?",
+					"author_name": "Покупатель",
+					"created_at": "2026-05-01T09:00:00Z"
+				}
+			],
+			"has_next": false,
+			"last_id": ""
+		}`))
+	}))
+	defer srv.Close()
+
+	c := NewWithHTTPClient(config.OzonConfig{ClientID: "cid", APIKey: "key"}, srv.URL, srv.Client(), 100)
+	questions, nextCursor, err := c.FetchQuestions(context.Background(), time.Time{}, "")
+	if err != nil {
+		t.Fatalf("fetch questions: %v", err)
+	}
+	if nextCursor != "" {
+		t.Fatalf("next cursor = %q, want empty", nextCursor)
+	}
+	if len(questions) != 1 {
+		t.Fatalf("questions len = %d", len(questions))
+	}
+	q := questions[0]
+	if q.ExternalQuestionID != "qid-1" {
+		t.Errorf("ExternalQuestionID = %q", q.ExternalQuestionID)
+	}
+	if q.ExternalSKU != "987654" {
+		t.Errorf("ExternalSKU = %q", q.ExternalSKU)
+	}
+	if q.ExternalProductID != "987654" {
+		t.Errorf("ExternalProductID = %q", q.ExternalProductID)
+	}
+	if q.AuthorName != "Покупатель" {
+		t.Errorf("AuthorName = %q", q.AuthorName)
+	}
+	if q.Text != "Этот товар подходит для детей?" {
+		t.Errorf("Text = %q", q.Text)
+	}
+	expected := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
+	if !q.CreatedAtMP.Equal(expected) {
+		t.Errorf("CreatedAtMP = %v", q.CreatedAtMP)
+	}
+}
+
+func TestFetchQuestionsOzonPaginates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req ozonQuestionListRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if req.LastID != "cursor-q2" {
+			t.Errorf("last_id = %q, want cursor-q2", req.LastID)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[],"has_next":false,"last_id":""}`))
+	}))
+	defer srv.Close()
+
+	c := NewWithHTTPClient(config.OzonConfig{ClientID: "cid", APIKey: "key"}, srv.URL, srv.Client(), 100)
+	_, nextCursor, err := c.FetchQuestions(context.Background(), time.Time{}, "cursor-q2")
+	if err != nil {
+		t.Fatalf("fetch questions: %v", err)
+	}
+	if nextCursor != "" {
+		t.Fatalf("next cursor = %q", nextCursor)
+	}
+}
+
+func TestPublishQuestionAnswerOzon(t *testing.T) {
+	var gotPath, gotClientID, gotKey, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotClientID = r.Header.Get("Client-Id")
+		gotKey = r.Header.Get("Api-Key")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewWithHTTPClient(config.OzonConfig{ClientID: "cid", APIKey: "key"}, srv.URL, srv.Client(), 0)
+	if err := c.PublishQuestionAnswer(context.Background(), "qid-1", "987654", "Да, подходит!"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if gotPath != "/v1/question/answer/create" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if gotClientID != "cid" || gotKey != "key" {
+		t.Errorf("headers cid=%q key=%q", gotClientID, gotKey)
+	}
+	if !strings.Contains(gotBody, `"question_id":"qid-1"`) {
+		t.Errorf("body missing question_id: %s", gotBody)
+	}
+	if !strings.Contains(gotBody, `"sku":"987654"`) {
+		t.Errorf("body missing sku: %s", gotBody)
+	}
+	if !strings.Contains(gotBody, `"text":"Да, подходит!"`) {
+		t.Errorf("body missing text: %s", gotBody)
+	}
+}
+
+func TestPublishQuestionAnswerOzonError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	}))
+	defer srv.Close()
+	c := NewWithHTTPClient(config.OzonConfig{ClientID: "cid", APIKey: "key"}, srv.URL, srv.Client(), 0)
+	if err := c.PublishQuestionAnswer(context.Background(), "qid-1", "sku-1", "x"); err == nil {
+		t.Fatal("expected error on non-2xx")
+	}
+}
+
 func TestPublishReplyCreatesComment(t *testing.T) {
 	var gotPath, gotBody, gotClient, gotKey string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

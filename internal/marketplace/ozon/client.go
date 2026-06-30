@@ -185,6 +185,125 @@ func (r ozonReview) toReview() (marketplace.Review, error) {
 	}, nil
 }
 
+// NOTE: Ozon question field names not yet verified against live docs — confirm before enabling Q&A MP-fetch in production.
+type ozonQuestionListRequest struct {
+	Filter ozonQuestionFilter `json:"filter"`
+	Limit  int                `json:"limit"`
+	LastID string             `json:"last_id,omitempty"`
+}
+
+type ozonQuestionFilter struct {
+	Visibility string `json:"visibility"` // e.g. "ALL"
+}
+
+type ozonQuestionListResponse struct {
+	Items   []ozonQuestion    `json:"items"`
+	HasNext bool              `json:"has_next"`
+	LastID  string            `json:"last_id"`
+	Message string            `json:"message"`
+	Details []json.RawMessage `json:"details"`
+}
+
+type ozonQuestion struct {
+	QuestionID string     `json:"question_id"`
+	SKU        flexString `json:"sku"`
+	Text       string     `json:"text"`
+	AuthorName string     `json:"author_name"`
+	CreatedAt  string     `json:"created_at"`
+}
+
+func (c *Client) FetchQuestions(ctx context.Context, since time.Time, cursor string) ([]marketplace.Question, string, error) {
+	requestPayload := ozonQuestionListRequest{
+		Filter: ozonQuestionFilter{Visibility: "ALL"},
+		Limit:  c.pageSize,
+		LastID: cursor,
+	}
+	body, err := json.Marshal(requestPayload)
+	if err != nil {
+		return nil, "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/question/list", bytes.NewReader(body))
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("Client-Id", c.clientID)
+	req.Header.Set("Api-Key", c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+
+	var payload ozonQuestionListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, "", fmt.Errorf("decode Ozon question list response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if payload.Message != "" {
+			return nil, "", fmt.Errorf("Ozon question list: status %d: %s", resp.StatusCode, payload.Message)
+		}
+		if len(payload.Details) > 0 {
+			return nil, "", fmt.Errorf("Ozon question list: status %d: %s", resp.StatusCode, strings.TrimSpace(string(payload.Details[0])))
+		}
+		return nil, "", fmt.Errorf("Ozon question list: status %d", resp.StatusCode)
+	}
+
+	questions := make([]marketplace.Question, 0, len(payload.Items))
+	for _, q := range payload.Items {
+		createdAt, err := time.Parse(time.RFC3339Nano, q.CreatedAt)
+		if err != nil {
+			return nil, "", fmt.Errorf("parse Ozon question created_at for %s: %w", q.QuestionID, err)
+		}
+		if !since.IsZero() && createdAt.Before(since) {
+			continue
+		}
+		sku := q.SKU.String()
+		questions = append(questions, marketplace.Question{
+			ExternalQuestionID: q.QuestionID,
+			ExternalProductID:  sku,
+			ExternalSKU:        sku,
+			AuthorName:         q.AuthorName,
+			Text:               q.Text,
+			CreatedAtMP:        createdAt,
+		})
+	}
+
+	nextCursor := ""
+	if payload.HasNext && payload.LastID != "" {
+		nextCursor = payload.LastID
+	}
+	return questions, nextCursor, nil
+}
+
+func (c *Client) PublishQuestionAnswer(ctx context.Context, externalQuestionID, sku, text string) error {
+	payload := map[string]any{"question_id": externalQuestionID, "sku": sku, "text": text}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/question/answer/create", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Client-Id", c.clientID)
+	req.Header.Set("Api-Key", c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("Ozon publish question answer: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (c *Client) PublishReply(ctx context.Context, externalReviewID, text string) error {
 	reviewID, err := strconv.ParseInt(externalReviewID, 10, 64)
 	if err != nil {

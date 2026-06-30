@@ -274,6 +274,126 @@ func (f wbFeedback) externalProductID() string {
 	return f.ProductDetails.SupplierArticle
 }
 
+// NOTE: WB question field names not yet verified against live docs — confirm before enabling Q&A MP-fetch in production.
+type wbQuestionsResponse struct {
+	Data      wbQuestionsData `json:"data"`
+	Error     bool            `json:"error"`
+	ErrorText string          `json:"errorText"`
+}
+
+type wbQuestionsData struct {
+	Questions []wbQuestion `json:"questions"`
+}
+
+type wbQuestion struct {
+	ID             string           `json:"id"`
+	Text           string           `json:"text"`
+	CreatedDate    string           `json:"createdDate"`
+	UserName       string           `json:"userName"`
+	ProductDetails wbProductDetails `json:"productDetails"`
+}
+
+func (c *Client) FetchQuestions(ctx context.Context, since time.Time, cursor string) ([]marketplace.Question, string, error) {
+	_, skip, err := parseCursor(cursor)
+	if err != nil {
+		// If cursor is not in the WB review-cursor format, treat as empty.
+		skip = 0
+	}
+
+	endpoint, err := url.Parse(c.baseURL + "/api/v1/questions")
+	if err != nil {
+		return nil, "", err
+	}
+	query := endpoint.Query()
+	query.Set("isAnswered", "false")
+	query.Set("take", strconv.Itoa(c.pageSize))
+	query.Set("skip", strconv.Itoa(skip))
+	if !since.IsZero() {
+		query.Set("dateFrom", strconv.FormatInt(since.Unix(), 10))
+	}
+	endpoint.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("Authorization", c.token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+
+	var payload wbQuestionsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, "", fmt.Errorf("decode WB questions response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if payload.ErrorText != "" {
+			return nil, "", fmt.Errorf("WB questions: status %d: %s", resp.StatusCode, payload.ErrorText)
+		}
+		return nil, "", fmt.Errorf("WB questions: status %d", resp.StatusCode)
+	}
+	if payload.Error {
+		return nil, "", fmt.Errorf("WB questions: %s", payload.ErrorText)
+	}
+
+	questions := make([]marketplace.Question, 0, len(payload.Data.Questions))
+	for _, q := range payload.Data.Questions {
+		createdAt, err := time.Parse(time.RFC3339Nano, q.CreatedDate)
+		if err != nil {
+			return nil, "", fmt.Errorf("parse WB question createdDate for %s: %w", q.ID, err)
+		}
+		questions = append(questions, marketplace.Question{
+			ExternalQuestionID: q.ID,
+			ExternalProductID:  q.externalProductID(),
+			SellerArticle:      q.ProductDetails.SupplierArticle,
+			AuthorName:         q.UserName,
+			Text:               q.Text,
+			CreatedAtMP:        createdAt,
+		})
+	}
+
+	nextCursor := ""
+	if len(payload.Data.Questions) >= c.pageSize {
+		nextCursor = fmt.Sprintf("unanswered:%d", skip+c.pageSize)
+	}
+	return questions, nextCursor, nil
+}
+
+func (q wbQuestion) externalProductID() string {
+	if q.ProductDetails.NMID > 0 {
+		return strconv.FormatInt(q.ProductDetails.NMID, 10)
+	}
+	return q.ProductDetails.SupplierArticle
+}
+
+func (c *Client) PublishQuestionAnswer(ctx context.Context, externalQuestionID, _ /*sku*/, text string) error {
+	payload := map[string]any{"id": externalQuestionID, "answer": map[string]string{"text": text}, "state": "wbRu"}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+"/api/v1/questions", strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", c.token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("WB publish question answer: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (c *Client) PublishReply(ctx context.Context, externalReviewID, text string) error {
 	body, err := json.Marshal(map[string]string{"id": externalReviewID, "text": text})
 	if err != nil {
