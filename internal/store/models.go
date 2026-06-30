@@ -45,6 +45,9 @@ type Review struct {
 	Status             string `gorm:"size:32;not null;default:imported"`
 	AdminReplyText     *string
 	AdminReplyAt       *time.Time
+	ReplyPublishState  *string `gorm:"size:16;index"`
+	ReplyPublishError  *string
+	ReplyPublishedAt   *time.Time
 	Visibility         string `gorm:"size:16;not null;default:visible;index"`
 	Pinned             bool   `gorm:"not null;default:false;index"`
 	AuthorEmailHash    string `gorm:"size:64;index"`
