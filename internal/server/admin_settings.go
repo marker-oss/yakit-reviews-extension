@@ -11,20 +11,20 @@ import (
 )
 
 type settingsResponse struct {
-	AgreementURL      string `json:"agreementUrl"`
-	ShopOrigin        string `json:"shopOrigin"`
-	SitemapURL        string `json:"sitemapUrl"`
-	PublishRepliesWb  string `json:"publishRepliesWb"`
-	PublishRepliesYm  string `json:"publishRepliesYm"`
+	AgreementURL       string `json:"agreementUrl"`
+	ShopOrigin         string `json:"shopOrigin"`
+	SitemapURL         string `json:"sitemapUrl"`
+	PublishRepliesWb   string `json:"publishRepliesWb"`
+	PublishRepliesYm   string `json:"publishRepliesYm"`
 	PublishRepliesOzon string `json:"publishRepliesOzon"`
 }
 
 type settingsRequest struct {
-	AgreementURL      *string `json:"agreementUrl"`
-	ShopOrigin        *string `json:"shopOrigin"`
-	SitemapURL        *string `json:"sitemapUrl"`
-	PublishRepliesWb  *string `json:"publish_replies_wb"`
-	PublishRepliesYm  *string `json:"publish_replies_ym"`
+	AgreementURL       *string `json:"agreementUrl"`
+	ShopOrigin         *string `json:"shopOrigin"`
+	SitemapURL         *string `json:"sitemapUrl"`
+	PublishRepliesWb   *string `json:"publish_replies_wb"`
+	PublishRepliesYm   *string `json:"publish_replies_ym"`
 	PublishRepliesOzon *string `json:"publish_replies_ozon"`
 }
 

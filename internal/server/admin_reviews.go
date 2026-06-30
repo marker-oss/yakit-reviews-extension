@@ -15,13 +15,13 @@ import (
 
 type adminReview struct {
 	reviewjson.Review
-	Visibility     string               `json:"visibility"`
-	Pinned         bool                 `json:"pinned"`
-	Status         string               `json:"status"`
-	AuthorEmail    string               `json:"authorEmail,omitempty"`
-	SubmissionMeta map[string]any       `json:"submissionMeta,omitempty"`
-	AdminReply     *adminReply          `json:"adminReply,omitempty"`
-	ReplyPublish   *replyPublishStatus  `json:"replyPublish,omitempty"`
+	Visibility     string              `json:"visibility"`
+	Pinned         bool                `json:"pinned"`
+	Status         string              `json:"status"`
+	AuthorEmail    string              `json:"authorEmail,omitempty"`
+	SubmissionMeta map[string]any      `json:"submissionMeta,omitempty"`
+	AdminReply     *adminReply         `json:"adminReply,omitempty"`
+	ReplyPublish   *replyPublishStatus `json:"replyPublish,omitempty"`
 }
 
 type adminReply struct {
