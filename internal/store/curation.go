@@ -108,6 +108,7 @@ func (s *Store) ListReviewsWithCount(ctx context.Context, filter ReviewListFilte
 type Stats struct {
 	TotalReviews   int64
 	VisibleReviews int64
+	PendingReviews int64
 	DeletedReviews int64
 	AverageRating  float64
 	ByMarketplace  map[string]int64
@@ -158,6 +159,9 @@ func (s *Store) DashboardStats(ctx context.Context) (Stats, error) {
 		Where("visibility = ?", "visible").
 		Where("status <> ?", "deleted")
 	if err := visible.Count(&stats.VisibleReviews).Error; err != nil {
+		return Stats{}, err
+	}
+	if err := db.Model(&Review{}).Where("status = ?", "pending").Count(&stats.PendingReviews).Error; err != nil {
 		return Stats{}, err
 	}
 	if err := db.Model(&Review{}).Where("status = ?", "deleted").Count(&stats.DeletedReviews).Error; err != nil {
@@ -231,11 +235,12 @@ func (s *Store) SaveShowcaseRule(ctx context.Context, rule ShowcaseRule) error {
 
 func (s *Store) ShowcaseReviews(ctx context.Context, rule ShowcaseRule) ([]Review, error) {
 	query := s.db.WithContext(ctx).
+		Preload("ReviewerIdentity").
 		Preload("Media", func(db *gorm.DB) *gorm.DB {
 			return db.Order("position asc").Order("id asc")
 		}).
 		Where("visibility = ?", "visible").
-		Where("status <> ?", "deleted")
+		Where("status IN ?", []string{"imported", "approved"})
 	if rule.MinRating > 0 {
 		query = query.Where("rating >= ?", rule.MinRating)
 	}
@@ -348,3 +353,14 @@ func defaultShowcaseRule() ShowcaseRule {
 }
 
 var timeNowUTC = func() time.Time { return time.Now().UTC() }
+
+// HardDeleteReview permanently removes a review and its media. Used to fulfill
+// a data-subject erasure request — distinct from SoftDeleteReview.
+func (s *Store) HardDeleteReview(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("review_id = ?", id).Delete(&ReviewMedia{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", id).Delete(&Review{}).Error
+	})
+}

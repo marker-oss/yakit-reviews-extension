@@ -163,8 +163,9 @@ func TestUpsertReviewPersistsNormalizedFields(t *testing.T) {
 	if saved.Status != "imported" {
 		t.Fatalf("status = %q", saved.Status)
 	}
-	if saved.Raw != `{"feedbackId":"feedback-123"}` {
-		t.Fatalf("raw = %q", saved.Raw)
+	// Raw is intentionally dropped at ingestion (personal-data minimization).
+	if saved.Raw != "" {
+		t.Fatalf("raw should be empty, got %q", saved.Raw)
 	}
 	if saved.FetchedAt.IsZero() {
 		t.Fatalf("fetched_at should be set")

@@ -24,7 +24,7 @@ func newAuthTestServer(t *testing.T) *Server {
 	if err := st.Migrate(context.Background()); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	return New(st, Config{SessionTTL: time.Hour}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return New(st, Config{SessionTTL: time.Hour, UploadDir: filepath.Join(t.TempDir(), "uploads")}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 func TestSetupThenLoginFlow(t *testing.T) {

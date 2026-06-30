@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"reviews/internal/marketplace"
+	"reviews/internal/site"
 )
 
 func loginTestAdmin(t *testing.T, s *Server) *http.Cookie {
@@ -314,6 +315,20 @@ func TestAdminPublishReviewsData(t *testing.T) {
 	s := newAuthTestServer(t)
 	staticDir := t.TempDir()
 	s.cfg.StaticDir = staticDir
+	s.cfg.ProductLinksPath = filepath.Join(t.TempDir(), "product-links.json")
+	linksFile, err := os.Create(s.cfg.ProductLinksPath)
+	if err != nil {
+		t.Fatalf("create product links: %v", err)
+	}
+	if err := site.EncodeProductLinks(linksFile, []site.ProductLink{
+		{SellerArticle: "107", URL: "https://shop.example/products/cotton-dress-100107"},
+	}); err != nil {
+		linksFile.Close()
+		t.Fatalf("write product links: %v", err)
+	}
+	if err := linksFile.Close(); err != nil {
+		t.Fatalf("close product links: %v", err)
+	}
 	cookie := loginTestAdmin(t, s)
 	ctx := context.Background()
 	rating := 5
@@ -385,6 +400,14 @@ func TestAdminPublishReviewsData(t *testing.T) {
 	}
 	if len(bundle.Reviews) != 1 || bundle.Reviews[0].ExternalReviewID != "publish-visible" {
 		t.Fatalf("unexpected published bundle: %+v", bundle)
+	}
+
+	linksRaw, err := os.ReadFile(filepath.Join(staticDir, "reviews-data", "links.json"))
+	if err != nil {
+		t.Fatalf("read published links index: %v", err)
+	}
+	if !strings.Contains(string(linksRaw), `/products/cotton-dress-100107`) {
+		t.Fatalf("links index missing product path: %s", linksRaw)
 	}
 }
 

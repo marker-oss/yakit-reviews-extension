@@ -114,6 +114,9 @@ chmod +x reviews
   конкретного магазина.
 - **Ozon** (по умолчанию выключен) — **Client-Id** + **Api-Key**. Личный кабинет
   → **Настройки → Seller API** → сгенерировать ключ; `Client-Id` показан рядом.
+  Методы отзывов требуют доступа к premium-методам Seller API. Адаптер написан по
+  публичному контракту `/v1/review/list` и покрыт тестами на фикстурах, но пока
+  не проверялся на реальном Ozon Premium-ключе.
 
 > UI кабинетов маркетплейсов периодически меняется — ключи всегда в разделе
 > «API / интеграции» настроек продавца.
@@ -206,7 +209,7 @@ SSH-ключ), домены (сервис отзывов + origin магазин
 ### Вариант A — Docker (рекомендуется)
 
 ```sh
-git clone https://github.com/your-org/reviews.git reviews
+git clone https://github.com/marker-oss/yakit-reviews-extension.git reviews
 cd reviews
 
 # 1. Подготовьте конфигурацию
@@ -237,7 +240,7 @@ docker compose down            # остановить (том с данными 
 ### Вариант B — из исходников (без Docker)
 
 ```sh
-git clone https://github.com/your-org/reviews.git reviews
+git clone https://github.com/marker-oss/yakit-reviews-extension.git reviews
 cd reviews
 cp .env.example .env           # отредактируйте
 
@@ -299,6 +302,9 @@ DSN для Postgres:
 | `REVIEWS_SHOP_ORIGIN` | — | **origin вашего магазина** (со схемой, без слэша), которому разрешено забирать данные виджета кросс-доменно (CORS). Обязательно, если виджет грузит данные с другого хоста, чем сайт. Несколько — через запятую (apex + www) |
 | `REVIEWS_PUBLIC_DOMAIN` | — | публичный хост, раздающий виджет/данные (используется только Caddyfile в VPS-деплое) |
 | `REVIEWS_SITE_SITEMAP_URL` | первый `REVIEWS_SHOP_ORIGIN` + `/sitemap.xml` | sitemap магазина для сопоставления страниц товаров с артикулами. Используется кнопкой «Обновить каталог товаров» в админке и командой `discover-site-urls` |
+| `REVIEWS_PRIVACY_URL` | — | ссылка на политику обработки данных в форме «Оставить отзыв» |
+| `REVIEWS_REVIEW_TERMS_URL` | — | ссылка на правила публикации отзывов в форме |
+| `REVIEWS_UPLOAD_DIR` | `data/review-uploads` или `/data/review-uploads` в Docker | локальное хранилище фото/видео, загруженных через форму |
 
 > **CORS.** Сам сервис (`serve`) проставляет CORS-заголовки по
 > `REVIEWS_SHOP_ORIGIN` для публичных эндпоинтов и статики — при Docker-запуске
@@ -403,13 +409,16 @@ reviews export [--out web/reviews-data]
 | GET | `/api/reviews` | отзывы (фильтры: `marketplace`, `rating`, `offset`) |
 | GET | `/api/showcase` | отзывы для витрины по правилу showcase |
 | GET | `/api/widget-config` | опубликованная конфигурация виджета |
+| GET | `/api/review-submission-config` | настройки формы отзыва: лимиты, MIME-типы, ссылки на соглашения |
+| POST | `/api/review-submissions` | отправка отзыва с сайта (`multipart/form-data`, статус `pending`) |
+| GET | `/user-media/{token}` | локальные медиа site-отзывов; публично только после одобрения |
 | GET | `/healthz` | health-check |
 | GET | `/` | статика виджета (`--static-dir`) |
 
 ### Админские (`/admin/api/`, требуют сессию + CSRF на запись)
 `setup-status`, `setup`, `login`, `logout`, `me`, `csrf`, `reviews`,
 `reviews/{id}` (PATCH), `dashboard`, `marketplaces`, `sync` (POST),
-`showcase-rule` (GET/PUT), `widget-config/{context}` (GET/POST),
+`reviews/{id}/purge` (DELETE), `showcase-rule` (GET/PUT), `widget-config/{context}` (GET/POST),
 `widget-config/{context}/versions`, `widget-config/{context}/rollback/{version}`.
 
 ---
@@ -491,3 +500,21 @@ docker compose logs -f reviews
 разворачивать у себя, изменять и использовать в коммерческих целях.
 
 Установка под ключ и поддержка — по запросу к владельцу проекта.
+
+---
+
+## Юридический чек-лист
+
+Перед публикацией виджета убедитесь, что вы:
+
+- [ ] Имеете право переопубликовывать отзывы со своих карточек (проверьте условия
+      API соответствующего маркетплейса).
+- [ ] Разместили политику конфиденциальности — шаблон в
+      [docs/legal/privacy-policy-template.ru.md](docs/legal/privacy-policy-template.ru.md),
+      и указали контакт в `REVIEWS_PRIVACY_CONTACT`.
+- [ ] Понимаете, что скрытие отзывов предназначено только для спама/дублей.
+      Сокрытие негатива ради рейтинга — риск по ЗоЗПП и закону «О рекламе» (ФАС).
+
+Сервис минимизирует персональные данные автоматически: имя обезличивается
+(«Анна К.»), лица на фото размываются в виджете, «сырой» ответ маркетплейса и
+медиафайлы не хранятся.

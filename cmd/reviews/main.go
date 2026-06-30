@@ -18,6 +18,7 @@ import (
 	"reviews/internal/export"
 	"reviews/internal/installer"
 	"reviews/internal/marketplace"
+	"reviews/internal/marketplace/ozon"
 	"reviews/internal/marketplace/wb"
 	"reviews/internal/marketplace/ym"
 	"reviews/internal/reviewjson"
@@ -305,6 +306,10 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		TriggerSync:        triggerSync,
 		Marketplaces:       marketplaceStatuses(effectiveCfg),
 		AllowedOrigins:     cfg.Web.ShopOrigins,
+		Media:              cfg.Media,
+		UploadDir:          cfg.Web.UploadDir,
+		PrivacyURL:         cfg.Web.PrivacyURL,
+		ReviewTermsURL:     cfg.Web.ReviewTermsURL,
 	}, logger)
 	if err := httpServer.Run(ctx); err != nil {
 		logger.Error("server stopped with error", "error", err)
@@ -456,6 +461,9 @@ func buildAdapters(cfg config.Config) []marketplace.Adapter {
 	}
 	if cfg.Marketplaces.YM.Enabled {
 		adapters = append(adapters, ym.New(cfg.Marketplaces.YM))
+	}
+	if cfg.Marketplaces.Ozon.Enabled {
+		adapters = append(adapters, ozon.New(cfg.Marketplaces.Ozon))
 	}
 	return adapters
 }

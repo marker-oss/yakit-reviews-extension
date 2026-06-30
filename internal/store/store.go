@@ -39,9 +39,10 @@ func Open(cfg config.DBConfig) (*Store, error) {
 }
 
 func (s *Store) Migrate(ctx context.Context) error {
-	return s.db.WithContext(ctx).AutoMigrate(
+	if err := s.db.WithContext(ctx).AutoMigrate(
 		&Product{},
 		&ProductMarketplaceLink{},
+		&ReviewerIdentity{},
 		&Review{},
 		&ReviewMedia{},
 		&SyncState{},
@@ -52,5 +53,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 		&ShowcasePin{},
 		&WidgetConfig{},
 		&MarketplaceCredential{},
-	)
+		&AppSetting{},
+	); err != nil {
+		return err
+	}
+	if _, err := s.ScrubPersonalData(ctx); err != nil {
+		return fmt.Errorf("scrub personal data: %w", err)
+	}
+	return nil
 }

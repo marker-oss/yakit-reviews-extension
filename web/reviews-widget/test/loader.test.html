@@ -6,6 +6,7 @@
   window.REVIEWS_EMBED_CONFIG = { debug: true };
 </script>
 <script src="../loader.js"></script>
+<script src="../reviews-widget.js"></script>
 <script>
   var out = document.getElementById("out");
   var pass = 0;
@@ -39,6 +40,22 @@
   eq("bundleUrl", I.bundleUrl("3467/Белый"), I.cfg.dataBase + "/by-article/3467.json");
   eq("reviewsUrl full feed", new URL(I.reviewsUrl("")).pathname + new URL(I.reviewsUrl("")).search, "/api/reviews?sort=newest&limit=24");
   eq("reviewsUrl context", new URL(I.reviewsUrl("homepage")).pathname + new URL(I.reviewsUrl("homepage")).search, "/api/reviews?context=homepage&sort=newest&limit=24");
+
+  var oldDataBase = I.cfg.dataBase;
+  var oldConfigBase = I.cfg.configBase;
+  var oldWidgetJsUrl = I.cfg.widgetJsUrl;
+  I.cfg.configBase = "";
+  I.cfg.dataBase = "https://reviews.test/reviews-data";
+  I.cfg.widgetJsUrl = "";
+  eq("service base falls back to dataBase origin", I.serviceBase(), "https://reviews.test");
+  eq("showcaseUrl uses fallback service base", new URL(I.showcaseUrl()).origin + new URL(I.showcaseUrl()).pathname, "https://reviews.test/api/showcase");
+  eq("reviewsUrl uses fallback service base", new URL(I.reviewsUrl("")).origin + new URL(I.reviewsUrl("")).pathname, "https://reviews.test/api/reviews");
+  I.cfg.configBase = "https://api.reviews.test/";
+  eq("service base prefers configBase", I.serviceBase(), "https://api.reviews.test");
+  I.cfg.dataBase = oldDataBase;
+  I.cfg.configBase = oldConfigBase;
+  I.cfg.widgetJsUrl = oldWidgetJsUrl;
+
   eq("extract sku", I.extractArticleFromHTML('x "sku":"107" y'), "107");
   eq("extract label", I.extractArticleFromHTML("Артикул: 1523"), "1523");
 
@@ -109,16 +126,25 @@
   eq("jsonld reviews len", ld.review.length, 2);
   eq("jsonld null when empty", I.buildJsonLd({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 } }, 10), null);
 
+  eq("proxy wraps url",
+     ReviewsWidget.mediaProxyURL("https://cdn.test/a.jpg", "https://rev.test"),
+     "https://rev.test/media?u=https%3A%2F%2Fcdn.test%2Fa.jpg");
+  eq("proxy passthrough when no base",
+     ReviewsWidget.mediaProxyURL("https://cdn.test/a.jpg", ""),
+     "https://cdn.test/a.jpg");
+
   window.ReviewsWidget = {
     mountShadow: function (host, options) {
       host.setAttribute("data-mounted-reviews", String(options.reviews.length));
       host.setAttribute("data-mount-mode", "shadow");
+      host.setAttribute("data-media-proxy-base", options.mediaProxyBase || "");
       host.setAttribute("data-full-feed-source", options.fullFeedSource || "");
       host.setAttribute("data-full-feed-offset", String(options.fullFeedOffset ?? ""));
     },
     mount: function (host, options) {
       host.setAttribute("data-mounted-reviews", String(options.reviews.length));
       host.setAttribute("data-mount-mode", "light");
+      host.setAttribute("data-media-proxy-base", options.mediaProxyBase || "");
       host.setAttribute("data-full-feed-source", options.fullFeedSource || "");
       host.setAttribute("data-full-feed-offset", String(options.fullFeedOffset ?? ""));
     },
@@ -158,6 +184,17 @@
   eq("default anchor mounts reviews", standardHost.getAttribute("data-mounted-reviews"), "1");
   eq("default render uses shadow dom", standardHost.getAttribute("data-mount-mode"), "shadow");
   eq("product render has no full feed", standardHost.getAttribute("data-full-feed-source"), "");
+
+  cleanupLoaderFixture();
+  I.cfg.dataBase = "https://reviews.test/reviews-data";
+  var proxyFixture = document.createElement("div");
+  proxyFixture.id = "loader-fixture";
+  proxyFixture.innerHTML = '<section data-testid="ProductDetails"><main id="proxy-anchor"></main></section>';
+  document.body.appendChild(proxyFixture);
+  I.render(renderBundle, "1523");
+  var proxyHost = document.getElementById(I.cfg.hostId);
+  eq("static render passes media proxy base", proxyHost.getAttribute("data-media-proxy-base"), "https://reviews.test");
+  I.cfg.dataBase = "";
 
   cleanupLoaderFixture();
   I.cfg.useShadowDom = false;

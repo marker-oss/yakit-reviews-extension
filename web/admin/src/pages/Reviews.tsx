@@ -21,6 +21,15 @@ type MediaViewerState = {
   title: string
 }
 
+type ReviewDraft = {
+  sellerArticle: string
+  rating: string
+  authorName: string
+  text: string
+  pros: string
+  cons: string
+}
+
 const PAGE_SIZE = 25
 const SEARCH_DELAY_MS = 350
 
@@ -38,6 +47,7 @@ export default function Reviews() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [articlePins, setArticlePins] = useState<Set<number>>(new Set())
   const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({})
+  const [editDrafts, setEditDrafts] = useState<Record<number, ReviewDraft>>({})
   const [error, setError] = useState('')
   const [publishMessage, setPublishMessage] = useState('')
   const [publishing, setPublishing] = useState(false)
@@ -58,6 +68,7 @@ export default function Reviews() {
       .then((next) => {
         setData(next)
         setReplyDrafts(Object.fromEntries(next.reviews.map((review) => [review.id, review.adminReply?.text ?? ''])))
+        setEditDrafts(Object.fromEntries(next.reviews.map((review) => [review.id, draftFromReview(review)])))
         return loadPins()
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Запрос не выполнен'))
@@ -135,7 +146,20 @@ export default function Reviews() {
   const hasNext = offset + PAGE_SIZE < data.total
   const highlightTerms = useMemo(() => tokenizeHighlightTerms(search, article), [search, article])
 
-  async function moderate(id: number, body: { visibility?: 'visible' | 'hidden'; pinned?: boolean }) {
+  async function moderate(
+    id: number,
+    body: {
+      visibility?: 'visible' | 'hidden'
+      pinned?: boolean
+      status?: 'pending' | 'approved' | 'rejected' | 'deleted'
+      sellerArticle?: string
+      rating?: number
+      authorName?: string
+      text?: string
+      pros?: string
+      cons?: string
+    },
+  ) {
     setError('')
     try {
       await apiWrite('PATCH', `/admin/api/reviews/${id}`, body)
@@ -165,6 +189,31 @@ export default function Reviews() {
     }
   }
 
+  async function purgeReview(id: number) {
+    setError('')
+    try {
+      await apiWrite('DELETE', `/admin/api/reviews/${id}/purge`)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+    }
+  }
+
+  async function saveReviewEdits(id: number, status?: 'pending' | 'approved' | 'rejected') {
+    const draft = editDrafts[id]
+    if (!draft) return
+    const rating = Number(draft.rating)
+    await moderate(id, {
+      sellerArticle: draft.sellerArticle,
+      rating: Number.isFinite(rating) ? rating : undefined,
+      authorName: draft.authorName,
+      text: draft.text,
+      pros: draft.pros,
+      cons: draft.cons,
+      status,
+    })
+  }
+
   async function saveReply(id: number) {
     setError('')
     try {
@@ -190,7 +239,7 @@ export default function Reviews() {
     }
   }
 
-  async function bulkModerate(body: { visibility?: 'visible' | 'hidden'; pinned?: boolean; status?: 'deleted' }) {
+  async function bulkModerate(body: { visibility?: 'visible' | 'hidden'; pinned?: boolean; status?: 'approved' | 'rejected' | 'pending' | 'deleted' }) {
     if (selected.size === 0) return
     setError('')
     try {
@@ -250,13 +299,21 @@ export default function Reviews() {
     })
   }
 
+  function updateDraft(id: number, key: keyof ReviewDraft, value: string) {
+    setEditDrafts((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] ?? emptyDraft()), [key]: value },
+    }))
+  }
+
   const activeMedia = mediaViewer?.items[mediaViewer.index] ?? null
 
   return (
     <section className="stack">
       <div className="toolbar">
         <select value={marketplace} onChange={(e) => resetTo(setMarketplace)(e.target.value)}>
-          <option value="">Все маркетплейсы</option>
+          <option value="">Все источники</option>
+          <option value="site">Сайт</option>
           <option value="wb">Wildberries</option>
           <option value="ym">Yandex Market</option>
           <option value="ozon">Ozon</option>
@@ -268,6 +325,10 @@ export default function Reviews() {
         </select>
         <select value={status} onChange={(e) => resetTo(setStatus)(e.target.value)}>
           <option value="">Активные</option>
+          <option value="pending">На модерации</option>
+          <option value="approved">Одобренные</option>
+          <option value="rejected">Отклонённые</option>
+          <option value="imported">Импортированные</option>
           <option value="deleted">Удалённые</option>
           <option value="all">Все</option>
         </select>
@@ -329,9 +390,19 @@ export default function Reviews() {
           <button className="secondary danger" onClick={() => bulkModerate({ status: 'deleted' })}>
             Удалить
           </button>
+          <button className="secondary" onClick={() => bulkModerate({ status: 'approved' })}>
+            Одобрить
+          </button>
+          <button className="secondary" onClick={() => bulkModerate({ status: 'rejected' })}>
+            Отклонить
+          </button>
           <button className="secondary" onClick={() => setSelected(new Set())}>
             Снять выбор
           </button>
+          <p className="muted hide-warning">
+            Скрытие — только для спама, дублей и мусора. Не скрывайте негативные отзывы ради
+            рейтинга: это риск по ЗоЗПП и закону «О рекламе».
+          </p>
         </div>
       )}
       <section className="panel">
@@ -359,7 +430,8 @@ export default function Reviews() {
                 <strong>{review.authorName || review.marketplace}</strong>
                 <p>{highlight(review.text || review.pros || review.cons || review.externalReviewId, highlightTerms)}</p>
                 <small>
-                  {review.marketplace} · {highlight(review.sellerArticle || review.externalProductId, highlightTerms)}
+                  {sourceLabel(review.marketplace)} · {highlight(review.sellerArticle || review.externalProductId, highlightTerms)}
+                  {review.authorEmail ? ` · ${review.authorEmail}` : ''}
                 </small>
                 {review.media.length > 0 && (
                   <div className="review-media-strip" aria-label="Медиа отзыва">
@@ -379,18 +451,31 @@ export default function Reviews() {
                 )}
               </div>
               <span>{review.rating ?? '-'} / 5</span>
-              <span className={review.visibility === 'visible' ? 'status-ok' : 'status-muted'}>
-                {review.status === 'deleted'
-                  ? 'удалён'
-                  : `${review.pinned ? 'закреплён · ' : ''}${review.visibility === 'visible' ? 'показан' : 'скрыт'}`}
+              <span className={review.status === 'pending' ? 'status-warn' : review.visibility === 'visible' ? 'status-ok' : 'status-muted'}>
+                {statusLabel(review)}
               </span>
               <div className="actions">
                 {review.status === 'deleted' ? (
-                  <button className="secondary" onClick={() => restoreReview(review.id)}>
-                    Восстановить
-                  </button>
+                  <>
+                    <button className="secondary" onClick={() => restoreReview(review.id)}>
+                      Восстановить
+                    </button>
+                    <button className="secondary danger" onClick={() => purgeReview(review.id)}>
+                      Удалить навсегда
+                    </button>
+                  </>
                 ) : (
                   <>
+                    {review.marketplace === 'site' && (
+                      <>
+                        <button className="secondary" onClick={() => saveReviewEdits(review.id, 'approved')}>
+                          Одобрить
+                        </button>
+                        <button className="secondary" onClick={() => saveReviewEdits(review.id, 'rejected')}>
+                          Отклонить
+                        </button>
+                      </>
+                    )}
                     <button
                       className="secondary"
                       onClick={() => moderate(review.id, { visibility: review.visibility === 'visible' ? 'hidden' : 'visible' })}
@@ -408,9 +493,45 @@ export default function Reviews() {
                     <button className="secondary danger" onClick={() => deleteReview(review.id)}>
                       Удалить
                     </button>
+                    {review.marketplace === 'site' && (
+                      <button className="secondary danger" onClick={() => purgeReview(review.id)}>
+                        Навсегда
+                      </button>
+                    )}
                   </>
                 )}
               </div>
+              {review.marketplace === 'site' && review.status !== 'deleted' && editDrafts[review.id] && (
+                <div className="submission-editor">
+                  <label>
+                    <span>Артикул</span>
+                    <input value={editDrafts[review.id].sellerArticle} onChange={(e) => updateDraft(review.id, 'sellerArticle', e.target.value)} />
+                  </label>
+                  <label>
+                    <span>Оценка</span>
+                    <input type="number" min={1} max={5} value={editDrafts[review.id].rating} onChange={(e) => updateDraft(review.id, 'rating', e.target.value)} />
+                  </label>
+                  <label>
+                    <span>Имя</span>
+                    <input value={editDrafts[review.id].authorName} onChange={(e) => updateDraft(review.id, 'authorName', e.target.value)} />
+                  </label>
+                  <label>
+                    <span>Плюсы</span>
+                    <input value={editDrafts[review.id].pros} onChange={(e) => updateDraft(review.id, 'pros', e.target.value)} />
+                  </label>
+                  <label>
+                    <span>Минусы</span>
+                    <input value={editDrafts[review.id].cons} onChange={(e) => updateDraft(review.id, 'cons', e.target.value)} />
+                  </label>
+                  <label className="wide">
+                    <span>Текст</span>
+                    <textarea value={editDrafts[review.id].text} rows={3} onChange={(e) => updateDraft(review.id, 'text', e.target.value)} />
+                  </label>
+                  <button className="secondary" onClick={() => saveReviewEdits(review.id)}>
+                    Сохранить правки
+                  </button>
+                </div>
+              )}
               <div className="reply-editor">
                 <textarea
                   value={replyDrafts[review.id] ?? ''}
@@ -500,6 +621,38 @@ function isPlayableVideo(url: string) {
 
 function isImageLike(url: string) {
   return /\.(avif|gif|jpe?g|png|svg|webp)(\?|#|$)/i.test(url)
+}
+
+function draftFromReview(review: Review): ReviewDraft {
+  return {
+    sellerArticle: review.sellerArticle || review.externalProductId || '',
+    rating: review.rating == null ? '' : String(review.rating),
+    authorName: review.authorName || '',
+    text: review.text || '',
+    pros: review.pros || '',
+    cons: review.cons || '',
+  }
+}
+
+function emptyDraft(): ReviewDraft {
+  return { sellerArticle: '', rating: '', authorName: '', text: '', pros: '', cons: '' }
+}
+
+function sourceLabel(value: string) {
+  if (value === 'site') return 'Сайт'
+  if (value === 'wb') return 'Wildberries'
+  if (value === 'ym') return 'Yandex Market'
+  if (value === 'ozon') return 'Ozon'
+  return value
+}
+
+function statusLabel(review: Review) {
+  const pin = review.pinned ? 'закреплён · ' : ''
+  if (review.status === 'pending') return `${pin}на модерации`
+  if (review.status === 'approved') return `${pin}${review.visibility === 'visible' ? 'одобрен · показан' : 'одобрен · скрыт'}`
+  if (review.status === 'rejected') return `${pin}отклонён`
+  if (review.status === 'deleted') return 'удалён'
+  return `${pin}${review.visibility === 'visible' ? 'показан' : 'скрыт'}`
 }
 
 function highlight(value: string, terms: string[]): ReactNode {

@@ -73,13 +73,42 @@
     return CFG.dataBase + "/by-article/" + encodeURIComponent(articleFileKey(article)) + ".json";
   }
 
+  function originFromURL(value) {
+    if (!value) {
+      return "";
+    }
+    try {
+      var parsed = new URL(value, location.href);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        return parsed.origin;
+      }
+    } catch (_error) {
+      return "";
+    }
+    return "";
+  }
+
+  function serviceBase() {
+    if (CFG.configBase) {
+      return String(CFG.configBase).replace(/\/$/, "");
+    }
+    if (CFG.mediaProxyBase) {
+      return String(CFG.mediaProxyBase).replace(/\/$/, "");
+    }
+    var dataOrigin = originFromURL(CFG.dataBase);
+    if (dataOrigin && dataOrigin !== location.origin) {
+      return dataOrigin;
+    }
+    return originFromURL(CFG.widgetJsUrl);
+  }
+
   function showcaseUrl() {
-    var base = CFG.configBase || "";
+    var base = serviceBase();
     return base.replace(/\/$/, "") + "/api/showcase";
   }
 
   function reviewsUrl(contextName) {
-    var base = CFG.configBase || "";
+    var base = serviceBase();
     var url = new URL(base.replace(/\/$/, "") + "/api/reviews", location.origin);
     if (contextName) {
       url.searchParams.set("context", contextName);
@@ -87,6 +116,18 @@
     url.searchParams.set("sort", "newest");
     url.searchParams.set("limit", "24");
     return url.toString();
+  }
+
+  function submissionConfigUrl() {
+    return serviceBase().replace(/\/$/, "") + "/api/review-submission-config";
+  }
+
+  function submissionUrl() {
+    return serviceBase().replace(/\/$/, "") + "/api/review-submissions";
+  }
+
+  function mediaProxyBase() {
+    return serviceBase();
   }
 
   function extractArticleFromHTML(html) {
@@ -266,6 +307,7 @@
     normalizeArticle: normalizeArticle,
     articleFileKey: articleFileKey,
     bundleUrl: bundleUrl,
+    serviceBase: serviceBase,
     showcaseUrl: showcaseUrl,
     reviewsUrl: reviewsUrl,
     extractArticleFromHTML: extractArticleFromHTML,
@@ -346,7 +388,7 @@
       return widgetConfigLoading[contextName];
     }
 
-    var base = CFG.configBase || "";
+    var base = serviceBase();
     var url = base.replace(/\/$/, "") + "/api/widget-config?context=" + encodeURIComponent(contextName);
     widgetConfigLoading[contextName] = fetch(url, { headers: { Accept: "application/json" } })
       .then(function (response) {
@@ -580,7 +622,8 @@
     removeHost();
 
     var reviews = bundle && bundle.reviews ? bundle.reviews : [];
-    if (!reviews.length) {
+    var resolvedContext = contextName || contextForPath(location.pathname);
+    if (!reviews.length && resolvedContext === "homepage") {
       currentArticle = null;
       collapseCustomAnchor();
       log("empty bundle", normalizedArticle);
@@ -616,12 +659,18 @@
       reviews: reviews,
       aggregate: bundle && bundle.aggregate,
       config: widgetConfig,
-      context: contextName || contextForPath(location.pathname),
-      fullFeedSource: (contextName || contextForPath(location.pathname)) === "homepage" ? reviewsUrl("") : "",
+      context: resolvedContext,
+      mediaProxyBase: mediaProxyBase(),
+      sellerArticle: resolvedContext === "product" ? normalizedArticle : "",
+      submissionConfigUrl: resolvedContext === "product" ? submissionConfigUrl() : "",
+      submissionUrl: resolvedContext === "product" ? submissionUrl() : "",
+      fullFeedSource: resolvedContext === "homepage" ? reviewsUrl("") : "",
       fullFeedOffset: 0,
       fullFeedLimit: 24,
     });
-    injectJsonLd(bundle);
+    if (reviews.length) {
+      injectJsonLd(bundle);
+    }
     currentArticle = normalizedArticle;
     log("rendered", normalizedArticle, reviews.length, "reviews");
   }
@@ -725,12 +774,8 @@
           if (seq !== requestSeq) {
             return;
           }
-          if (currentArticle !== null || document.getElementById(CFG.hostId)) {
-            removeHost();
-            currentArticle = null;
-          }
-          collapseCustomAnchor();
-          log("skip", url, error && error.message);
+          render({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 }, reviews: [] }, normalizedArticle, "product");
+          log("empty product bundle", url, error && error.message);
         });
     });
   }

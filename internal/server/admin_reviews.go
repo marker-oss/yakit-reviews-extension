@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -13,10 +14,12 @@ import (
 
 type adminReview struct {
 	reviewjson.Review
-	Visibility string      `json:"visibility"`
-	Pinned     bool        `json:"pinned"`
-	Status     string      `json:"status"`
-	AdminReply *adminReply `json:"adminReply,omitempty"`
+	Visibility     string         `json:"visibility"`
+	Pinned         bool           `json:"pinned"`
+	Status         string         `json:"status"`
+	AuthorEmail    string         `json:"authorEmail,omitempty"`
+	SubmissionMeta map[string]any `json:"submissionMeta,omitempty"`
+	AdminReply     *adminReply    `json:"adminReply,omitempty"`
 }
 
 type adminReply struct {
@@ -33,7 +36,7 @@ func (s *Server) handleAdminReviews(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	status, ok := adminStatus(q.Get("status"))
 	if !ok {
-		writeError(w, http.StatusBadRequest, errors.New("status must be active, deleted, or all"))
+		writeError(w, http.StatusBadRequest, errors.New("invalid status"))
 		return
 	}
 	filter := store.ReviewListFilter{
@@ -73,6 +76,21 @@ func (s *Server) handleAdminReviews(w http.ResponseWriter, r *http.Request) {
 			Pinned:     rv.Pinned,
 			Status:     rv.Status,
 		}
+		if rv.ReviewerIdentity != nil {
+			item.AuthorEmail = rv.ReviewerIdentity.EmailNormalized
+		}
+		if rv.Marketplace == store.MarketplaceSite {
+			item.SubmissionMeta = map[string]any{
+				"origin":           rv.SubmissionOrigin,
+				"referrer":         rv.SubmissionReferrer,
+				"privacyConsentAt": rv.ConsentPrivacyAt,
+				"termsConsentAt":   rv.ConsentTermsAt,
+				"authorEmailHash":  rv.AuthorEmailHash,
+				"submissionIPHash": rv.SubmissionIPHash,
+				"submissionUAHash": rv.SubmissionUAHash,
+				"antispamReason":   rv.AntispamReason,
+			}
+		}
 		if rv.AdminReplyText != nil && *rv.AdminReplyText != "" {
 			item.AdminReply = &adminReply{Text: *rv.AdminReplyText, At: rv.AdminReplyAt}
 		}
@@ -94,7 +112,7 @@ func adminStatus(value string) (string, bool) {
 	switch value {
 	case "", "active":
 		return "", true
-	case "deleted", "all":
+	case "pending", "approved", "rejected", "imported", "deleted", "all":
 		return value, true
 	default:
 		return "", false
@@ -114,8 +132,15 @@ func adminSortBy(value string) string {
 }
 
 type moderationRequest struct {
-	Visibility *string `json:"visibility"`
-	Pinned     *bool   `json:"pinned"`
+	Visibility    *string `json:"visibility"`
+	Pinned        *bool   `json:"pinned"`
+	Status        *string `json:"status"`
+	SellerArticle *string `json:"sellerArticle"`
+	Rating        *int    `json:"rating"`
+	AuthorName    *string `json:"authorName"`
+	Text          *string `json:"text"`
+	Pros          *string `json:"pros"`
+	Cons          *string `json:"cons"`
 }
 
 func (s *Server) handleAdminReviewModerate(w http.ResponseWriter, r *http.Request) {
@@ -146,6 +171,23 @@ func (s *Server) handleAdminReviewModerate(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
+	if err := s.store.UpdateReviewContent(r.Context(), uint(id), store.ReviewEditPatch{
+		SellerArticle: req.SellerArticle,
+		Rating:        req.Rating,
+		AuthorName:    req.AuthorName,
+		Text:          req.Text,
+		Pros:          req.Pros,
+		Cons:          req.Cons,
+	}); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.Status != nil {
+		if err := s.store.SetReviewStatus(r.Context(), uint(id), *req.Status); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -158,6 +200,27 @@ func (s *Server) handleAdminReviewDelete(w http.ResponseWriter, r *http.Request)
 	if err := s.store.SoftDeleteReview(r.Context(), uint(id)); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleAdminReviewPurge(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid review id"))
+		return
+	}
+	paths, err := s.store.ReviewMediaStoragePaths(r.Context(), uint(id))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if err := s.store.HardDeleteReview(r.Context(), uint(id)); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	for _, path := range paths {
+		_ = os.Remove(path)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -235,13 +298,24 @@ func (s *Server) handleAdminReviewsBulkModerate(w http.ResponseWriter, r *http.R
 		}
 	}
 	if req.Status != nil {
-		if *req.Status != "deleted" {
-			writeError(w, http.StatusBadRequest, errors.New("status must be deleted"))
+		switch *req.Status {
+		case "approved", "rejected", "pending", "deleted":
+		default:
+			writeError(w, http.StatusBadRequest, errors.New("invalid status"))
 			return
 		}
-		if err := s.store.SetReviewsStatus(r.Context(), req.IDs, *req.Status); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+		if *req.Status == "deleted" {
+			if err := s.store.SetReviewsStatus(r.Context(), req.IDs, *req.Status); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+		} else {
+			for _, id := range req.IDs {
+				if err := s.store.SetReviewStatus(r.Context(), id, *req.Status); err != nil {
+					writeError(w, http.StatusInternalServerError, err)
+					return
+				}
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "updated": len(req.IDs)})

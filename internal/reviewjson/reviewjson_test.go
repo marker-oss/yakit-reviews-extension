@@ -151,3 +151,29 @@ func TestAdminReplyOverridesMarketplaceAnswer(t *testing.T) {
 		t.Fatalf("answer = %+v", mapped.Answer)
 	}
 }
+
+func TestAnswerKind(t *testing.T) {
+	admin := "seller reply"
+	sellerReview := store.Review{AdminReplyText: &admin}
+	if a := (Mapper{}).ToReview(sellerReview).Answer; a == nil || a.Kind != "seller" {
+		t.Fatalf("seller answer kind = %+v", a)
+	}
+	mpText := "mp reply"
+	mpState := "published"
+	mpReview := store.Review{MPAnswerText: &mpText, MPAnswerState: &mpState}
+	if a := (Mapper{}).ToReview(mpReview).Answer; a == nil || a.Kind != "marketplace" {
+		t.Fatalf("marketplace answer kind = %+v", a)
+	}
+}
+
+func TestMarketplaceProductURL_YM(t *testing.T) {
+	r := store.Review{Marketplace: "ym", ExternalProductID: "12345"}
+	got := (Mapper{}).ToReview(r).MarketplaceProductURL
+	if got != "https://market.yandex.ru/product/12345" {
+		t.Errorf("got %q", got)
+	}
+	empty := store.Review{Marketplace: "ym", ExternalProductID: ""}
+	if got := (Mapper{}).ToReview(empty).MarketplaceProductURL; got != "" {
+		t.Errorf("got %q, want empty", got)
+	}
+}

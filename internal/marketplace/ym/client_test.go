@@ -83,7 +83,8 @@ func TestFetchReviewsMapsYMResponse(t *testing.T) {
 		config.YMConfig{APIKey: "key", BusinessID: "777"},
 		"https://api.partner.test", httpClient, 50,
 	)
-	reviews, nextCursor, err := client.FetchReviews(context.Background(), time.Now().Add(-30*24*time.Hour), "")
+	since := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	reviews, nextCursor, err := client.FetchReviews(context.Background(), since, "")
 	if err != nil {
 		t.Fatalf("fetch reviews: %v", err)
 	}

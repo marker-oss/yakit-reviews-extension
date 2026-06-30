@@ -21,6 +21,17 @@ type Config struct {
 	Log          LogConfig
 	Web          WebConfig
 	Marketplaces MarketplaceConfig
+	Media        MediaConfig
+}
+
+type MediaConfig struct {
+	// Allowlist of CDN host suffixes the image proxy may fetch from.
+	Allowlist []string
+	// MaxBytes caps a single fetched image; the response body is truncated at
+	// this many bytes before processing. Default 8 MiB.
+	MaxBytes int64
+	// CacheEntries bounds the in-memory blurred-image LRU. Default 512.
+	CacheEntries int
 }
 
 type DBConfig struct {
@@ -49,6 +60,14 @@ type WebConfig struct {
 	// articles. From REVIEWS_SITE_SITEMAP_URL, defaulting to the first shop
 	// origin + "/sitemap.xml".
 	SitemapURL string
+	// PrivacyContact is the contact shown for data-subject requests (152-ФЗ).
+	PrivacyContact string
+	// PrivacyURL and ReviewTermsURL are shown next to the public submission form
+	// consent checkboxes.
+	PrivacyURL     string
+	ReviewTermsURL string
+	// UploadDir stores visitor-submitted review media.
+	UploadDir string
 }
 
 type MarketplaceConfig struct {
@@ -99,6 +118,9 @@ func LoadFromEnv() (Config, error) {
 			ProductURLTemplate: envString("REVIEWS_SITE_PRODUCT_URL_TEMPLATE", ""),
 			ProductLinksPath:   envString("REVIEWS_SITE_PRODUCT_LINKS", "data/product-links.json"),
 			ShopOrigins:        envList("REVIEWS_SHOP_ORIGIN"),
+			PrivacyContact:     envString("REVIEWS_PRIVACY_CONTACT", ""),
+			PrivacyURL:         envString("REVIEWS_PRIVACY_URL", ""),
+			ReviewTermsURL:     envString("REVIEWS_REVIEW_TERMS_URL", ""),
 		},
 		Marketplaces: MarketplaceConfig{
 			WB: WBConfig{
@@ -120,10 +142,20 @@ func LoadFromEnv() (Config, error) {
 		},
 	}
 
+	cfg.Media = MediaConfig{
+		Allowlist:    envList("REVIEWS_MEDIA_ALLOWLIST"),
+		MaxBytes:     8 << 20,
+		CacheEntries: 512,
+	}
+	if len(cfg.Media.Allowlist) == 0 {
+		cfg.Media.Allowlist = []string{"wbbasket.ru", "images.wildberries.ru", "avatars.mds.yandex.net"}
+	}
+
 	cfg.Web.SitemapURL = envString("REVIEWS_SITE_SITEMAP_URL", "")
 	if cfg.Web.SitemapURL == "" && len(cfg.Web.ShopOrigins) > 0 {
 		cfg.Web.SitemapURL = strings.TrimRight(cfg.Web.ShopOrigins[0], "/") + "/sitemap.xml"
 	}
+	cfg.Web.UploadDir = envString("REVIEWS_UPLOAD_DIR", defaultUploadDir(cfg.DB.DSN))
 
 	if value := os.Getenv("REVIEWS_SYNC_INTERVAL"); value != "" {
 		parsed, err := time.ParseDuration(value)
@@ -154,6 +186,13 @@ func LoadFromEnv() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func defaultUploadDir(dbDSN string) string {
+	if strings.HasPrefix(dbDSN, "/data/") || dbDSN == "/data/reviews.db" {
+		return "/data/review-uploads"
+	}
+	return "data/review-uploads"
 }
 
 func (cfg Config) ValidateBase() error {

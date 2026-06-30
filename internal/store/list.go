@@ -54,6 +54,7 @@ func (s *Store) ListReviews(ctx context.Context, filter ReviewListFilter) ([]Rev
 	}
 
 	query := s.db.WithContext(ctx).
+		Preload("ReviewerIdentity").
 		Preload("Media", func(db *gorm.DB) *gorm.DB {
 			return db.Order("position asc").Order("id asc")
 		})
@@ -101,8 +102,12 @@ func (s *Store) ListReviewsByWidgetRules(ctx context.Context, filter ReviewListF
 
 func (s *Store) applyReviewFilters(query *gorm.DB, filter ReviewListFilter) (*gorm.DB, error) {
 	switch filter.Status {
+	case "public":
+		query = query.Where("status IN ?", []string{"imported", "approved"})
 	case "deleted":
 		query = query.Where("status = ?", "deleted")
+	case "pending", "approved", "rejected", "imported":
+		query = query.Where("status = ?", filter.Status)
 	case "all":
 	default:
 		query = query.Where("status <> ?", "deleted")

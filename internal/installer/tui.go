@@ -20,6 +20,7 @@ const (
 	pageAdmin
 	pageMarketplaces
 	pageReview
+	pageConsent
 	pageInstalling
 	pageDone
 )
@@ -113,10 +114,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.err = ""
-			m.page = pageInstalling
-			m.events = nil
-			m.progress = make(chan progressMsg, 32)
-			return m, tea.Batch(m.startInstall(), m.waitProgress())
+			m.page = pageConsent
+			return m, nil
+		}
+		if m.page == pageConsent {
+			// Installation is unreachable without explicit consent: only "y"
+			// proceeds; "q" quits; any other navigation key is a no-op.
+			if msg.String() == "q" || msg.String() == "Q" {
+				return m, tea.Quit
+			}
+			if msg.String() == "y" || msg.String() == "Y" {
+				m.err = ""
+				m.page = pageInstalling
+				m.events = nil
+				m.progress = make(chan progressMsg, 32)
+				return m, tea.Batch(m.startInstall(), m.waitProgress())
+			}
+			return m, nil
 		}
 		if m.page == pageDone && msg.String() == "enter" {
 			return m, tea.Quit
@@ -380,6 +394,13 @@ func (m model) View() string {
 		b.WriteString("Review\n\n")
 		b.WriteString(MaskedSummary(m.cfg) + "\n\n")
 		b.WriteString("Press Enter to install. Press Esc/Ctrl+C to quit.\n")
+	case pageConsent:
+		b.WriteString("Подтвердите перед установкой:\n")
+		b.WriteString("  • Я имею право переопубликовывать отзывы со своих карточек товаров.\n")
+		b.WriteString("  • Я ознакомлен(а) с обязанностями оператора персональных данных (152-ФЗ)\n")
+		b.WriteString("    и размещу политику конфиденциальности\n")
+		b.WriteString("    (шаблон: docs/legal/privacy-policy-template.ru.md).\n\n")
+		b.WriteString("Нажмите Y для подтверждения · Q для выхода.\n")
 	case pageInstalling:
 		b.WriteString("Installing...\n\n")
 		b.WriteString(renderEvents(m.events))

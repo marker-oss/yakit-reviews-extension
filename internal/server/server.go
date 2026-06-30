@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"reviews/internal/config"
+	"reviews/internal/mediaproxy"
 	"reviews/internal/reviewjson"
 	"reviews/internal/store"
 )
@@ -26,21 +28,28 @@ type Config struct {
 	// the in-admin "refresh products" action can rewrite it.
 	ProductLinksPath string
 	// SitemapURL is the shop sitemap crawled by the refresh action.
-	SitemapURL string
-	SessionTTL time.Duration
-	SecureCookies      bool
-	TriggerSync        func(marketplaces []string)
-	Marketplaces       []MarketplaceStatus
+	SitemapURL    string
+	SessionTTL    time.Duration
+	SecureCookies bool
+	TriggerSync   func(marketplaces []string)
+	Marketplaces  []MarketplaceStatus
 	// AllowedOrigins lists shop origins permitted to fetch public reviews
 	// data cross-origin (the embedding site). Empty disables CORS.
 	AllowedOrigins []string
+	// Media configures the face-blur image proxy (/media route).
+	Media config.MediaConfig
+	// Review submission settings.
+	UploadDir      string
+	PrivacyURL     string
+	ReviewTermsURL string
 }
 
 type Server struct {
-	store  *store.Store
-	cfg    Config
-	logger *slog.Logger
-	server *http.Server
+	store       *store.Store
+	cfg         Config
+	logger      *slog.Logger
+	server      *http.Server
+	submissions *submissionLimiter
 
 	// linksMu guards cfg.ProductLinks, which the refresh-products action swaps
 	// at runtime while request handlers read it.
@@ -85,7 +94,15 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /api/reviews", s.handleReviews)
 	mux.HandleFunc("GET /api/showcase", s.handleShowcase)
 	mux.HandleFunc("GET /api/widget-config", s.handlePublicWidgetConfig)
+	mux.HandleFunc("GET /api/review-submission-config", s.handleReviewSubmissionConfig)
+	mux.HandleFunc("POST /api/review-submissions", s.handleCreateReviewSubmission)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /user-media/{token}", s.handleUserMedia)
+	if mediaHandler, err := mediaproxy.NewHandler(s.cfg.Media, nil); err == nil {
+		mux.Handle("GET /media", mediaHandler)
+	} else {
+		s.logger.Error("media proxy disabled", "error", err)
+	}
 	mux.Handle("/admin/", s.adminMux())
 	mux.Handle("/", http.FileServer(http.Dir(s.cfg.StaticDir)))
 
@@ -137,6 +154,7 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.Handle("POST /admin/api/reviews/bulk", requireCSRF(http.HandlerFunc(s.handleAdminReviewsBulkModerate)))
 	protected.Handle("PATCH /admin/api/reviews/{id}", requireCSRF(http.HandlerFunc(s.handleAdminReviewModerate)))
 	protected.Handle("DELETE /admin/api/reviews/{id}", requireCSRF(http.HandlerFunc(s.handleAdminReviewDelete)))
+	protected.Handle("DELETE /admin/api/reviews/{id}/purge", requireCSRF(http.HandlerFunc(s.handleAdminReviewPurge)))
 	protected.Handle("POST /admin/api/reviews/{id}/restore", requireCSRF(http.HandlerFunc(s.handleAdminReviewRestore)))
 	protected.Handle("PUT /admin/api/reviews/{id}/reply", requireCSRF(http.HandlerFunc(s.handleAdminReviewReply)))
 	protected.HandleFunc("GET /admin/api/articles/{article}/pins", s.handleListArticlePins)
@@ -145,6 +163,8 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.HandleFunc("GET /admin/api/dashboard", s.handleDashboard)
 	protected.HandleFunc("GET /admin/api/marketplaces", s.handleMarketplaces)
 	protected.Handle("PUT /admin/api/marketplaces/{id}/credentials", requireCSRF(http.HandlerFunc(s.handleSaveMarketplaceCredentials)))
+	protected.HandleFunc("GET /admin/api/settings", s.handleGetSettings)
+	protected.Handle("PUT /admin/api/settings", requireCSRF(http.HandlerFunc(s.handlePutSettings)))
 	protected.Handle("POST /admin/api/sync", requireCSRF(http.HandlerFunc(s.handleTriggerSync)))
 	protected.Handle("POST /admin/api/site-links/refresh", requireCSRF(http.HandlerFunc(s.handleRefreshSiteLinks)))
 	protected.HandleFunc("GET /admin/api/showcase-rule", s.handleGetShowcaseRule)
@@ -167,6 +187,7 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter.Visibility = "visible"
+	filter.Status = "public"
 
 	var reviews []store.Review
 	defaults, ranking, useWidgetRules := s.reviewRulesForRequest(r)

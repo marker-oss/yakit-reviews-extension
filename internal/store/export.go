@@ -14,7 +14,7 @@ func (s *Store) ListVisibleReviews(ctx context.Context) ([]Review, error) {
 	var reviews []Review
 	if err := s.db.WithContext(ctx).
 		Where("visibility = ?", "visible").
-		Where("status <> ?", "deleted").
+		Where("status IN ?", []string{"imported", "approved"}).
 		Preload("Media", func(db *gorm.DB) *gorm.DB {
 			return db.Order("position asc").Order("id asc")
 		}).

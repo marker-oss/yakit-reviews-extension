@@ -17,15 +17,16 @@ import (
 // file, and regenerates the static export so newly added products are picked up
 // without using the CLI. Configured by REVIEWS_SITE_SITEMAP_URL.
 func (s *Server) handleRefreshSiteLinks(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.SitemapURL == "" {
-		writeError(w, http.StatusBadRequest, errors.New("настройте REVIEWS_SITE_SITEMAP_URL, чтобы обновлять каталог товаров"))
+	sitemapURL := s.effectiveSitemapURL(r.Context())
+	if sitemapURL == "" {
+		writeError(w, http.StatusBadRequest, errors.New("укажите адрес магазина или sitemap в Настройках, чтобы обновлять каталог товаров"))
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 	defer cancel()
 
-	links, err := site.DiscoverKitProductLinks(ctx, s.cfg.SitemapURL, nil)
+	links, err := site.DiscoverKitProductLinks(ctx, sitemapURL, nil)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return

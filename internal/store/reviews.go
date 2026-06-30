@@ -27,6 +27,7 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 
 		answerText, answerState := answerFields(input.Answer)
 		now := time.Now().UTC()
+		authorName := AnonymizeAuthorName(input.AuthorName)
 		next := Review{
 			TenantID:          DefaultTenantID,
 			Marketplace:       input.Marketplace,
@@ -35,7 +36,7 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 			SellerArticle:     input.SellerArticle,
 			ProductID:         productID,
 			Rating:            input.Rating,
-			AuthorName:        input.AuthorName,
+			AuthorName:        authorName,
 			Text:              input.Text,
 			Pros:              input.Pros,
 			Cons:              input.Cons,
@@ -44,7 +45,7 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 			MPAnswerText:      answerText,
 			MPAnswerState:     answerState,
 			Status:            "imported",
-			Raw:               string(input.Raw),
+			Raw:               "",
 			FetchedAt:         now,
 		}
 
@@ -70,7 +71,7 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 				"seller_article":      input.SellerArticle,
 				"product_id":          productID,
 				"rating":              input.Rating,
-				"author_name":         input.AuthorName,
+				"author_name":         authorName,
 				"text":                input.Text,
 				"pros":                input.Pros,
 				"cons":                input.Cons,
@@ -78,7 +79,7 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 				"updated_at_mp":       input.UpdatedAtMP,
 				"mp_answer_text":      answerText,
 				"mp_answer_state":     answerState,
-				"raw":                 string(input.Raw),
+				"raw":                 "",
 				"fetched_at":          now,
 			}
 			if err := tx.Model(&existing).Updates(updates).Error; err != nil {

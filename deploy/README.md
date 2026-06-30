@@ -59,9 +59,11 @@ sudo systemctl reload caddy
 Copy service files if you want systemd-managed hourly sync/export:
 
 ```sh
+sudo cp deploy/systemd/reviews.service /etc/systemd/system/
 sudo cp deploy/systemd/reviews-sync.service /etc/systemd/system/
 sudo cp deploy/systemd/reviews-sync.timer /etc/systemd/system/
 sudo systemctl daemon-reload
+sudo systemctl enable --now reviews.service
 sudo systemctl enable --now reviews-sync.timer
 ```
 
@@ -150,7 +152,7 @@ script once and pass the repository URL:
 
 ```sh
 scp deploy/server-deploy.sh your-vps:/tmp/server-deploy.sh
-ssh your-vps 'REPO_URL=git@github.com:your-org/your-repo.git DEPLOY_REF=main sh /tmp/server-deploy.sh'
+ssh your-vps 'REPO_URL=https://github.com/marker-oss/yakit-reviews-extension.git DEPLOY_REF=main sh /tmp/server-deploy.sh'
 ```
 
 The deploy script does:
@@ -159,6 +161,7 @@ The deploy script does:
 - server-side Go build;
 - install binary, widget assets, and product links into `/srv/reviews`;
 - run `migrate`, `sync --once`, `export`;
+- install/restart `reviews.service` so dynamic helpers such as `/media` work;
 - reload Caddy if it is active.
 
 ## Manual Ship
