@@ -26,7 +26,14 @@ func (s *Server) dsrLookup(r *http.Request) (store.SubjectExport, string, string
 	q := r.URL.Query()
 	if email := strings.TrimSpace(q.Get("email")); email != "" {
 		exp, err := s.store.FindSubjectByEmail(r.Context(), email)
-		return exp, "email", store.HashPII(strings.ToLower(email)), err
+		if err != nil {
+			return store.SubjectExport{}, "email", "", err
+		}
+		// Hash the same normalized form the lookup used, so the audit row's
+		// hash matches the stored author_email_hash. FindSubjectByEmail
+		// succeeding implies NormalizeEmail succeeds here.
+		normalized, _ := store.NormalizeEmail(email)
+		return exp, "email", store.HashPII(normalized), nil
 	}
 	marketplace := strings.TrimSpace(q.Get("marketplace"))
 	reviewID := strings.TrimSpace(q.Get("reviewId"))
@@ -82,8 +89,13 @@ func (s *Server) handleDSRDelete(w http.ResponseWriter, r *http.Request) {
 	)
 	switch {
 	case strings.TrimSpace(req.Email) != "":
-		emailHash = store.HashPII(strings.ToLower(strings.TrimSpace(req.Email)))
-		deleted, err = s.store.PurgeSubjectByEmail(r.Context(), req.Email)
+		normalized, nErr := store.NormalizeEmail(req.Email)
+		if nErr != nil {
+			writeError(w, http.StatusBadRequest, nErr)
+			return
+		}
+		emailHash = store.HashPII(normalized)
+		deleted, err = s.store.PurgeSubjectByEmail(r.Context(), normalized)
 	case strings.TrimSpace(req.Marketplace) != "" && strings.TrimSpace(req.ReviewID) != "":
 		mp, extID = strings.TrimSpace(req.Marketplace), strings.TrimSpace(req.ReviewID)
 		deleted, err = s.store.PurgeReviewByExternalRef(r.Context(), mp, extID)
