@@ -47,15 +47,19 @@ type Config struct {
 	// replies back to the marketplace. Marketplaces absent here are treated
 	// as "unsupported".
 	ReplyPublishers map[string]marketplace.ReplyPublisher
+	// QuestionAnswerPublishers maps marketplace id → publisher for posting
+	// seller answers to product questions back to the marketplace.
+	QuestionAnswerPublishers map[string]marketplace.QuestionAnswerPublisher
 }
 
 type Server struct {
-	store           *store.Store
-	cfg             Config
-	logger          *slog.Logger
-	server          *http.Server
-	submissions     *submissionLimiter
-	replyPublishers map[string]marketplace.ReplyPublisher
+	store                    *store.Store
+	cfg                      Config
+	logger                   *slog.Logger
+	server                   *http.Server
+	submissions              *submissionLimiter
+	replyPublishers          map[string]marketplace.ReplyPublisher
+	questionAnswerPublishers map[string]marketplace.QuestionAnswerPublisher
 
 	// linksMu guards cfg.ProductLinks, which the refresh-products action swaps
 	// at runtime while request handlers read it.
@@ -87,10 +91,11 @@ func New(store *store.Store, cfg Config, logger *slog.Logger) *Server {
 		cfg.SessionTTL = 24 * time.Hour
 	}
 	return &Server{
-		store:           store,
-		cfg:             cfg,
-		logger:          logger,
-		replyPublishers: cfg.ReplyPublishers,
+		store:                    store,
+		cfg:                      cfg,
+		logger:                   logger,
+		replyPublishers:          cfg.ReplyPublishers,
+		questionAnswerPublishers: cfg.QuestionAnswerPublishers,
 	}
 }
 

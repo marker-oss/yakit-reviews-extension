@@ -265,9 +265,13 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 
 	initialAdapters := buildAdapters(effectiveCfg)
 	publishers := map[string]marketplace.ReplyPublisher{}
+	qaPublishers := map[string]marketplace.QuestionAnswerPublisher{}
 	for _, adapter := range initialAdapters {
 		if pub, ok := adapter.(marketplace.ReplyPublisher); ok {
 			publishers[adapter.Marketplace()] = pub
+		}
+		if qpub, ok := adapter.(marketplace.QuestionAnswerPublisher); ok {
+			qaPublishers[adapter.Marketplace()] = qpub
 		}
 	}
 	runner := collector.NewRunner(db, effectiveCfg.Sync, logger, initialAdapters)
@@ -288,6 +292,7 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		}
 		if httpServer != nil {
 			httpServer.RetryPendingReplies(context.Background())
+			httpServer.RetryPendingQuestionAnswers(context.Background())
 		}
 	}
 
@@ -316,7 +321,8 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		SessionTTL:         24 * time.Hour,
 		SecureCookies:      os.Getenv("REVIEWS_INSECURE_COOKIES") == "",
 		TriggerSync:        triggerSync,
-		ReplyPublishers:    publishers,
+		ReplyPublishers:          publishers,
+		QuestionAnswerPublishers: qaPublishers,
 		Marketplaces:       marketplaceStatuses(effectiveCfg),
 		AllowedOrigins:     cfg.Web.ShopOrigins,
 		Media:              cfg.Media,

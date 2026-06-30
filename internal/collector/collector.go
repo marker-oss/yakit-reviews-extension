@@ -114,6 +114,37 @@ func (r *Runner) runMarketplace(ctx context.Context, marketplaceID string) Resul
 		cursor = nextCursor
 	}
 
+	// Fetch questions if the adapter supports it. Non-fatal: errors are logged
+	// and do not fail the review sync.
+	if qf, ok := adapter.(marketplace.QuestionFetcher); ok {
+		qCursor := ""
+		for {
+			questions, nextQCursor, qErr := qf.FetchQuestions(ctx, since, qCursor)
+			if qErr != nil {
+				r.logger.Warn("fetch questions failed", "marketplace", marketplaceID, "error", qErr)
+				break
+			}
+			for _, q := range questions {
+				if _, uErr := r.store.UpsertQuestion(ctx, store.QuestionInput{
+					Marketplace:        marketplaceID,
+					ExternalQuestionID: q.ExternalQuestionID,
+					ExternalProductID:  q.ExternalProductID,
+					SellerArticle:      q.SellerArticle,
+					ExternalSKU:        q.ExternalSKU,
+					AuthorName:         q.AuthorName,
+					Text:               q.Text,
+					CreatedAtMP:        q.CreatedAtMP,
+				}); uErr != nil {
+					r.logger.Warn("upsert question failed", "marketplace", marketplaceID, "question", q.ExternalQuestionID, "error", uErr)
+				}
+			}
+			if nextQCursor == "" {
+				break
+			}
+			qCursor = nextQCursor
+		}
+	}
+
 	if watermark.IsZero() {
 		watermark = startedAt
 	}
