@@ -75,7 +75,7 @@ $public_domain {
 	@assets path /loader.js /reviews-widget.js /reviews-widget.css
 	header @assets Cache-Control "public, max-age=3600"
 
-	@backend path /api /api/* /admin /admin/* /healthz
+	@backend path /api /api/* /admin /admin/* /healthz /user-media /user-media/*
 	reverse_proxy @backend 127.0.0.1:8080
 
 	@media path /media

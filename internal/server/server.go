@@ -38,13 +38,18 @@ type Config struct {
 	AllowedOrigins []string
 	// Media configures the face-blur image proxy (/media route).
 	Media config.MediaConfig
+	// Review submission settings.
+	UploadDir      string
+	PrivacyURL     string
+	ReviewTermsURL string
 }
 
 type Server struct {
-	store  *store.Store
-	cfg    Config
-	logger *slog.Logger
-	server *http.Server
+	store       *store.Store
+	cfg         Config
+	logger      *slog.Logger
+	server      *http.Server
+	submissions *submissionLimiter
 
 	// linksMu guards cfg.ProductLinks, which the refresh-products action swaps
 	// at runtime while request handlers read it.
@@ -89,7 +94,10 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /api/reviews", s.handleReviews)
 	mux.HandleFunc("GET /api/showcase", s.handleShowcase)
 	mux.HandleFunc("GET /api/widget-config", s.handlePublicWidgetConfig)
+	mux.HandleFunc("GET /api/review-submission-config", s.handleReviewSubmissionConfig)
+	mux.HandleFunc("POST /api/review-submissions", s.handleCreateReviewSubmission)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /user-media/{token}", s.handleUserMedia)
 	if mediaHandler, err := mediaproxy.NewHandler(s.cfg.Media, nil); err == nil {
 		mux.Handle("GET /media", mediaHandler)
 	} else {
@@ -155,6 +163,8 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.HandleFunc("GET /admin/api/dashboard", s.handleDashboard)
 	protected.HandleFunc("GET /admin/api/marketplaces", s.handleMarketplaces)
 	protected.Handle("PUT /admin/api/marketplaces/{id}/credentials", requireCSRF(http.HandlerFunc(s.handleSaveMarketplaceCredentials)))
+	protected.HandleFunc("GET /admin/api/settings", s.handleGetSettings)
+	protected.Handle("PUT /admin/api/settings", requireCSRF(http.HandlerFunc(s.handlePutSettings)))
 	protected.Handle("POST /admin/api/sync", requireCSRF(http.HandlerFunc(s.handleTriggerSync)))
 	protected.Handle("POST /admin/api/site-links/refresh", requireCSRF(http.HandlerFunc(s.handleRefreshSiteLinks)))
 	protected.HandleFunc("GET /admin/api/showcase-rule", s.handleGetShowcaseRule)
@@ -177,6 +187,7 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter.Visibility = "visible"
+	filter.Status = "public"
 
 	var reviews []store.Review
 	defaults, ranking, useWidgetRules := s.reviewRulesForRequest(r)

@@ -62,6 +62,12 @@ type WebConfig struct {
 	SitemapURL string
 	// PrivacyContact is the contact shown for data-subject requests (152-ФЗ).
 	PrivacyContact string
+	// PrivacyURL and ReviewTermsURL are shown next to the public submission form
+	// consent checkboxes.
+	PrivacyURL     string
+	ReviewTermsURL string
+	// UploadDir stores visitor-submitted review media.
+	UploadDir string
 }
 
 type MarketplaceConfig struct {
@@ -113,6 +119,8 @@ func LoadFromEnv() (Config, error) {
 			ProductLinksPath:   envString("REVIEWS_SITE_PRODUCT_LINKS", "data/product-links.json"),
 			ShopOrigins:        envList("REVIEWS_SHOP_ORIGIN"),
 			PrivacyContact:     envString("REVIEWS_PRIVACY_CONTACT", ""),
+			PrivacyURL:         envString("REVIEWS_PRIVACY_URL", ""),
+			ReviewTermsURL:     envString("REVIEWS_REVIEW_TERMS_URL", ""),
 		},
 		Marketplaces: MarketplaceConfig{
 			WB: WBConfig{
@@ -147,6 +155,7 @@ func LoadFromEnv() (Config, error) {
 	if cfg.Web.SitemapURL == "" && len(cfg.Web.ShopOrigins) > 0 {
 		cfg.Web.SitemapURL = strings.TrimRight(cfg.Web.ShopOrigins[0], "/") + "/sitemap.xml"
 	}
+	cfg.Web.UploadDir = envString("REVIEWS_UPLOAD_DIR", defaultUploadDir(cfg.DB.DSN))
 
 	if value := os.Getenv("REVIEWS_SYNC_INTERVAL"); value != "" {
 		parsed, err := time.ParseDuration(value)
@@ -177,6 +186,13 @@ func LoadFromEnv() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func defaultUploadDir(dbDSN string) string {
+	if strings.HasPrefix(dbDSN, "/data/") || dbDSN == "/data/reviews.db" {
+		return "/data/review-uploads"
+	}
+	return "data/review-uploads"
 }
 
 func (cfg Config) ValidateBase() error {

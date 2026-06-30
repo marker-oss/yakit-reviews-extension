@@ -5,10 +5,11 @@ import Editor from './pages/Editor'
 import Embed from './pages/Embed'
 import Marketplaces from './pages/Marketplaces'
 import Reviews from './pages/Reviews'
+import Settings from './pages/Settings'
 import Showcase from './pages/Showcase'
 
 type Mode = 'loading' | 'setup' | 'login' | 'authed'
-type Page = 'dashboard' | 'reviews' | 'marketplaces' | 'showcase' | 'editor' | 'embed'
+type Page = 'dashboard' | 'reviews' | 'marketplaces' | 'showcase' | 'editor' | 'embed' | 'settings'
 
 async function postAuth(path: string, body: unknown) {
   const res = await fetch(path, {
@@ -24,7 +25,7 @@ async function postAuth(path: string, body: unknown) {
 
 function currentPage(): Page {
   const raw = window.location.hash.replace(/^#\/?/, '')
-  if (raw === 'reviews' || raw === 'marketplaces' || raw === 'showcase' || raw === 'editor' || raw === 'embed') return raw
+  if (raw === 'reviews' || raw === 'marketplaces' || raw === 'showcase' || raw === 'editor' || raw === 'embed' || raw === 'settings') return raw
   return 'dashboard'
 }
 
@@ -64,6 +65,7 @@ export default function App() {
     if (page === 'showcase') return 'Витрина'
     if (page === 'editor') return 'Редактор'
     if (page === 'embed') return 'Встраивание'
+    if (page === 'settings') return 'Настройки'
     return 'Сводка'
   }, [page])
 
@@ -151,6 +153,9 @@ export default function App() {
           <a className={page === 'embed' ? 'active' : ''} href="#/embed">
             Встраивание
           </a>
+          <a className={page === 'settings' ? 'active' : ''} href="#/settings">
+            Настройки
+          </a>
         </nav>
         <button className="secondary" onClick={logout}>
           Выйти
@@ -167,6 +172,7 @@ export default function App() {
         {page === 'showcase' && <Showcase />}
         {page === 'editor' && <Editor />}
         {page === 'embed' && <Embed />}
+        {page === 'settings' && <Settings />}
       </main>
     </div>
   )

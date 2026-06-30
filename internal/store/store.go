@@ -42,6 +42,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.db.WithContext(ctx).AutoMigrate(
 		&Product{},
 		&ProductMarketplaceLink{},
+		&ReviewerIdentity{},
 		&Review{},
 		&ReviewMedia{},
 		&SyncState{},
@@ -52,6 +53,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 		&ShowcasePin{},
 		&WidgetConfig{},
 		&MarketplaceCredential{},
+		&AppSetting{},
 	); err != nil {
 		return err
 	}

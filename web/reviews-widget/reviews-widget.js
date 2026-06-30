@@ -176,6 +176,17 @@
       fullFeedOffsetExplicit: Number.isFinite(Number(options.fullFeedOffset)),
       fullFeedExhausted: false,
       loadingMore: false,
+      submissionUrl: options.submissionUrl || "",
+      sellerArticle: options.sellerArticle || "",
+      submission: {
+        config: options.submissionConfig || null,
+        loading: Boolean(options.submissionConfigUrl && context === "product"),
+        expanded: false,
+        sending: false,
+        message: "",
+        error: "",
+        openedAt: Date.now(),
+      },
       loading: Boolean(options.source),
       error: "",
       moreError: "",
@@ -218,6 +229,18 @@
         .catch((error) => {
           state.loading = false;
           state.error = error.message || "Не удалось загрузить отзывы";
+          render(root, state);
+        });
+    }
+    if (context === "product" && options.submissionConfigUrl) {
+      fetchSubmissionConfig(options.submissionConfigUrl)
+        .then((config) => {
+          state.submission.config = config;
+          state.submission.loading = false;
+          render(root, state);
+        })
+        .catch(() => {
+          state.submission.loading = false;
           render(root, state);
         });
     }
@@ -274,6 +297,7 @@
         <div class="rw-footer">
           <button class="rw-load-more" type="button" data-role="load-more">Показать ещё</button>
         </div>
+        <div class="rw-submit" data-role="submit"></div>
       </div>
     `;
 
@@ -345,9 +369,28 @@
         event.preventDefault();
         event.stopPropagation();
         openMediaViewer(root, trigger);
+        return;
+      }
+
+      const submitToggle = event.target.closest('[data-role="submit-toggle"]');
+      if (submitToggle && root.contains(submitToggle)) {
+        event.preventDefault();
+        state.submission.expanded = !state.submission.expanded;
+        state.submission.error = "";
+        state.submission.message = "";
+        render(root, state);
       }
     };
     root.addEventListener("click", root.__reviewsWidgetMediaClick);
+
+    root.addEventListener("submit", (event) => {
+      const form = event.target.closest('[data-role="submit-form"]');
+      if (!form || !root.contains(form)) {
+        return;
+      }
+      event.preventDefault();
+      submitReview(root, state, form);
+    });
 
     const sort = root.querySelector('[data-role="sort"]');
     sort.value = state.sort;
@@ -386,6 +429,7 @@
       renderList(root, []);
       renderStatus(root, state.loading ? "Загружаем отзывы" : state.error, true);
       root.querySelector('[data-role="load-more"]').hidden = true;
+      renderSubmission(root, state);
       return;
     }
 
@@ -420,6 +464,7 @@
     loadMore.hidden = state.context === "homepage" && !state.expanded
       ? filtered.length <= visibleCount
       : visibleCount >= filtered.length && !canLoadRemote;
+    renderSubmission(root, state);
   }
 
   function renderStatus(root, text, visible) {
@@ -533,7 +578,7 @@
     }
     const media = reviews.flatMap((review) => {
       return review.media.map((item) => ({
-        ...item,
+        ...absolutizeUserMedia(item, root.__reviewsProxyBase),
         authorName: review.authorName || "Покупатель",
       }));
     });
@@ -665,7 +710,8 @@
     return `
       <div class="rw-media">
         ${media
-          .map((item) => {
+          .map((raw) => {
+            const item = absolutizeUserMedia(raw, proxyBase);
             const rawSrc = item.kind === "video" ? item.previewUrl || "./assets/review-video.svg" : item.url;
             const src = item.kind === "video" ? rawSrc : mediaProxyURL(rawSrc, proxyBase);
             const caption = item.kind === "video" ? "Видео отзыва" : "Фото отзыва";
@@ -815,6 +861,88 @@
     `;
   }
 
+  function renderSubmission(root, state) {
+    const submitRoot = root.querySelector('[data-role="submit"]');
+    if (!submitRoot) return;
+    const cfg = state.submission.config;
+    if (state.context !== "product" || state.submission.loading || !cfg || cfg.enabled === false || !state.submissionUrl) {
+      submitRoot.hidden = true;
+      submitRoot.innerHTML = "";
+      return;
+    }
+    submitRoot.hidden = false;
+    const accepts = (cfg.allowedTypes || []).join(",");
+    const consentText = "Согласие на обработку персональных данных";
+    const consent = cfg.privacyUrl
+      ? `<a href="${escapeAttribute(cfg.privacyUrl)}" target="_blank" rel="noreferrer">${consentText}</a>`
+      : consentText;
+    submitRoot.innerHTML = `
+      <div class="rw-submit-head">
+        <div>
+          <h3>Оставить отзыв</h3>
+          <p>Отзыв появится после проверки модератором.</p>
+          ${state.submission.message && !state.submission.expanded ? `<p class="rw-submit-ok">${escapeHTML(state.submission.message)}</p>` : ""}
+        </div>
+        <button class="rw-submit-toggle" type="button" data-role="submit-toggle">${state.submission.expanded ? "Свернуть" : "Написать отзыв"}</button>
+      </div>
+      ${state.submission.expanded ? `
+        <form class="rw-submit-form" data-role="submit-form">
+          <input type="text" name="website" class="rw-hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+          <input type="hidden" name="openedAt" value="${state.submission.openedAt}" />
+          <input type="hidden" name="sellerArticle" value="${escapeAttribute(state.sellerArticle)}" />
+          <div class="rw-submit-grid">
+            <label><span>Оценка</span><select name="rating" required>
+              <option value="5">5 — отлично</option>
+              <option value="4">4 — хорошо</option>
+              <option value="3">3 — нормально</option>
+              <option value="2">2 — плохо</option>
+              <option value="1">1 — ужасно</option>
+            </select></label>
+            <label><span>Имя</span><input name="authorName" required maxlength="80" autocomplete="name" /></label>
+            <label><span>Email</span><input name="authorEmail" type="email" required maxlength="320" autocomplete="email" /></label>
+            <label class="rw-submit-wide"><span>Отзыв</span><textarea name="text" required maxlength="3000" rows="4"></textarea></label>
+            <label><span>Плюсы</span><input name="pros" maxlength="1000" /></label>
+            <label><span>Минусы</span><input name="cons" maxlength="1000" /></label>
+            <label class="rw-submit-wide"><span>Фото или видео</span><input name="media" type="file" accept="${escapeAttribute(accepts)}" multiple /></label>
+          </div>
+          <label class="rw-consent"><input name="privacyConsent" type="checkbox" required /> <span>Я даю ${consent}</span></label>
+          <div class="rw-submit-actions">
+            <button class="rw-submit-send" type="submit" ${state.submission.sending ? "disabled" : ""}>${state.submission.sending ? "Отправляем" : "Отправить на модерацию"}</button>
+            ${state.submission.message ? `<span class="rw-submit-ok">${escapeHTML(state.submission.message)}</span>` : ""}
+            ${state.submission.error ? `<span class="rw-submit-error">${escapeHTML(state.submission.error)}</span>` : ""}
+          </div>
+        </form>
+      ` : ""}
+    `;
+  }
+
+  async function submitReview(root, state, form) {
+    if (state.submission.sending) return;
+    state.submission.sending = true;
+    state.submission.error = "";
+    state.submission.message = "";
+    render(root, state);
+    try {
+      const formData = new FormData(form);
+      formData.set("sellerArticle", state.sellerArticle || formData.get("sellerArticle") || "");
+      formData.set("openedAt", String(state.submission.openedAt));
+      const response = await fetch(state.submissionUrl, { method: "POST", body: formData });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Не удалось отправить отзыв" }));
+        throw new Error(payload.error || "Не удалось отправить отзыв");
+      }
+      state.submission.sending = false;
+      state.submission.expanded = false;
+      state.submission.message = "Отзыв отправлен на модерацию";
+      state.submission.openedAt = Date.now();
+      render(root, state);
+    } catch (error) {
+      state.submission.sending = false;
+      state.submission.error = error.message || "Не удалось отправить отзыв";
+      render(root, state);
+    }
+  }
+
   function segmentButton(label, pressed, onClick) {
     const button = document.createElement("button");
     button.type = "button";
@@ -825,9 +953,48 @@
     return button;
   }
 
+  function isUserMediaURL(rawUrl) {
+    return /(^|\/)user-media\//.test(String(rawUrl || ""));
+  }
+
+  // Visitor-submitted media is returned by the API as a server-relative path
+  // (/user-media/<token>). When the widget is embedded cross-origin, resolve it
+  // against the reviews server so the <img>/<video>/href all point at the right
+  // host. Marketplace CDN URLs (already absolute) pass through untouched.
+  function absolutizeUserMedia(item, proxyBase) {
+    if (!item || !proxyBase) {
+      return item;
+    }
+    const fix = (url) =>
+      url && isUserMediaURL(url) && !/^https?:\/\//i.test(url)
+        ? proxyBase.replace(/\/$/, "") + url
+        : url;
+    return { ...item, url: fix(item.url), previewUrl: fix(item.previewUrl) };
+  }
+
+  // Visitor-submitted media is served straight from the reviews server and must
+  // NOT pass through the face-blur proxy: the author consented to publication,
+  // so their photos are shown as uploaded. Marketplace CDN images still go
+  // through /media for face blur.
+  function resolveDirectURL(rawUrl, proxyBase) {
+    if (/^https?:\/\//i.test(rawUrl)) {
+      return rawUrl;
+    }
+    if (!proxyBase) {
+      return rawUrl;
+    }
+    return proxyBase.replace(/\/$/, "") + rawUrl;
+  }
+
   function mediaProxyURL(rawUrl, proxyBase) {
-    if (!rawUrl || !proxyBase) {
-      return rawUrl || "";
+    if (!rawUrl) {
+      return "";
+    }
+    if (isUserMediaURL(rawUrl)) {
+      return resolveDirectURL(rawUrl, proxyBase);
+    }
+    if (!proxyBase) {
+      return rawUrl;
     }
     return proxyBase.replace(/\/$/, "") + "/media?u=" + encodeURIComponent(rawUrl);
   }
@@ -975,6 +1142,14 @@
       return { reviews: payload, aggregate: null };
     }
     return { reviews: payload.reviews || [], aggregate: payload.aggregate || null };
+  }
+
+  async function fetchSubmissionConfig(source) {
+    const response = await fetch(source, { headers: { Accept: "application/json" } });
+    if (!response.ok) {
+      throw new Error(`API вернул ${response.status}`);
+    }
+    return response.json();
   }
 
   async function loadMoreReviews(root, state) {

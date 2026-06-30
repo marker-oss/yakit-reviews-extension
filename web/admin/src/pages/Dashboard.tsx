@@ -38,6 +38,10 @@ export default function Dashboard() {
           <strong>{data.deleted_reviews}</strong>
         </div>
         <div className="metric">
+          <span>На модерации</span>
+          <strong>{data.pending_reviews}</strong>
+        </div>
+        <div className="metric">
           <span>Средняя оценка (показанные)</span>
           <strong>{data.average_rating.toFixed(2)}</strong>
         </div>

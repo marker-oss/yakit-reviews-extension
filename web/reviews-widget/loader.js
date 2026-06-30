@@ -118,6 +118,14 @@
     return url.toString();
   }
 
+  function submissionConfigUrl() {
+    return serviceBase().replace(/\/$/, "") + "/api/review-submission-config";
+  }
+
+  function submissionUrl() {
+    return serviceBase().replace(/\/$/, "") + "/api/review-submissions";
+  }
+
   function mediaProxyBase() {
     return serviceBase();
   }
@@ -614,7 +622,8 @@
     removeHost();
 
     var reviews = bundle && bundle.reviews ? bundle.reviews : [];
-    if (!reviews.length) {
+    var resolvedContext = contextName || contextForPath(location.pathname);
+    if (!reviews.length && resolvedContext === "homepage") {
       currentArticle = null;
       collapseCustomAnchor();
       log("empty bundle", normalizedArticle);
@@ -650,13 +659,18 @@
       reviews: reviews,
       aggregate: bundle && bundle.aggregate,
       config: widgetConfig,
-      context: contextName || contextForPath(location.pathname),
+      context: resolvedContext,
       mediaProxyBase: mediaProxyBase(),
-      fullFeedSource: (contextName || contextForPath(location.pathname)) === "homepage" ? reviewsUrl("") : "",
+      sellerArticle: resolvedContext === "product" ? normalizedArticle : "",
+      submissionConfigUrl: resolvedContext === "product" ? submissionConfigUrl() : "",
+      submissionUrl: resolvedContext === "product" ? submissionUrl() : "",
+      fullFeedSource: resolvedContext === "homepage" ? reviewsUrl("") : "",
       fullFeedOffset: 0,
       fullFeedLimit: 24,
     });
-    injectJsonLd(bundle);
+    if (reviews.length) {
+      injectJsonLd(bundle);
+    }
     currentArticle = normalizedArticle;
     log("rendered", normalizedArticle, reviews.length, "reviews");
   }
@@ -760,12 +774,8 @@
           if (seq !== requestSeq) {
             return;
           }
-          if (currentArticle !== null || document.getElementById(CFG.hostId)) {
-            removeHost();
-            currentArticle = null;
-          }
-          collapseCustomAnchor();
-          log("skip", url, error && error.message);
+          render({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 }, reviews: [] }, normalizedArticle, "product");
+          log("empty product bundle", url, error && error.message);
         });
     });
   }

@@ -31,6 +31,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"total_reviews":   stats.TotalReviews,
 		"visible_reviews": stats.VisibleReviews,
+		"pending_reviews": stats.PendingReviews,
 		"deleted_reviews": stats.DeletedReviews,
 		"average_rating":  stats.AverageRating,
 		"by_marketplace":  stats.ByMarketplace,
