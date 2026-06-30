@@ -32,8 +32,6 @@ async function postAuth(path: string, body: unknown) {
 
 const LEGACY_ROUTES: Record<string, Route> = {
   '': 'dashboard',
-  dashboard: 'dashboard',
-  reviews: 'reviews',
   showcase: 'widget/showcase',
   editor: 'widget/editor',
   embed: 'widget/embed',
@@ -66,6 +64,8 @@ function routeSection(route: Route): 'dashboard' | 'reviews' | 'widget' | 'setti
 
 function routeTitle(route: Route): string {
   switch (route) {
+    case 'dashboard':
+      return 'Сводка'
     case 'reviews':
       return 'Отзывы'
     case 'widget/showcase':
