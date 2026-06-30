@@ -49,8 +49,10 @@ func (s *Server) setUnsupported(ctx context.Context, id uint) {
 	_ = s.store.SetReplyPublishState(ctx, id, "unsupported", nil, nil)
 }
 
-// RetryPendingReplies re-attempts every queued (pending/failed) reply. Called
-// at the end of each sync run.
+// RetryPendingReplies re-attempts every queued reply. The queue includes
+// reviews with NULL publish state (never attempted) as well as explicit
+// "failed" state — it does NOT re-publish already "published" replies.
+// Called at the end of each sync run.
 func (s *Server) RetryPendingReplies(ctx context.Context) {
 	rows, err := s.store.ReviewsNeedingReplyPublish(ctx)
 	if err != nil {

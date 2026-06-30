@@ -351,6 +351,10 @@ func (s *Server) handleAdminReviewReplyRetry(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusNotFound, errors.New("review not found"))
 		return
 	}
+	if review.ReplyPublishState != nil && *review.ReplyPublishState == "published" {
+		writeError(w, http.StatusConflict, errors.New("reply already published"))
+		return
+	}
 	s.publishReply(r.Context(), review)
 	updated, err := s.store.ReviewByID(r.Context(), uint(id))
 	if err != nil {

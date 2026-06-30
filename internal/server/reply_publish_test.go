@@ -124,3 +124,105 @@ func TestReplyHandlerPublishesAndRetry(t *testing.T) {
 		t.Fatalf("expected published after retry, got %v", got.ReplyPublishState)
 	}
 }
+
+// TestRetryRejectsAlreadyPublished verifies that the retry endpoint returns
+// HTTP 409 and does not call the publisher again when the reply is already
+// in the "published" state (decision D3: publish-once).
+func TestRetryRejectsAlreadyPublished(t *testing.T) {
+	s := newAuthTestServer(t)
+	pub := &fakePublisher{}
+	s.replyPublishers = map[string]marketplace.ReplyPublisher{"wb": pub}
+	cookie := loginTestAdmin(t, s)
+	csrf := getCSRFToken(t, s, cookie)
+
+	rating := 5
+	res, _ := s.store.UpsertReview(context.Background(), marketplace.Review{
+		Marketplace: "wb", ExternalReviewID: "wb-once", ExternalProductID: "p1",
+		Rating: &rating, Text: "t", CreatedAtMP: testTime(),
+	})
+	reply := "Спасибо!"
+	_ = s.store.SetReviewReply(context.Background(), res.Review.ID, &reply)
+	rv, _ := s.store.ReviewByID(context.Background(), res.Review.ID)
+
+	// First publish succeeds — state becomes "published", publisher called once.
+	s.publishReply(context.Background(), rv)
+	if pub.calls != 1 {
+		t.Fatalf("expected 1 publisher call after first publish, got %d", pub.calls)
+	}
+
+	// Now retry via the HTTP endpoint — must get 409.
+	req := httptest.NewRequest(http.MethodPost,
+		"/admin/api/reviews/"+strconv.FormatUint(uint64(res.Review.ID), 10)+"/reply/retry",
+		strings.NewReader(""))
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict, got %d", rec.Code)
+	}
+	if pub.calls != 1 {
+		t.Fatalf("publisher call count should still be 1, got %d", pub.calls)
+	}
+}
+
+// TestPublishReplyUnsupportedNoPublisher verifies that a review whose
+// marketplace has no registered publisher is marked "unsupported".
+func TestPublishReplyUnsupportedNoPublisher(t *testing.T) {
+	s := newAuthTestServer(t)
+	// Empty publisher map — ozon has no publisher.
+	s.replyPublishers = map[string]marketplace.ReplyPublisher{}
+	ctx := context.Background()
+
+	rating := 5
+	res, _ := s.store.UpsertReview(ctx, marketplace.Review{
+		Marketplace: "ozon", ExternalReviewID: "ozon-1", ExternalProductID: "p1",
+		Rating: &rating, Text: "t", CreatedAtMP: testTime(),
+	})
+	reply := "Спасибо!"
+	_ = s.store.SetReviewReply(ctx, res.Review.ID, &reply)
+	rv, _ := s.store.ReviewByID(ctx, res.Review.ID)
+
+	s.publishReply(ctx, rv)
+
+	got, _ := s.store.ReviewByID(ctx, res.Review.ID)
+	if got.ReplyPublishState == nil || *got.ReplyPublishState != "unsupported" {
+		t.Fatalf("expected unsupported (no publisher), got %v", got.ReplyPublishState)
+	}
+}
+
+// TestPublishReplyUnsupportedToggleDisabled verifies that a review is marked
+// "unsupported" when the marketplace has a publisher but the toggle is disabled
+// via the app_setting (publish_replies_wb = "").
+func TestPublishReplyUnsupportedToggleDisabled(t *testing.T) {
+	s := newAuthTestServer(t)
+	pub := &fakePublisher{}
+	s.replyPublishers = map[string]marketplace.ReplyPublisher{"wb": pub}
+	ctx := context.Background()
+
+	// Disable the toggle for WB by setting it to anything other than "true".
+	if err := s.store.SetAppSetting(ctx, store.PublishRepliesKey("wb"), "false"); err != nil {
+		t.Fatalf("SetAppSetting: %v", err)
+	}
+
+	rating := 5
+	res, _ := s.store.UpsertReview(ctx, marketplace.Review{
+		Marketplace: "wb", ExternalReviewID: "wb-disabled", ExternalProductID: "p1",
+		Rating: &rating, Text: "t", CreatedAtMP: testTime(),
+	})
+	reply := "Спасибо!"
+	_ = s.store.SetReviewReply(ctx, res.Review.ID, &reply)
+	rv, _ := s.store.ReviewByID(ctx, res.Review.ID)
+
+	s.publishReply(ctx, rv)
+
+	got, _ := s.store.ReviewByID(ctx, res.Review.ID)
+	if got.ReplyPublishState == nil || *got.ReplyPublishState != "unsupported" {
+		t.Fatalf("expected unsupported (toggle disabled), got %v", got.ReplyPublishState)
+	}
+	if pub.calls != 0 {
+		t.Fatalf("publisher should not be called when toggle disabled, got %d calls", pub.calls)
+	}
+}
