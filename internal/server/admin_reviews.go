@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"reviews/internal/reviewjson"
@@ -14,17 +15,24 @@ import (
 
 type adminReview struct {
 	reviewjson.Review
-	Visibility     string         `json:"visibility"`
-	Pinned         bool           `json:"pinned"`
-	Status         string         `json:"status"`
-	AuthorEmail    string         `json:"authorEmail,omitempty"`
-	SubmissionMeta map[string]any `json:"submissionMeta,omitempty"`
-	AdminReply     *adminReply    `json:"adminReply,omitempty"`
+	Visibility     string               `json:"visibility"`
+	Pinned         bool                 `json:"pinned"`
+	Status         string               `json:"status"`
+	AuthorEmail    string               `json:"authorEmail,omitempty"`
+	SubmissionMeta map[string]any       `json:"submissionMeta,omitempty"`
+	AdminReply     *adminReply          `json:"adminReply,omitempty"`
+	ReplyPublish   *replyPublishStatus  `json:"replyPublish,omitempty"`
 }
 
 type adminReply struct {
 	Text string     `json:"text"`
 	At   *time.Time `json:"at,omitempty"`
+}
+
+type replyPublishStatus struct {
+	State       string     `json:"state"`
+	Error       string     `json:"error,omitempty"`
+	PublishedAt *time.Time `json:"publishedAt,omitempty"`
 }
 
 type adminReviewsResponse struct {
@@ -93,6 +101,12 @@ func (s *Server) handleAdminReviews(w http.ResponseWriter, r *http.Request) {
 		}
 		if rv.AdminReplyText != nil && *rv.AdminReplyText != "" {
 			item.AdminReply = &adminReply{Text: *rv.AdminReplyText, At: rv.AdminReplyAt}
+		}
+		if rv.ReplyPublishState != nil {
+			item.ReplyPublish = &replyPublishStatus{State: *rv.ReplyPublishState, PublishedAt: rv.ReplyPublishedAt}
+			if rv.ReplyPublishError != nil {
+				item.ReplyPublish.Error = *rv.ReplyPublishError
+			}
 		}
 		items = append(items, item)
 	}
@@ -257,6 +271,11 @@ func (s *Server) handleAdminReviewReply(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	if strings.TrimSpace(req.Text) != "" {
+		if review, err := s.store.ReviewByID(r.Context(), uint(id)); err == nil {
+			s.publishReply(r.Context(), review)
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -319,4 +338,28 @@ func (s *Server) handleAdminReviewsBulkModerate(w http.ResponseWriter, r *http.R
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "updated": len(req.IDs)})
+}
+
+func (s *Server) handleAdminReviewReplyRetry(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid review id"))
+		return
+	}
+	review, err := s.store.ReviewByID(r.Context(), uint(id))
+	if err != nil {
+		writeError(w, http.StatusNotFound, errors.New("review not found"))
+		return
+	}
+	s.publishReply(r.Context(), review)
+	updated, err := s.store.ReviewByID(r.Context(), uint(id))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	state := ""
+	if updated.ReplyPublishState != nil {
+		state = *updated.ReplyPublishState
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"state": state})
 }
