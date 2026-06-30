@@ -38,3 +38,10 @@ type Adapter interface {
 	Marketplace() string
 	FetchReviews(ctx context.Context, since time.Time, cursor string) ([]Review, string, error)
 }
+
+// ReplyPublisher is implemented by adapters that can publish a seller reply
+// back to the marketplace. Adapters that cannot (or for accounts lacking
+// access) simply do not implement it; callers treat that as "unsupported".
+type ReplyPublisher interface {
+	PublishReply(ctx context.Context, externalReviewID, text string) error
+}
