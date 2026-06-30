@@ -11,15 +11,21 @@ import (
 )
 
 type settingsResponse struct {
-	AgreementURL string `json:"agreementUrl"`
-	ShopOrigin   string `json:"shopOrigin"`
-	SitemapURL   string `json:"sitemapUrl"`
+	AgreementURL      string `json:"agreementUrl"`
+	ShopOrigin        string `json:"shopOrigin"`
+	SitemapURL        string `json:"sitemapUrl"`
+	PublishRepliesWb  string `json:"publishRepliesWb"`
+	PublishRepliesYm  string `json:"publishRepliesYm"`
+	PublishRepliesOzon string `json:"publishRepliesOzon"`
 }
 
 type settingsRequest struct {
-	AgreementURL *string `json:"agreementUrl"`
-	ShopOrigin   *string `json:"shopOrigin"`
-	SitemapURL   *string `json:"sitemapUrl"`
+	AgreementURL      *string `json:"agreementUrl"`
+	ShopOrigin        *string `json:"shopOrigin"`
+	SitemapURL        *string `json:"sitemapUrl"`
+	PublishRepliesWb  *string `json:"publish_replies_wb"`
+	PublishRepliesYm  *string `json:"publish_replies_ym"`
+	PublishRepliesOzon *string `json:"publish_replies_ozon"`
 }
 
 // agreementURL resolves the configured user-agreement / consent page URL,
@@ -60,7 +66,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invalid request body"))
 		return
 	}
-	updates := []struct {
+	urlUpdates := []struct {
 		key   string
 		value *string
 		label string
@@ -69,7 +75,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		{store.SettingShopOrigin, req.ShopOrigin, "shop origin"},
 		{store.SettingSitemapURL, req.SitemapURL, "sitemap URL"},
 	}
-	for _, u := range updates {
+	for _, u := range urlUpdates {
 		if u.value == nil {
 			continue
 		}
@@ -79,6 +85,23 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := s.store.SetAppSetting(r.Context(), u.key, value); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	toggleUpdates := []struct {
+		key   string
+		value *string
+	}{
+		{store.PublishRepliesKey("wb"), req.PublishRepliesWb},
+		{store.PublishRepliesKey("ym"), req.PublishRepliesYm},
+		{store.PublishRepliesKey("ozon"), req.PublishRepliesOzon},
+	}
+	for _, u := range toggleUpdates {
+		if u.value == nil {
+			continue
+		}
+		if err := s.store.SetAppSetting(r.Context(), u.key, *u.value); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -104,7 +127,26 @@ func (s *Server) loadSettings(ctx context.Context) (settingsResponse, error) {
 	if err != nil {
 		return settingsResponse{}, err
 	}
-	return settingsResponse{AgreementURL: agreement, ShopOrigin: origin, SitemapURL: sitemap}, nil
+	publishWb, err := s.store.GetAppSetting(ctx, store.PublishRepliesKey("wb"))
+	if err != nil {
+		return settingsResponse{}, err
+	}
+	publishYm, err := s.store.GetAppSetting(ctx, store.PublishRepliesKey("ym"))
+	if err != nil {
+		return settingsResponse{}, err
+	}
+	publishOzon, err := s.store.GetAppSetting(ctx, store.PublishRepliesKey("ozon"))
+	if err != nil {
+		return settingsResponse{}, err
+	}
+	return settingsResponse{
+		AgreementURL:       agreement,
+		ShopOrigin:         origin,
+		SitemapURL:         sitemap,
+		PublishRepliesWb:   publishWb,
+		PublishRepliesYm:   publishYm,
+		PublishRepliesOzon: publishOzon,
+	}, nil
 }
 
 func validHTTPURL(value string) bool {

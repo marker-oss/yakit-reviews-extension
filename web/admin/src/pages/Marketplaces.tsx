@@ -16,11 +16,14 @@ const fieldLabels: Record<string, Record<string, string>> = {
   },
 }
 
+const defaultPublish: Record<string, boolean> = { wb: true, ym: true, ozon: false }
+
 export default function Marketplaces() {
   const [items, setItems] = useState<MarketplaceStatus[]>([])
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({})
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
+  const [publish, setPublish] = useState<Record<string, boolean>>(defaultPublish)
 
   function load() {
     apiGet<{ marketplaces: MarketplaceStatus[] }>('/admin/api/marketplaces')
@@ -29,6 +32,25 @@ export default function Marketplaces() {
   }
 
   useEffect(load, [])
+
+  useEffect(() => {
+    apiGet<Record<string, string>>('/admin/api/settings').then((data) => {
+      setPublish({
+        wb: data['publishRepliesWb'] !== '' && data['publishRepliesWb'] !== undefined ? data['publishRepliesWb'] === 'true' : defaultPublish.wb,
+        ym: data['publishRepliesYm'] !== '' && data['publishRepliesYm'] !== undefined ? data['publishRepliesYm'] === 'true' : defaultPublish.ym,
+        ozon: data['publishRepliesOzon'] !== '' && data['publishRepliesOzon'] !== undefined ? data['publishRepliesOzon'] === 'true' : defaultPublish.ozon,
+      })
+    }).catch(() => {})
+  }, [])
+
+  async function togglePublish(mp: string, value: boolean) {
+    setPublish((p) => ({ ...p, [mp]: value }))
+    try {
+      await apiWrite('PUT', '/admin/api/settings', { [`publish_replies_${mp}`]: value ? 'true' : 'false' })
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Запрос не выполнен')
+    }
+  }
 
   async function sync(marketplace?: string) {
     setBusy(marketplace ?? 'all')
@@ -128,6 +150,15 @@ export default function Marketplaces() {
                     Сохранить
                   </button>
                 </div>
+                <label className="inline-check">
+                  <input
+                    type="checkbox"
+                    checked={publish[item.id] ?? defaultPublish[item.id] ?? false}
+                    onChange={(e) => togglePublish(item.id, e.target.checked)}
+                    disabled={busy !== ''}
+                  />
+                  <span>Публиковать ответы на МП</span>
+                </label>
               </div>
             )
           })}

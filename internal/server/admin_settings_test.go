@@ -119,6 +119,46 @@ func TestEffectiveSitemapURL(t *testing.T) {
 	}
 }
 
+func TestAdminSettingsPublishToggles(t *testing.T) {
+	s := newAuthTestServer(t)
+	cookie := loginTestAdmin(t, s)
+	csrf := getCSRFToken(t, s, cookie)
+
+	// PUT all three toggles.
+	req := httptest.NewRequest(http.MethodPut, "/admin/api/settings",
+		strings.NewReader(`{"publish_replies_wb":"true","publish_replies_ym":"false","publish_replies_ozon":"true"}`))
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	// GET and verify they round-trip.
+	req2 := httptest.NewRequest(http.MethodGet, "/admin/api/settings", nil)
+	req2.AddCookie(cookie)
+	rec2 := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("get status = %d, body=%s", rec2.Code, rec2.Body.String())
+	}
+	var got settingsResponse
+	if err := json.NewDecoder(rec2.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.PublishRepliesWb != "true" {
+		t.Fatalf("publishRepliesWb = %q, want true", got.PublishRepliesWb)
+	}
+	if got.PublishRepliesYm != "false" {
+		t.Fatalf("publishRepliesYm = %q, want false", got.PublishRepliesYm)
+	}
+	if got.PublishRepliesOzon != "true" {
+		t.Fatalf("publishRepliesOzon = %q, want true", got.PublishRepliesOzon)
+	}
+}
+
 func TestAdminSettingsRejectsNonURL(t *testing.T) {
 	s := newAuthTestServer(t)
 	cookie := loginTestAdmin(t, s)

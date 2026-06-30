@@ -224,6 +224,16 @@ export default function Reviews() {
     }
   }
 
+  async function retryPublish(id: number) {
+    setError('')
+    try {
+      await apiWrite('POST', `/admin/api/reviews/${id}/reply/retry`)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+    }
+  }
+
   async function toggleArticlePin(id: number) {
     const currentArticle = article.trim()
     if (!currentArticle) return
@@ -542,6 +552,19 @@ export default function Reviews() {
                 <button className="secondary" onClick={() => saveReply(review.id)}>
                   Сохранить ответ
                 </button>
+                {review.replyPublish && (
+                  <div className="reply-publish">
+                    {review.replyPublish.state === 'published' && <span className="status-ok">Опубликовано на МП</span>}
+                    {review.replyPublish.state === 'pending' && <span className="status-muted">Публикация…</span>}
+                    {review.replyPublish.state === 'unsupported' && <span className="status-muted">Публикация на МП недоступна</span>}
+                    {review.replyPublish.state === 'failed' && (
+                      <>
+                        <span className="status-warn">Ошибка публикации: {review.replyPublish.error}</span>
+                        <button className="secondary" onClick={() => retryPublish(review.id)}>Повторить</button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}

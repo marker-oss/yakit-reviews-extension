@@ -17,6 +17,7 @@ export type Review = {
   authorEmail?: string
   submissionMeta?: Record<string, unknown>
   adminReply?: { text: string; at?: string }
+  replyPublish?: { state: string; error?: string; publishedAt?: string }
 }
 
 export type DashboardData = {
