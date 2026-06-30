@@ -273,3 +273,25 @@ func (f wbFeedback) externalProductID() string {
 	}
 	return f.ProductDetails.SupplierArticle
 }
+
+func (c *Client) PublishReply(ctx context.Context, externalReviewID, text string) error {
+	body, err := json.Marshal(map[string]string{"id": externalReviewID, "text": text})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/feedbacks/answer", strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", c.token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
+		return nil
+	}
+	return fmt.Errorf("WB publish reply: status %d", resp.StatusCode)
+}

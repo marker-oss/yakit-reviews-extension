@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -107,4 +108,42 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
+}
+
+func TestPublishReplyPostsAnswer(t *testing.T) {
+	var gotBody string
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/feedbacks/answer" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		gotAuth = r.Header.Get("Authorization")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := NewWithHTTPClient(config.WBConfig{Token: "tok"}, srv.URL, srv.Client(), 0)
+	if err := c.PublishReply(context.Background(), "fb-1", "Спасибо!"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if gotAuth != "tok" {
+		t.Fatalf("auth = %q", gotAuth)
+	}
+	if !strings.Contains(gotBody, `"id":"fb-1"`) || !strings.Contains(gotBody, `"text":"Спасибо!"`) {
+		t.Fatalf("body = %s", gotBody)
+	}
+}
+
+func TestPublishReplyError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"errorText":"bad"}`))
+	}))
+	defer srv.Close()
+	c := NewWithHTTPClient(config.WBConfig{Token: "tok"}, srv.URL, srv.Client(), 0)
+	if err := c.PublishReply(context.Background(), "fb-1", "x"); err == nil {
+		t.Fatal("expected error on non-204")
+	}
 }
