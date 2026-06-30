@@ -24,7 +24,15 @@ const (
 	// refresh. Takes priority over SettingShopOrigin; falls back to the env
 	// REVIEWS_SITE_SITEMAP_URL. Editable from the admin panel.
 	SettingSitemapURL = "sitemap_url"
+	// SettingPublishRepliesPrefix + marketplace id is the per-marketplace
+	// "publish seller replies back to the marketplace" toggle ("true"/"").
+	SettingPublishRepliesPrefix = "publish_replies_"
 )
+
+// PublishRepliesKey is the app_settings key for a marketplace's publish toggle.
+func PublishRepliesKey(marketplace string) string {
+	return SettingPublishRepliesPrefix + marketplace
+}
 
 // AppSetting is a tenant-scoped key/value record for admin-editable settings
 // that need to outlive the process (unlike env-only config).
