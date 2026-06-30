@@ -9,7 +9,14 @@ import Settings from './pages/Settings'
 import Showcase from './pages/Showcase'
 
 type Mode = 'loading' | 'setup' | 'login' | 'authed'
-type Page = 'dashboard' | 'reviews' | 'marketplaces' | 'showcase' | 'editor' | 'embed' | 'settings'
+type Route =
+  | 'dashboard'
+  | 'reviews'
+  | 'widget/showcase'
+  | 'widget/editor'
+  | 'widget/embed'
+  | 'settings/general'
+  | 'settings/marketplaces'
 
 async function postAuth(path: string, body: unknown) {
   const res = await fetch(path, {
@@ -23,10 +30,57 @@ async function postAuth(path: string, body: unknown) {
   }
 }
 
-function currentPage(): Page {
+const LEGACY_ROUTES: Record<string, Route> = {
+  '': 'dashboard',
+  dashboard: 'dashboard',
+  reviews: 'reviews',
+  showcase: 'widget/showcase',
+  editor: 'widget/editor',
+  embed: 'widget/embed',
+  settings: 'settings/general',
+  marketplaces: 'settings/marketplaces',
+}
+
+const ROUTES: Route[] = [
+  'dashboard',
+  'reviews',
+  'widget/showcase',
+  'widget/editor',
+  'widget/embed',
+  'settings/general',
+  'settings/marketplaces',
+]
+
+function currentRoute(): Route {
   const raw = window.location.hash.replace(/^#\/?/, '')
-  if (raw === 'reviews' || raw === 'marketplaces' || raw === 'showcase' || raw === 'editor' || raw === 'embed' || raw === 'settings') return raw
+  if ((ROUTES as string[]).includes(raw)) return raw as Route
+  if (raw in LEGACY_ROUTES) return LEGACY_ROUTES[raw]
   return 'dashboard'
+}
+
+function routeSection(route: Route): 'dashboard' | 'reviews' | 'widget' | 'settings' {
+  if (route === 'dashboard') return 'dashboard'
+  if (route === 'reviews') return 'reviews'
+  return route.startsWith('widget/') ? 'widget' : 'settings'
+}
+
+function routeTitle(route: Route): string {
+  switch (route) {
+    case 'reviews':
+      return 'Отзывы'
+    case 'widget/showcase':
+      return 'Виджет · Витрина'
+    case 'widget/editor':
+      return 'Виджет · Редактор'
+    case 'widget/embed':
+      return 'Виджет · Встраивание'
+    case 'settings/general':
+      return 'Настройки'
+    case 'settings/marketplaces':
+      return 'Настройки · Маркетплейсы'
+    default:
+      return 'Сводка'
+  }
 }
 
 function authError(message: string) {
@@ -37,7 +91,7 @@ function authError(message: string) {
 
 export default function App() {
   const [mode, setMode] = useState<Mode>('loading')
-  const [page, setPage] = useState<Page>(currentPage)
+  const [route, setRoute] = useState<Route>(currentRoute)
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -54,20 +108,12 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const onHash = () => setPage(currentPage())
+    const onHash = () => setRoute(currentRoute())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
-  const title = useMemo(() => {
-    if (page === 'reviews') return 'Отзывы'
-    if (page === 'marketplaces') return 'Маркетплейсы'
-    if (page === 'showcase') return 'Витрина'
-    if (page === 'editor') return 'Редактор'
-    if (page === 'embed') return 'Встраивание'
-    if (page === 'settings') return 'Настройки'
-    return 'Сводка'
-  }, [page])
+  const title = useMemo(() => routeTitle(route), [route])
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
