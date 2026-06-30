@@ -263,7 +263,16 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 	}
 	effectiveCfg := applyStoredMarketplaceCredentials(ctx, db, cfg, logger)
 
-	runner := collector.NewRunner(db, effectiveCfg.Sync, logger, buildAdapters(effectiveCfg))
+	initialAdapters := buildAdapters(effectiveCfg)
+	publishers := map[string]marketplace.ReplyPublisher{}
+	for _, adapter := range initialAdapters {
+		if pub, ok := adapter.(marketplace.ReplyPublisher); ok {
+			publishers[adapter.Marketplace()] = pub
+		}
+	}
+	runner := collector.NewRunner(db, effectiveCfg.Sync, logger, initialAdapters)
+
+	var httpServer *server.Server
 	triggerSync := func(marketplaces []string) {
 		effectiveCfg := applyStoredMarketplaceCredentials(ctx, db, cfg, logger)
 		if len(marketplaces) == 0 {
@@ -276,6 +285,9 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 				continue
 			}
 			logger.Info("manual sync marketplace ok", "marketplace", result.Marketplace, "seen", result.Seen, "upserted", result.Upserted)
+		}
+		if httpServer != nil {
+			httpServer.RetryPendingReplies(context.Background())
 		}
 	}
 
@@ -294,7 +306,7 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		logger.Info("in-process sync scheduler started", "interval", cfg.Sync.Interval.String())
 	}
 
-	httpServer := server.New(db, server.Config{
+	httpServer = server.New(db, server.Config{
 		Addr:               *addr,
 		StaticDir:          *staticDir,
 		ProductURLTemplate: *productURLTemplate,
@@ -304,6 +316,7 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		SessionTTL:         24 * time.Hour,
 		SecureCookies:      os.Getenv("REVIEWS_INSECURE_COOKIES") == "",
 		TriggerSync:        triggerSync,
+		ReplyPublishers:    publishers,
 		Marketplaces:       marketplaceStatuses(effectiveCfg),
 		AllowedOrigins:     cfg.Web.ShopOrigins,
 		Media:              cfg.Media,
