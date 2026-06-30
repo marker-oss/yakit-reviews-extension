@@ -2,6 +2,19 @@ package store
 
 import "time"
 
+// DSRLog records data-subject request actions (152-ФЗ). The subject email is
+// stored only as a hash.
+type DSRLog struct {
+	ID               uint   `gorm:"primaryKey"`
+	TenantID         uint   `gorm:"not null;default:1;index"`
+	EmailHash        string `gorm:"size:64;index"`
+	Marketplace      string `gorm:"size:16"`
+	ExternalReviewID string `gorm:"size:128"`
+	Action           string `gorm:"size:16;not null"` // lookup | export | delete
+	AdminUserID      uint
+	At               time.Time `gorm:"not null;index"`
+}
+
 type Product struct {
 	ID             uint `gorm:"primaryKey"`
 	TenantID       uint `gorm:"not null;default:1;index"`
