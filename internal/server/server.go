@@ -187,6 +187,9 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.Handle("POST /admin/api/widget-config/{context}", requireCSRF(http.HandlerFunc(s.handlePublishWidgetConfig)))
 	protected.Handle("POST /admin/api/widget-config/{context}/rollback/{version}", requireCSRF(http.HandlerFunc(s.handleRollbackWidgetConfig)))
 	protected.Handle("POST /admin/api/logout", requireCSRF(http.HandlerFunc(s.handleLogout)))
+	protected.HandleFunc("GET /admin/api/questions", s.handleAdminQuestions)
+	protected.Handle("PUT /admin/api/questions/{id}/answer", requireCSRF(http.HandlerFunc(s.handleAdminQuestionAnswer)))
+	protected.Handle("POST /admin/api/questions/{id}/answer/retry", requireCSRF(http.HandlerFunc(s.handleAdminQuestionAnswerRetry)))
 	mux.Handle("/admin/api/", s.requireSession(protected))
 
 	mux.Handle("/admin/", s.adminSPAHandler())
