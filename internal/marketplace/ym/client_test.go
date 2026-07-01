@@ -84,7 +84,10 @@ func TestFetchReviewsMapsYMResponse(t *testing.T) {
 		config.YMConfig{APIKey: "key", BusinessID: "777"},
 		"https://api.partner.test", httpClient, 50,
 	)
-	reviews, nextCursor, err := client.FetchReviews(context.Background(), time.Now().Add(-30*24*time.Hour), "")
+	// Fixed, far-past "since" so this mapping test never depends on the wall
+	// clock (the fixture date is static). Since-filtering has its own test.
+	since := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	reviews, nextCursor, err := client.FetchReviews(context.Background(), since, "")
 	if err != nil {
 		t.Fatalf("fetch reviews: %v", err)
 	}
