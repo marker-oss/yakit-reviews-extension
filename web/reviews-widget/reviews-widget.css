@@ -724,6 +724,13 @@
   display: none;
 }
 
+/* On the questions tab, hide review-only summary/filter controls. */
+.reviews-widget.rw-showing-questions .rw-overview,
+.reviews-widget.rw-showing-questions .rw-media-strip,
+.reviews-widget.rw-showing-questions .rw-filter-bar {
+  display: none;
+}
+
 .reviews-widget.rw-context-homepage .rw-overview {
   grid-template-columns: 1fr;
   align-items: center;

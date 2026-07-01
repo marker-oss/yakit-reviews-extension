@@ -504,6 +504,10 @@
     if (tabReviewsEl) tabReviewsEl.classList.toggle("is-active", state.activeTab === "reviews");
     if (tabQuestionsEl) tabQuestionsEl.classList.toggle("is-active", state.activeTab === "questions");
 
+    // The overview, media strip and filter bar describe reviews only — hide them
+    // on the questions tab so they don't imply the ratings/filters apply there.
+    root.classList.toggle("rw-showing-questions", state.activeTab === "questions");
+
     const panelReviews = root.querySelector('[data-role="panel-reviews"]');
     const panelQuestions = root.querySelector('[data-role="panel-questions"]');
     if (panelReviews) panelReviews.hidden = state.activeTab !== "reviews";
