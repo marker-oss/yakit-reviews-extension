@@ -664,7 +664,7 @@
       sellerArticle: resolvedContext === "product" ? normalizedArticle : "",
       submissionConfigUrl: resolvedContext === "product" ? submissionConfigUrl() : "",
       submissionUrl: resolvedContext === "product" ? submissionUrl() : "",
-      fullFeedSource: resolvedContext === "homepage" ? reviewsUrl("") : "",
+      fullFeedSource: resolvedContext === "homepage" ? reviewsUrl(resolvedContext) : "",
       fullFeedOffset: 0,
       fullFeedLimit: 24,
     });

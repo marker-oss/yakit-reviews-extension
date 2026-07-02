@@ -674,6 +674,37 @@ small {
   gap: 12px;
 }
 
+.marketplace-policy-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.marketplace-policy-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(150px, 1fr) minmax(180px, 1.3fr) minmax(150px, 1fr);
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid var(--admin-border);
+  padding-top: 12px;
+}
+
+.marketplace-policy-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.marketplace-policy-row > label:not(.checkbox) {
+  display: grid;
+  gap: 6px;
+}
+
+.marketplace-policy-row > label:not(.checkbox) span {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .checkbox {
   grid-template-columns: 18px 1fr;
   align-items: center;
@@ -754,6 +785,7 @@ small {
   .metrics,
   .form-grid,
   .check-grid,
+  .marketplace-policy-row,
   .editor-layout {
     grid-template-columns: 1fr;
   }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiGet, apiWrite } from '../api'
-import { defaultWidgetConfig, mergeWidgetConfig, type WidgetConfig, type WidgetContext } from '../widgetConfig'
+import { defaultWidgetConfig, mergeWidgetConfig, type MarketplacePolicy, type WidgetConfig, type WidgetContext } from '../widgetConfig'
 
 type VersionItem = {
   version: number
@@ -23,6 +23,12 @@ const rankingLabels: Record<WidgetConfig['ranking'][number]['field'], string> = 
   hasText: 'С текстом',
   rating: 'Высокая оценка',
   createdAt: 'Свежие',
+}
+
+const marketplaceLabels: Record<keyof WidgetConfig['marketplacePolicy'], string> = {
+  wb: 'Wildberries',
+  ym: 'Яндекс Маркет',
+  ozon: 'Ozon',
 }
 
 export default function Editor() {
@@ -88,6 +94,20 @@ export default function Editor() {
 
   function setDefaults<K extends keyof WidgetConfig['defaults']>(key: K, value: WidgetConfig['defaults'][K]) {
     setCfg({ ...cfg, defaults: { ...cfg.defaults, [key]: value } })
+  }
+
+  function setMarketplacePolicy<K extends keyof MarketplacePolicy>(
+    marketplace: keyof WidgetConfig['marketplacePolicy'],
+    key: K,
+    value: MarketplacePolicy[K],
+  ) {
+    setCfg({
+      ...cfg,
+      marketplacePolicy: {
+        ...cfg.marketplacePolicy,
+        [marketplace]: { ...cfg.marketplacePolicy[marketplace], [key]: value },
+      },
+    })
   }
 
   function moveRanking(index: number, direction: -1 | 1) {
@@ -219,6 +239,40 @@ export default function Editor() {
                 <button className="secondary" disabled={index === cfg.ranking.length - 1} onClick={() => moveRanking(index, 1)}>Вниз</button>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="panel">
+          <h3>Площадки в публичном виджете</h3>
+          <div className="marketplace-policy-grid">
+            {(['wb', 'ym', 'ozon'] as (keyof WidgetConfig['marketplacePolicy'])[]).map((marketplace) => {
+              const policy = cfg.marketplacePolicy[marketplace]
+              return (
+                <div className="marketplace-policy-row" key={marketplace}>
+                  <strong>{marketplaceLabels[marketplace]}</strong>
+                  <label className="checkbox">
+                    <input type="checkbox" checked={!policy.hidden} onChange={(e) => setMarketplacePolicy(marketplace, 'hidden', !e.target.checked)} />
+                    <span>Показывать отзывы</span>
+                  </label>
+                  <label>
+                    <span>Публичное название</span>
+                    <input
+                      value={policy.label}
+                      onChange={(e) => setMarketplacePolicy(marketplace, 'label', e.target.value)}
+                      placeholder={marketplace === 'wb' ? 'Маркетплейс' : marketplaceLabels[marketplace]}
+                    />
+                  </label>
+                  <label className="checkbox">
+                    <input
+                      type="checkbox"
+                      checked={policy.showSourceLinks}
+                      onChange={(e) => setMarketplacePolicy(marketplace, 'showSourceLinks', e.target.checked)}
+                    />
+                    <span>Ссылки на источник</span>
+                  </label>
+                </div>
+              )
+            })}
           </div>
         </section>
 

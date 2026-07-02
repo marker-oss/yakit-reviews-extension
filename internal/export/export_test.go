@@ -44,6 +44,26 @@ func TestBuildBundlesGroupsByNormalizedArticleAndAggregates(t *testing.T) {
 	}
 }
 
+func TestBuildBundlesSkipsHiddenMarketplace(t *testing.T) {
+	reviews := []store.Review{
+		{Marketplace: "wb", ExternalReviewID: "hidden", SellerArticle: "107", Rating: ptrInt(5), CreatedAtMP: time.Unix(300, 0)},
+		{Marketplace: "ym", ExternalReviewID: "visible", SellerArticle: "107", Rating: ptrInt(4), CreatedAtMP: time.Unix(200, 0)},
+	}
+	bundles := BuildBundles(reviews, reviewjson.Mapper{
+		MarketplacePolicy: reviewjson.MarketplacePolicies{
+			"wb": {Hidden: true},
+		},
+	})
+
+	bundle := bundles["107"]
+	if bundle == nil {
+		t.Fatal("missing article bundle")
+	}
+	if bundle.Aggregate.Count != 1 || bundle.Reviews[0].ExternalReviewID != "visible" {
+		t.Fatalf("bundle = %+v", bundle)
+	}
+}
+
 func TestBuildBundlesUsesKnownSiteArticlePrefixes(t *testing.T) {
 	reviews := []store.Review{
 		{Marketplace: "wb", ExternalReviewID: "r1", SellerArticle: "6202бежевый", Rating: ptrInt(5), CreatedAtMP: time.Unix(300, 0)},

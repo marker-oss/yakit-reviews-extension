@@ -23,12 +23,14 @@ const (
 type Mapper struct {
 	ProductURLTemplate string
 	ProductLinks       map[string]string
+	MarketplacePolicy  MarketplacePolicies
 }
 
 // Review is the public JSON representation of a stored review.
 type Review struct {
 	ID                    uint       `json:"id"`
 	Marketplace           string     `json:"marketplace"`
+	MarketplaceLabel      string     `json:"marketplaceLabel,omitempty"`
 	ExternalReviewID      string     `json:"externalReviewId"`
 	ExternalProductID     string     `json:"externalProductId"`
 	SellerArticle         string     `json:"sellerArticle,omitempty"`
@@ -64,6 +66,7 @@ type Media struct {
 
 func (m Mapper) ToReview(review store.Review) Review {
 	sellerArticle := SellerArticleForReview(review)
+	policy := m.policyFor(review.Marketplace)
 
 	var answer *Answer
 	if review.AdminReplyText != nil && strings.TrimSpace(*review.AdminReplyText) != "" {
@@ -82,9 +85,17 @@ func (m Mapper) ToReview(review store.Review) Review {
 		})
 	}
 
+	reviewURL := ""
+	productURL := ""
+	if policy.SourceLinksAllowed() {
+		reviewURL = marketplaceReviewURL(review)
+		productURL = marketplaceProductURL(review)
+	}
+
 	return Review{
 		ID:                    review.ID,
 		Marketplace:           review.Marketplace,
+		MarketplaceLabel:      policy.PublicLabel(),
 		ExternalReviewID:      review.ExternalReviewID,
 		ExternalProductID:     review.ExternalProductID,
 		SellerArticle:         sellerArticle,
@@ -97,11 +108,27 @@ func (m Mapper) ToReview(review store.Review) Review {
 		UpdatedAt:             review.UpdatedAtMP,
 		Answer:                answer,
 		Media:                 media,
-		MarketplaceReviewURL:  marketplaceReviewURL(review),
-		MarketplaceProductURL: marketplaceProductURL(review),
+		MarketplaceReviewURL:  reviewURL,
+		MarketplaceProductURL: productURL,
 		SellerProductURL:      m.sellerProductURL(review, sellerArticle),
 		Pinned:                review.Pinned,
 	}
+}
+
+func (m Mapper) ReviewHidden(review store.Review) bool {
+	return m.policyFor(review.Marketplace).Hidden
+}
+
+func (m Mapper) ExcludedMarketplaces() []string {
+	excluded := make([]string, 0, len(m.MarketplacePolicy))
+	for marketplace, policy := range m.MarketplacePolicy {
+		marketplace = strings.ToLower(strings.TrimSpace(marketplace))
+		if marketplace != "" && policy.Hidden {
+			excluded = append(excluded, marketplace)
+		}
+	}
+	sort.Strings(excluded)
+	return excluded
 }
 
 func marketplaceReviewURL(review store.Review) string {

@@ -53,6 +53,42 @@ func TestToReview_WBMapping(t *testing.T) {
 	}
 }
 
+func TestToReview_AppliesMarketplacePolicy(t *testing.T) {
+	showLinks := false
+	mapper := Mapper{
+		MarketplacePolicy: MarketplacePolicies{
+			"wb": {Label: "Маркетплейс", ShowSourceLinks: &showLinks},
+		},
+	}
+	r := store.Review{
+		Marketplace:       "wb",
+		ExternalReviewID:  "wb-1001",
+		ExternalProductID: "70476012",
+		SellerArticle:     "1523",
+		CreatedAtMP:       time.Date(2026, 5, 28, 12, 20, 0, 0, time.UTC),
+	}
+
+	out := mapper.ToReview(r)
+
+	if out.MarketplaceLabel != "Маркетплейс" {
+		t.Fatalf("marketplaceLabel = %q", out.MarketplaceLabel)
+	}
+	if out.MarketplaceReviewURL != "" || out.MarketplaceProductURL != "" {
+		t.Fatalf("source links leaked: review=%q product=%q", out.MarketplaceReviewURL, out.MarketplaceProductURL)
+	}
+}
+
+func TestExcludedMarketplaces(t *testing.T) {
+	mapper := Mapper{MarketplacePolicy: MarketplacePolicies{
+		"wb": {Hidden: true},
+		"ym": {},
+	}}
+	got := mapper.ExcludedMarketplaces()
+	if len(got) != 1 || got[0] != "wb" {
+		t.Fatalf("excluded = %+v", got)
+	}
+}
+
 func TestToReview_TemplateFallbackWhenArticleNotInLinks(t *testing.T) {
 	mapper := Mapper{
 		ProductURLTemplate: "https://example-shop.test/search?query={seller_article_url}",

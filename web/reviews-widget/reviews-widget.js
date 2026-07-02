@@ -53,6 +53,11 @@
       { field: "rating", direction: "desc" },
       { field: "createdAt", direction: "desc" },
     ],
+    marketplacePolicy: {
+      wb: { hidden: false, label: "", showSourceLinks: true },
+      ym: { hidden: false, label: "", showSourceLinks: true },
+      ozon: { hidden: false, label: "", showSourceLinks: true },
+    },
   };
 
   const sampleReviews = [
@@ -159,10 +164,11 @@
     options = options || {};
     const config = normalizeConfig(options.config);
     const context = options.context || "product";
+    const initialReviews = normalizeReviews(options.reviews || [], config);
 
     const state = {
-      reviews: normalizeReviews(options.reviews || []),
-      aggregate: normalizeAggregate(options.aggregate),
+      reviews: initialReviews,
+      aggregate: shouldTrustAggregate(config) ? normalizeAggregate(options.aggregate) : null,
       config,
       context,
       marketplace: config.defaults.marketplace || "all",
@@ -248,8 +254,8 @@
     if (options.source) {
       fetchReviews(options.source)
         .then((payload) => {
-          state.reviews = normalizeReviews(payload.reviews);
-          state.aggregate = normalizeAggregate(payload.aggregate);
+          state.reviews = normalizeReviews(payload.reviews, state.config);
+          state.aggregate = shouldTrustAggregate(state.config) ? normalizeAggregate(payload.aggregate) : null;
           if (!state.fullFeedOffsetExplicit) {
             state.fullFeedOffset = state.reviews.length;
           }
@@ -612,7 +618,7 @@
 
     marketplaceRoot.innerHTML = "";
     marketplaces.forEach((value) => {
-      marketplaceRoot.appendChild(segmentButton(labelMarketplace(value), state.marketplace === value, () => {
+      marketplaceRoot.appendChild(segmentButton(labelMarketplaceValue(value, reviews), state.marketplace === value, () => {
         state.marketplace = value;
         resetListingState(state);
         render(root, state);
@@ -661,7 +667,7 @@
     unique(reviews.map((review) => review.marketplace)).forEach((marketplace) => {
       const row = document.createElement("div");
       row.className = "rw-market-pill";
-      row.innerHTML = `<span>${labelMarketplace(marketplace)}</span><strong>${reviews.filter((review) => review.marketplace === marketplace).length}</strong>`;
+      row.innerHTML = `<span>${labelMarketplaceValue(marketplace, reviews)}</span><strong>${reviews.filter((review) => review.marketplace === marketplace).length}</strong>`;
       marketRoot.appendChild(row);
     });
   }
@@ -727,7 +733,7 @@
           <div class="rw-author">
             <div class="rw-author-line">
               <span class="rw-name">${escapeHTML(review.authorName || "Покупатель")}</span>
-              <span class="rw-market" data-marketplace="${escapeHTML(review.marketplace)}">${labelMarketplace(review.marketplace)}</span>
+              <span class="rw-market" data-marketplace="${escapeHTML(review.marketplace)}">${escapeHTML(reviewMarketplaceLabel(review))}</span>
             </div>
             <div class="rw-stars" style="--rating: ${review.rating}" aria-label="${review.rating} из 5"></div>
           </div>
@@ -1269,14 +1275,39 @@
       .toUpperCase() || "П";
   }
 
-  function normalizeReviews(reviews) {
-    return reviews.map((review) => ({
-      ...review,
-      rating: Number(review.rating || 0),
-      createdAt: new Date(review.createdAt),
-      media: review.media || [],
-      pinned: Boolean(review.pinned),
-    }));
+  function normalizeReviews(reviews, config) {
+    return reviews
+      .map((review) => applyMarketplacePolicy({
+        ...review,
+        rating: Number(review.rating || 0),
+        createdAt: new Date(review.createdAt),
+        media: review.media || [],
+        pinned: Boolean(review.pinned),
+      }, config))
+      .filter(Boolean);
+  }
+
+  function applyMarketplacePolicy(review, config) {
+    const policy = marketplacePolicyFor(review.marketplace, config);
+    if (policy.hidden) {
+      return null;
+    }
+    if (policy.label) {
+      review.marketplaceLabel = policy.label;
+    }
+    if (policy.showSourceLinks === false) {
+      review.marketplaceReviewUrl = "";
+      review.marketplaceProductUrl = "";
+    }
+    return review;
+  }
+
+  function marketplacePolicyFor(marketplace, config) {
+    return (config && config.marketplacePolicy && config.marketplacePolicy[marketplace]) || {};
+  }
+
+  function shouldTrustAggregate(config) {
+    return !Object.values(config.marketplacePolicy || {}).some((policy) => policy && policy.hidden);
   }
 
   function normalizeAggregate(aggregate) {
@@ -1302,6 +1333,7 @@
       visibility: { ...defaultConfig.visibility, ...(config.visibility || {}) },
       defaults: { ...defaultConfig.defaults, ...(config.defaults || {}) },
       ranking: Array.isArray(config.ranking) && config.ranking.length ? config.ranking : defaultConfig.ranking,
+      marketplacePolicy: normalizeMarketplacePolicy(config.marketplacePolicy),
     };
     merged.typography.scale = clampNumber(merged.typography.scale, 0.85, 1.25, 1);
     merged.typography.radius = clampNumber(merged.typography.radius, 0, 24, 8);
@@ -1321,6 +1353,20 @@
       merged.defaults.initialSort = "relevance";
     }
     return merged;
+  }
+
+  function normalizeMarketplacePolicy(policy) {
+    const normalized = {};
+    Object.keys(defaultConfig.marketplacePolicy).forEach((marketplace) => {
+      normalized[marketplace] = {
+        ...defaultConfig.marketplacePolicy[marketplace],
+        ...((policy && policy[marketplace]) || {}),
+      };
+      normalized[marketplace].hidden = Boolean(normalized[marketplace].hidden);
+      normalized[marketplace].label = String(normalized[marketplace].label || "").trim();
+      normalized[marketplace].showSourceLinks = normalized[marketplace].showSourceLinks !== false;
+    });
+    return normalized;
   }
 
   function initialVisible(config, context) {
@@ -1416,7 +1462,7 @@
     render(root, state);
     try {
       const payload = await fetchReviews(pagedSource(state.fullFeedSource, state.fullFeedOffset, state.fullFeedLimit));
-      const next = normalizeReviews(payload.reviews);
+      const next = normalizeReviews(payload.reviews, state.config);
       const existing = new Set(state.reviews.map(reviewKey));
       const uniqueNext = next.filter((review) => {
         const key = reviewKey(review);
@@ -1531,6 +1577,16 @@
   function labelMarketplace(value) {
     if (value === "all") return "Все площадки";
     return marketplaceLabels[value] || value;
+  }
+
+  function labelMarketplaceValue(value, reviews) {
+    if (value === "all") return labelMarketplace(value);
+    const review = reviews.find((item) => item.marketplace === value && item.marketplaceLabel);
+    return review ? review.marketplaceLabel : labelMarketplace(value);
+  }
+
+  function reviewMarketplaceLabel(review) {
+    return review.marketplaceLabel || labelMarketplace(review.marketplace);
   }
 
   function formatDate(date) {

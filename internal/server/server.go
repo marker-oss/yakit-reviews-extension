@@ -213,7 +213,8 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 	filter.Status = "public"
 
 	var reviews []store.Review
-	defaults, ranking, useWidgetRules := s.reviewRulesForRequest(r)
+	defaults, ranking, marketplacePolicy, useWidgetRules := s.reviewRulesForRequest(r)
+	filter.ExcludedMarketplaces = marketplacePolicy.ExcludedMarketplaces()
 	if useWidgetRules {
 		reviews, err = s.store.ListReviewsByWidgetRules(r.Context(), filter, defaults, ranking)
 	} else {
@@ -226,6 +227,7 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 	mapper := reviewjson.Mapper{
 		ProductURLTemplate: s.cfg.ProductURLTemplate,
 		ProductLinks:       s.productLinks(),
+		MarketplacePolicy:  marketplacePolicy,
 	}
 	items := make([]reviewjson.Review, 0, len(reviews))
 	for _, review := range reviews {
@@ -305,29 +307,30 @@ func parseReviewFilter(r *http.Request) (store.ReviewListFilter, error) {
 }
 
 type widgetRulesPayload struct {
-	Defaults *store.WidgetReviewDefaults `json:"defaults"`
-	Ranking  []store.ReviewRankingRule   `json:"ranking"`
+	Defaults          *store.WidgetReviewDefaults    `json:"defaults"`
+	Ranking           []store.ReviewRankingRule      `json:"ranking"`
+	MarketplacePolicy reviewjson.MarketplacePolicies `json:"marketplacePolicy"`
 }
 
-func (s *Server) reviewRulesForRequest(r *http.Request) (store.WidgetReviewDefaults, []store.ReviewRankingRule, bool) {
+func (s *Server) reviewRulesForRequest(r *http.Request) (store.WidgetReviewDefaults, []store.ReviewRankingRule, reviewjson.MarketplacePolicies, bool) {
 	query := r.URL.Query()
 	if query.Get("apply_config") == "0" || query.Get("applyConfig") == "0" {
-		return store.WidgetReviewDefaults{}, nil, false
+		return store.WidgetReviewDefaults{}, nil, nil, false
 	}
 	contextName := query.Get("context")
 	if contextName == "" {
 		contextName = "product"
 	}
 	if err := validateWidgetContext(contextName); err != nil {
-		return store.WidgetReviewDefaults{}, nil, false
+		return store.WidgetReviewDefaults{}, nil, nil, false
 	}
 	cfg, err := s.store.GetActiveWidgetConfig(r.Context(), contextName)
 	if err != nil {
-		return store.WidgetReviewDefaults{}, nil, false
+		return store.WidgetReviewDefaults{}, nil, nil, false
 	}
 	var payload widgetRulesPayload
 	if err := json.Unmarshal([]byte(cfg.Payload), &payload); err != nil {
-		return store.WidgetReviewDefaults{}, nil, false
+		return store.WidgetReviewDefaults{}, nil, nil, false
 	}
 	defaults := store.DefaultWidgetReviewDefaults()
 	if payload.Defaults != nil {
@@ -337,7 +340,18 @@ func (s *Server) reviewRulesForRequest(r *http.Request) (store.WidgetReviewDefau
 	if len(ranking) == 0 {
 		ranking = store.DefaultReviewRanking()
 	}
-	return defaults, ranking, true
+	return defaults, ranking, payload.MarketplacePolicy.Normalized(), true
+}
+
+func (s *Server) activeMarketplacePolicy(ctx context.Context, widgetContext string) reviewjson.MarketplacePolicies {
+	if err := validateWidgetContext(widgetContext); err != nil {
+		return nil
+	}
+	cfg, err := s.store.GetActiveWidgetConfig(ctx, widgetContext)
+	if err != nil {
+		return nil
+	}
+	return reviewjson.ParseMarketplacePolicies(cfg.Payload)
 }
 
 func parseInt(value string, fallback int) int {

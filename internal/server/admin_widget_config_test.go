@@ -168,6 +168,72 @@ func TestPublicReviewsApplyWidgetRules(t *testing.T) {
 	}
 }
 
+func TestPublicReviewsApplyMarketplacePolicy(t *testing.T) {
+	s := newAuthTestServer(t)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
+
+	seedPublicReview(t, s, marketplace.Review{
+		Marketplace:       "wb",
+		ExternalReviewID:  "hidden-wb",
+		ExternalProductID: "70476012",
+		SellerArticle:     "107",
+		Rating:            intPtr(5),
+		Text:              "WB hidden",
+		CreatedAtMP:       now,
+	})
+	seedPublicReview(t, s, marketplace.Review{
+		Marketplace:       "ym",
+		ExternalReviewID:  "masked-ym",
+		ExternalProductID: "12345",
+		SellerArticle:     "107",
+		Rating:            intPtr(5),
+		Text:              "YM visible",
+		CreatedAtMP:       now.Add(-time.Hour),
+	})
+
+	_, err := s.store.PublishWidgetConfig(ctx, "product", `{
+		"marketplacePolicy":{
+			"wb":{"hidden":true},
+			"ym":{"label":"Маркетплейс","showSourceLinks":false}
+		}
+	}`)
+	if err != nil {
+		t.Fatalf("publish widget config: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/reviews?context=product&limit=10", nil)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/reviews", s.handleReviews)
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reviews status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Reviews []struct {
+			Marketplace           string `json:"marketplace"`
+			MarketplaceLabel      string `json:"marketplaceLabel"`
+			ExternalReviewID      string `json:"externalReviewId"`
+			MarketplaceReviewURL  string `json:"marketplaceReviewUrl"`
+			MarketplaceProductURL string `json:"marketplaceProductUrl"`
+		} `json:"reviews"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode reviews: %v", err)
+	}
+	if len(payload.Reviews) != 1 || payload.Reviews[0].ExternalReviewID != "masked-ym" {
+		t.Fatalf("unexpected reviews: %+v", payload.Reviews)
+	}
+	if payload.Reviews[0].MarketplaceLabel != "Маркетплейс" {
+		t.Fatalf("marketplaceLabel = %q", payload.Reviews[0].MarketplaceLabel)
+	}
+	if payload.Reviews[0].MarketplaceReviewURL != "" || payload.Reviews[0].MarketplaceProductURL != "" {
+		t.Fatalf("source links leaked: %+v", payload.Reviews[0])
+	}
+}
+
 func seedPublicReview(t *testing.T, s *Server, review marketplace.Review) {
 	t.Helper()
 	if _, err := s.store.UpsertReview(context.Background(), review); err != nil {

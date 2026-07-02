@@ -76,7 +76,11 @@ func (s *Server) regenerateSiteData(ctx context.Context, links []site.ProductLin
 	if err != nil {
 		return 0, 0, err
 	}
-	mapper := reviewjson.Mapper{ProductURLTemplate: s.cfg.ProductURLTemplate, ProductLinks: s.productLinks()}
+	mapper := reviewjson.Mapper{
+		ProductURLTemplate: s.cfg.ProductURLTemplate,
+		ProductLinks:       s.productLinks(),
+		MarketplacePolicy:  s.activeMarketplacePolicy(ctx, "product"),
+	}
 	bundles := staticexport.BuildBundles(reviews, mapper, pins)
 
 	generatedAt := time.Now().UTC()

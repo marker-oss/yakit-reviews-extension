@@ -1,5 +1,11 @@
 export type WidgetContext = 'product' | 'homepage'
 
+export type MarketplacePolicy = {
+  hidden: boolean
+  label: string
+  showSourceLinks: boolean
+}
+
 export type WidgetConfig = {
   theme: {
     accent: string
@@ -44,6 +50,7 @@ export type WidgetConfig = {
     field: 'pinned' | 'hasPhoto' | 'hasText' | 'rating' | 'createdAt'
     direction: 'asc' | 'desc'
   }[]
+  marketplacePolicy: Record<'wb' | 'ym' | 'ozon', MarketplacePolicy>
 }
 
 export const defaultWidgetConfig: WidgetConfig = {
@@ -93,6 +100,11 @@ export const defaultWidgetConfig: WidgetConfig = {
     { field: 'rating', direction: 'desc' },
     { field: 'createdAt', direction: 'desc' },
   ],
+  marketplacePolicy: {
+    wb: { hidden: false, label: '', showSourceLinks: true },
+    ym: { hidden: false, label: '', showSourceLinks: true },
+    ozon: { hidden: false, label: '', showSourceLinks: true },
+  },
 }
 
 export function mergeWidgetConfig(value: Partial<WidgetConfig>): WidgetConfig {
@@ -103,5 +115,14 @@ export function mergeWidgetConfig(value: Partial<WidgetConfig>): WidgetConfig {
     visibility: { ...defaultWidgetConfig.visibility, ...(value.visibility ?? {}) },
     defaults: { ...defaultWidgetConfig.defaults, ...(value.defaults ?? {}) },
     ranking: value.ranking?.length ? value.ranking : defaultWidgetConfig.ranking,
+    marketplacePolicy: mergeMarketplacePolicy(value.marketplacePolicy),
+  }
+}
+
+function mergeMarketplacePolicy(value: Partial<WidgetConfig['marketplacePolicy']> | undefined): WidgetConfig['marketplacePolicy'] {
+  return {
+    wb: { ...defaultWidgetConfig.marketplacePolicy.wb, ...(value?.wb ?? {}) },
+    ym: { ...defaultWidgetConfig.marketplacePolicy.ym, ...(value?.ym ?? {}) },
+    ozon: { ...defaultWidgetConfig.marketplacePolicy.ozon, ...(value?.ozon ?? {}) },
   }
 }

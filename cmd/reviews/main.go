@@ -423,6 +423,7 @@ func runExport(ctx context.Context, args []string, cfg config.Config, logger *sl
 	mapper := reviewjson.Mapper{
 		ProductURLTemplate: *productURLTemplate,
 		ProductLinks:       loadProductLinks(cfg.Web.ProductLinksPath, logger),
+		MarketplacePolicy:  activeExportMarketplacePolicy(ctx, db, logger),
 	}
 	pins, err := db.AllShowcasePins(ctx)
 	if err != nil {
@@ -446,6 +447,18 @@ func runExport(ctx context.Context, args []string, cfg config.Config, logger *sl
 	logger.Info("export complete", "articles", len(bundles), "reviews", len(reviews),
 		"linkPaths", len(linkIndex.ByPath), "linkIDs", len(linkIndex.ByID), "out", *outDir)
 	return exitOK
+}
+
+func activeExportMarketplacePolicy(ctx context.Context, db *store.Store, logger *slog.Logger) reviewjson.MarketplacePolicies {
+	cfg, err := db.GetActiveWidgetConfig(ctx, "product")
+	if err != nil {
+		return nil
+	}
+	policy := reviewjson.ParseMarketplacePolicies(cfg.Payload)
+	if len(policy) > 0 {
+		logger.Info("export marketplace policy loaded", "context", "product")
+	}
+	return policy
 }
 
 func newLogger(cfg config.LogConfig) *slog.Logger {

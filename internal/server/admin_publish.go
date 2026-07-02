@@ -25,6 +25,7 @@ func (s *Server) handlePublishReviewsData(w http.ResponseWriter, r *http.Request
 	mapper := reviewjson.Mapper{
 		ProductURLTemplate: s.cfg.ProductURLTemplate,
 		ProductLinks:       s.productLinks(),
+		MarketplacePolicy:  s.activeMarketplacePolicy(r.Context(), "product"),
 	}
 	bundles := staticexport.BuildBundles(reviews, mapper, pins)
 	generatedAt := time.Now().UTC()

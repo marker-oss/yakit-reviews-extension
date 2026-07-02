@@ -26,22 +26,23 @@ type ReviewRankingRule struct {
 }
 
 type ReviewListFilter struct {
-	Marketplace   string
-	Rating        int
-	MinRating     int
-	Limit         int
-	Offset        int
-	Status        string
-	Visibility    string
-	SellerArticle string
-	ArticleSearch string
-	HasPhoto      bool
-	HasText       bool
-	HasAnswer     bool
-	Search        string
-	PinnedFirst   bool
-	SortBy        string
-	Ranking       []ReviewRankingRule
+	Marketplace          string
+	ExcludedMarketplaces []string
+	Rating               int
+	MinRating            int
+	Limit                int
+	Offset               int
+	Status               string
+	Visibility           string
+	SellerArticle        string
+	ArticleSearch        string
+	HasPhoto             bool
+	HasText              bool
+	HasAnswer            bool
+	Search               string
+	PinnedFirst          bool
+	SortBy               string
+	Ranking              []ReviewRankingRule
 }
 
 func (s *Store) ListReviews(ctx context.Context, filter ReviewListFilter) ([]Review, error) {
@@ -114,6 +115,18 @@ func (s *Store) applyReviewFilters(query *gorm.DB, filter ReviewListFilter) (*go
 	}
 	if filter.Marketplace != "" && filter.Marketplace != "all" {
 		query = query.Where("marketplace = ?", strings.ToLower(filter.Marketplace))
+	}
+	if len(filter.ExcludedMarketplaces) > 0 {
+		excluded := make([]string, 0, len(filter.ExcludedMarketplaces))
+		for _, marketplace := range filter.ExcludedMarketplaces {
+			marketplace = strings.ToLower(strings.TrimSpace(marketplace))
+			if marketplace != "" {
+				excluded = append(excluded, marketplace)
+			}
+		}
+		if len(excluded) > 0 {
+			query = query.Where("LOWER(marketplace) NOT IN ?", excluded)
+		}
 	}
 	if filter.Rating > 0 {
 		if filter.Rating < 1 || filter.Rating > 5 {

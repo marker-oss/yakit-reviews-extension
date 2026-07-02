@@ -48,6 +48,9 @@ func BuildBundles(reviews []store.Review, mapper reviewjson.Mapper, pinsByArticl
 	}
 	bundles := make(map[string]*Bundle)
 	for _, review := range reviews {
+		if mapper.ReviewHidden(review) {
+			continue
+		}
 		article := mapper.NormalizeSellerArticle(reviewjson.SellerArticleForReview(review))
 		if article == "" {
 			continue
