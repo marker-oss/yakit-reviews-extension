@@ -51,6 +51,12 @@ type Config struct {
 	// QuestionAnswerPublishers maps marketplace id → publisher for posting
 	// seller answers to product questions back to the marketplace.
 	QuestionAnswerPublishers map[string]marketplace.QuestionAnswerPublisher
+	// Version is the running release tag (vX.Y.Z), stamped at build time;
+	// "dev" for local builds.
+	Version string
+	// LatestReleaseURL is the JSON feed of the newest release (GitHub
+	// releases/latest API). Empty disables the update check.
+	LatestReleaseURL string
 }
 
 type Server struct {
@@ -70,6 +76,11 @@ type Server struct {
 	// catalog refresh (single job slot).
 	siteLinksMu  sync.Mutex
 	siteLinksJob siteLinksStatus
+
+	// versionMu guards the cached latest-release lookup (update banner).
+	versionMu        sync.Mutex
+	versionCache     latestRelease
+	versionCheckedAt time.Time
 }
 
 // productLinks returns the current article→URL map under a read lock.
@@ -182,6 +193,7 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.HandleFunc("GET /admin/api/articles/{article}/pins", s.handleListArticlePins)
 	protected.Handle("PUT /admin/api/articles/{article}/pins", requireCSRF(http.HandlerFunc(s.handleReplaceArticlePins)))
 	protected.Handle("DELETE /admin/api/articles/{article}/pins/{reviewID}", requireCSRF(http.HandlerFunc(s.handleRemoveArticlePin)))
+	protected.HandleFunc("GET /admin/api/version", s.handleVersion)
 	protected.HandleFunc("GET /admin/api/dashboard", s.handleDashboard)
 	protected.HandleFunc("GET /admin/api/marketplaces", s.handleMarketplaces)
 	protected.Handle("PUT /admin/api/marketplaces/{id}/credentials", requireCSRF(http.HandlerFunc(s.handleSaveMarketplaceCredentials)))

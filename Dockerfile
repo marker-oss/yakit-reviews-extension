@@ -22,8 +22,9 @@ RUN go mod download
 
 COPY . .
 COPY --from=web /web/admin/dist ./internal/server/admin_dist
+ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
-    -trimpath -ldflags "-s -w" \
+    -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
     -o /out/reviews ./cmd/reviews
 RUN mkdir -p /out/data
 

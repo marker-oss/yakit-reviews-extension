@@ -34,6 +34,27 @@ const (
 	exitConfigError = 2
 )
 
+// version is stamped by the release workflow via
+// -ldflags "-X main.version=vX.Y.Z"; local builds stay "dev".
+var version = "dev"
+
+// latestReleaseURL is the feed the admin update-banner checks once a day.
+const latestReleaseURL = "https://api.github.com/repos/marker-oss/yakit-reviews-extension/releases/latest"
+
+// updateCheckURL resolves the release feed for the update banner.
+// REVIEWS_UPDATE_CHECK=false disables the daily lookup entirely; any other
+// non-empty value overrides the feed URL (useful for mirrors and tests).
+func updateCheckURL() string {
+	switch value := os.Getenv("REVIEWS_UPDATE_CHECK"); value {
+	case "":
+		return latestReleaseURL
+	case "false", "0", "off":
+		return ""
+	default:
+		return value
+	}
+}
+
 func main() {
 	os.Exit(run(os.Args[1:]))
 }
@@ -42,6 +63,11 @@ func run(args []string) int {
 	if len(args) == 0 {
 		usage()
 		return exitConfigError
+	}
+
+	if args[0] == "version" || args[0] == "--version" {
+		fmt.Println(version)
+		return exitOK
 	}
 
 	if args[0] == "install" {
@@ -329,6 +355,8 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		UploadDir:                cfg.Web.UploadDir,
 		PrivacyURL:               cfg.Web.PrivacyURL,
 		ReviewTermsURL:           cfg.Web.ReviewTermsURL,
+		Version:                  version,
+		LatestReleaseURL:         updateCheckURL(),
 	}, logger)
 	if err := httpServer.Run(ctx); err != nil {
 		logger.Error("server stopped with error", "error", err)

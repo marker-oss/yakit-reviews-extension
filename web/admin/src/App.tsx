@@ -95,12 +95,24 @@ function authError(message: string) {
   return message || 'Запрос не выполнен'
 }
 
+type VersionInfo = {
+  current: string
+  latest: string
+  updateAvailable: boolean
+  releaseUrl: string
+}
+
+const UPDATE_DOCS_URL = 'https://github.com/marker-oss/yakit-reviews-extension#обслуживание'
+const DISMISSED_KEY = 'reviews-update-dismissed'
+
 export default function App() {
   const [mode, setMode] = useState<Mode>('loading')
   const [route, setRoute] = useState<Route>(currentRoute)
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
+  const [dismissedVersion, setDismissedVersion] = useState(() => localStorage.getItem(DISMISSED_KEY) ?? '')
 
   useEffect(() => {
     apiGet('/admin/api/me')
@@ -118,6 +130,21 @@ export default function App() {
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
+
+  useEffect(() => {
+    if (mode !== 'authed') return
+    apiGet<VersionInfo>('/admin/api/version')
+      .then(setVersionInfo)
+      .catch(() => {})
+  }, [mode])
+
+  function dismissUpdate(version: string) {
+    localStorage.setItem(DISMISSED_KEY, version)
+    setDismissedVersion(version)
+  }
+
+  const showUpdateBanner =
+    versionInfo !== null && versionInfo.updateAvailable && versionInfo.latest !== dismissedVersion
 
   const title = useMemo(() => routeTitle(route), [route])
 
@@ -228,6 +255,23 @@ export default function App() {
         {error && <p className="error">{error}</p>}
       </aside>
       <main className="workspace">
+        {showUpdateBanner && versionInfo && (
+          <div className="update-banner">
+            <span>
+              Доступна новая версия <strong>{versionInfo.latest}</strong> (у вас {versionInfo.current}).{' '}
+              <a href={versionInfo.releaseUrl} target="_blank" rel="noreferrer">
+                Что нового
+              </a>{' '}
+              ·{' '}
+              <a href={UPDATE_DOCS_URL} target="_blank" rel="noreferrer">
+                Как обновиться
+              </a>
+            </span>
+            <button className="secondary" onClick={() => dismissUpdate(versionInfo.latest)}>
+              Скрыть
+            </button>
+          </div>
+        )}
         <header className="topbar">
           <h2>{title}</h2>
         </header>

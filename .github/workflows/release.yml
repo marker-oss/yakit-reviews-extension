@@ -30,12 +30,13 @@ jobs:
         run: |
           set -eu
           mkdir -p dist
+          VERSION="${{ github.event.inputs.tag || github.ref_name }}"
           build() {
             goos="$1"; goarch="$2"; out="dist/$3"
             echo "building $out ($goos/$goarch)"
             CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build \
               -trimpath \
-              -ldflags "-s -w" \
+              -ldflags "-s -w -X main.version=$VERSION" \
               -o "$out" \
               ./cmd/reviews
           }
@@ -77,6 +78,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            VERSION=${{ github.event.inputs.tag || github.ref_name }}
           tags: |
             ${{ env.IMAGE }}:${{ github.event.inputs.tag || github.ref_name }}
             ${{ env.IMAGE }}:latest
