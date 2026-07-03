@@ -361,7 +361,7 @@ func runDiscoverSiteURLs(ctx context.Context, args []string, cfg config.Config, 
 	flags.SetOutput(os.Stderr)
 	sitemapURL := flags.String("sitemap", "", "sitemap URL of the shop (required), e.g. https://myshop.example/sitemap.xml")
 	out := flags.String("out", cfg.Web.ProductLinksPath, "output JSON path")
-	timeout := flags.Duration("timeout", 2*time.Minute, "scan timeout")
+	timeout := flags.Duration("timeout", 30*time.Minute, "scan timeout (a 4500-product shop takes about ten minutes)")
 	if err := flags.Parse(args); err != nil {
 		return exitConfigError
 	}
@@ -373,9 +373,9 @@ func runDiscoverSiteURLs(ctx context.Context, args []string, cfg config.Config, 
 	scanCtx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
 
-	links, err := site.DiscoverKitProductLinks(scanCtx, *sitemapURL, nil)
-	if err != nil {
-		logger.Error("discover site URLs", "error", err)
+	links, scanErr := site.DiscoverKitProductLinks(scanCtx, *sitemapURL, nil)
+	if scanErr != nil && len(links) == 0 {
+		logger.Error("discover site URLs", "error", scanErr)
 		return exitRunError
 	}
 
@@ -395,6 +395,10 @@ func runDiscoverSiteURLs(ctx context.Context, args []string, cfg config.Config, 
 		return exitRunError
 	}
 
+	if scanErr != nil {
+		logger.Warn("scan incomplete: partial catalog written, re-run to continue", "count", len(links), "out", *out, "error", scanErr)
+		return exitOK
+	}
 	logger.Info("site URLs discovered", "count", len(links), "out", *out)
 	return exitOK
 }

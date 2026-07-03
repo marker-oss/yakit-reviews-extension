@@ -21,19 +21,32 @@ type ProductLink struct {
 }
 
 // DiscoverKitProductLinks crawls a Yandex Kit shop sitemap and maps each
-// product page URL to its seller article (SKU).
+// product page URL to its seller article (SKU). On context expiry the links
+// crawled so far are returned together with the context error, so callers can
+// persist partial progress instead of silently losing it.
 func DiscoverKitProductLinks(ctx context.Context, sitemapURL string, client *http.Client) ([]ProductLink, error) {
-	if client == nil {
-		client = http.DefaultClient
-	}
-	urls, err := fetchProductURLs(ctx, client, sitemapURL)
+	urls, err := FetchProductURLs(ctx, client, sitemapURL)
 	if err != nil {
 		return nil, err
 	}
+	return CrawlProductLinks(ctx, client, urls, nil)
+}
 
+// CrawlProductLinks fetches every product URL and extracts its seller article.
+// progress (optional) is called from a single goroutine after each URL is
+// processed with the number of URLs handled so far. When ctx ends early the
+// links collected so far are returned alongside ctx.Err().
+func CrawlProductLinks(ctx context.Context, client *http.Client, urls []string, progress func(done int)) ([]ProductLink, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	type crawlResult struct {
+		link ProductLink
+		err  error
+	}
 	jobs := make(chan string)
-	results := make(chan ProductLink)
-	errs := make(chan error, 1)
+	results := make(chan crawlResult)
 	var wg sync.WaitGroup
 
 	workerCount := 4
@@ -43,17 +56,11 @@ func DiscoverKitProductLinks(ctx context.Context, sitemapURL string, client *htt
 			defer wg.Done()
 			for productURL := range jobs {
 				link, err := fetchProductLink(ctx, client, productURL)
-				if err != nil {
-					select {
-					case errs <- err:
-					default:
-					}
-					continue
+				results <- crawlResult{link: link, err: err}
+				select {
+				case <-ctx.Done():
+				case <-time.After(120 * time.Millisecond):
 				}
-				if link.SellerArticle != "" {
-					results <- link
-				}
-				time.Sleep(120 * time.Millisecond)
 			}
 		}()
 	}
@@ -61,6 +68,9 @@ func DiscoverKitProductLinks(ctx context.Context, sitemapURL string, client *htt
 	go func() {
 		defer close(jobs)
 		for _, productURL := range urls {
+			if ctx.Err() != nil {
+				return
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -78,25 +88,86 @@ func DiscoverKitProductLinks(ctx context.Context, sitemapURL string, client *htt
 	// (colours/sizes) share one seller article, and the embed loader must be
 	// able to resolve ANY visited product path to its article.
 	var links []ProductLink
-	for link := range results {
+	var firstErr error
+	done := 0
+	for result := range results {
+		done++
+		if result.err != nil {
+			if firstErr == nil {
+				firstErr = result.err
+			}
+		} else if result.link.SellerArticle != "" {
+			links = append(links, result.link)
+		}
+		if progress != nil {
+			progress(done)
+		}
+	}
+
+	sortProductLinks(links)
+	if ctx.Err() != nil {
+		return links, ctx.Err()
+	}
+	if len(links) == 0 && firstErr != nil {
+		return nil, firstErr
+	}
+	return links, nil
+}
+
+// NewProductURLs returns the sitemap URLs that are not present in the known
+// (already crawled) link list, preserving sitemap order. Used for incremental
+// catalog refreshes: only newly added products are fetched.
+func NewProductURLs(sitemapURLs []string, known []ProductLink) []string {
+	seen := make(map[string]bool, len(known))
+	for _, link := range known {
+		if link.URL != "" {
+			seen[link.URL] = true
+		}
+	}
+	var fresh []string
+	for _, url := range sitemapURLs {
+		if !seen[url] {
+			fresh = append(fresh, url)
+		}
+	}
+	return fresh
+}
+
+// MergeProductLinks combines already-known links with newly crawled ones:
+// known entries whose URL is still in the sitemap are kept, crawled entries
+// win on URL collision, and URLs gone from the sitemap are pruned. The result
+// is sorted like DiscoverKitProductLinks output.
+func MergeProductLinks(known []ProductLink, sitemapURLs []string, crawled []ProductLink) []ProductLink {
+	inSitemap := make(map[string]bool, len(sitemapURLs))
+	for _, url := range sitemapURLs {
+		inSitemap[url] = true
+	}
+	byURL := make(map[string]ProductLink, len(known)+len(crawled))
+	for _, link := range known {
+		if inSitemap[link.URL] {
+			byURL[link.URL] = link
+		}
+	}
+	for _, link := range crawled {
+		if inSitemap[link.URL] {
+			byURL[link.URL] = link
+		}
+	}
+	links := make([]ProductLink, 0, len(byURL))
+	for _, link := range byURL {
 		links = append(links, link)
 	}
+	sortProductLinks(links)
+	return links
+}
 
-	select {
-	case err := <-errs:
-		if len(links) == 0 {
-			return nil, err
-		}
-	default:
-	}
-
+func sortProductLinks(links []ProductLink) {
 	sort.Slice(links, func(i, j int) bool {
 		if links[i].URL != links[j].URL {
 			return links[i].URL < links[j].URL
 		}
 		return links[i].SellerArticle < links[j].SellerArticle
 	})
-	return links, nil
 }
 
 func EncodeProductLinks(w io.Writer, links []ProductLink) error {
@@ -136,7 +207,12 @@ func ProductLinkMap(links []ProductLink) map[string]string {
 	return byArticle
 }
 
-func fetchProductURLs(ctx context.Context, client *http.Client, sitemapURL string) ([]string, error) {
+// FetchProductURLs downloads the shop sitemap and returns the product page
+// URLs (the ones containing "/products/") in sitemap order.
+func FetchProductURLs(ctx context.Context, client *http.Client, sitemapURL string) ([]string, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sitemapURL, nil)
 	if err != nil {
 		return nil, err

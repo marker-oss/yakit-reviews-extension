@@ -65,6 +65,11 @@ type Server struct {
 	// linksMu guards cfg.ProductLinks, which the refresh-products action swaps
 	// at runtime while request handlers read it.
 	linksMu sync.RWMutex
+
+	// siteLinksMu guards siteLinksJob, the status snapshot of the background
+	// catalog refresh (single job slot).
+	siteLinksMu  sync.Mutex
+	siteLinksJob siteLinksStatus
 }
 
 // productLinks returns the current article→URL map under a read lock.
@@ -184,6 +189,7 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.Handle("PUT /admin/api/settings", requireCSRF(http.HandlerFunc(s.handlePutSettings)))
 	protected.Handle("POST /admin/api/sync", requireCSRF(http.HandlerFunc(s.handleTriggerSync)))
 	protected.Handle("POST /admin/api/site-links/refresh", requireCSRF(http.HandlerFunc(s.handleRefreshSiteLinks)))
+	protected.HandleFunc("GET /admin/api/site-links/refresh", s.handleSiteLinksRefreshStatus)
 	protected.HandleFunc("GET /admin/api/showcase-rule", s.handleGetShowcaseRule)
 	protected.Handle("PUT /admin/api/showcase-rule", requireCSRF(http.HandlerFunc(s.handlePutShowcaseRule)))
 	protected.HandleFunc("GET /admin/api/widget-config/{context}", s.handleGetWidgetConfig)

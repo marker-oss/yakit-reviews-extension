@@ -18,12 +18,60 @@ const fieldLabels: Record<string, Record<string, string>> = {
 
 const defaultPublish: Record<string, boolean> = { wb: true, ym: true, ozon: false }
 
+type CatalogStatus = {
+  state: 'idle' | 'running' | 'done' | 'error'
+  total: number
+  crawled: number
+  products: number
+  articles: number
+  error?: string
+}
+
+function catalogStatusText(status: CatalogStatus | null): string {
+  if (!status) return ''
+  switch (status.state) {
+    case 'running':
+      return status.total > 0
+        ? `Обновление каталога: ${status.crawled} из ${status.total} новых товаров…`
+        : 'Обновление каталога: читаем sitemap…'
+    case 'done':
+      return `Каталог обновлён: товаров ${status.products}, артикулов с отзывами ${status.articles}`
+    case 'error':
+      return `Каталог: ${status.error ?? 'обновление не удалось'}`
+    default:
+      return ''
+  }
+}
+
 export default function Marketplaces() {
   const [items, setItems] = useState<MarketplaceStatus[]>([])
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({})
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
   const [publish, setPublish] = useState<Record<string, boolean>>(defaultPublish)
+  const [catalog, setCatalog] = useState<CatalogStatus | null>(null)
+  const [catalogPollEpoch, setCatalogPollEpoch] = useState(0)
+
+  // Poll the background catalog-refresh job while it runs; also picks up a job
+  // already started earlier (page reload, another tab).
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+    const tick = () => {
+      apiGet<CatalogStatus>('/admin/api/site-links/refresh')
+        .then((status) => {
+          if (cancelled) return
+          setCatalog(status)
+          if (status.state === 'running') timer = window.setTimeout(tick, 2000)
+        })
+        .catch(() => {})
+    }
+    tick()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [catalogPollEpoch])
 
   function load() {
     apiGet<{ marketplaces: MarketplaceStatus[] }>('/admin/api/marketplaces')
@@ -65,17 +113,22 @@ export default function Marketplaces() {
     }
   }
 
-  async function refreshCatalog() {
+  async function refreshCatalog(full = false) {
     setBusy('catalog')
     setMessage('')
     try {
-      const res = await apiWrite<{ products: number; articles: number }>('POST', '/admin/api/site-links/refresh')
-      setMessage(`Каталог обновлён: товаров ${res.products}, артикулов с отзывами ${res.articles}`)
+      await apiWrite<CatalogStatus>('POST', `/admin/api/site-links/refresh${full ? '?full=1' : ''}`)
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Запрос не выполнен')
-    } finally {
-      setBusy('')
+      // 409 «уже идёт» тоже прилетает сюда — тогда просто продолжаем опрашивать.
+      const status = await apiGet<CatalogStatus>('/admin/api/site-links/refresh').catch(() => null)
+      if (!status || status.state !== 'running') {
+        setMessage(err instanceof Error ? err.message : 'Запрос не выполнен')
+        setBusy('')
+        return
+      }
     }
+    setBusy('')
+    setCatalogPollEpoch((n) => n + 1)
   }
 
   async function save(item: MarketplaceStatus, enabled = item.enabled) {
@@ -106,10 +159,24 @@ export default function Marketplaces() {
         <button onClick={() => sync()} disabled={busy !== ''}>
           Синхронизировать всё
         </button>
-        <button className="secondary" onClick={refreshCatalog} disabled={busy !== ''} title="Перечитать sitemap магазина и обновить каталог товаров">
+        <button
+          className="secondary"
+          onClick={() => refreshCatalog()}
+          disabled={busy !== '' || catalog?.state === 'running'}
+          title="Перечитать sitemap магазина и добавить в каталог новые товары (уже известные не перечитываются)"
+        >
           Обновить каталог товаров
         </button>
+        <button
+          className="secondary"
+          onClick={() => refreshCatalog(true)}
+          disabled={busy !== '' || catalog?.state === 'running'}
+          title="Заново обойти все страницы товаров — долго, нужно только если поменялись артикулы или названия"
+        >
+          Пересканировать полностью
+        </button>
         {message && <p className="muted">{message}</p>}
+        {catalogStatusText(catalog) && <p className="muted">{catalogStatusText(catalog)}</p>}
       </div>
       <section className="panel">
         <div className="table">

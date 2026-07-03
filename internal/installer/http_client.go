@@ -17,6 +17,9 @@ type HTTPAdminClient struct {
 	client *http.Client
 	base   string
 	csrf   string
+	// pollInterval spaces out status polls for the background catalog
+	// refresh; zero means the 3s default.
+	pollInterval time.Duration
 }
 
 func NewHTTPAdminClient(baseURL string) (*HTTPAdminClient, error) {
@@ -107,8 +110,67 @@ func (c *HTTPAdminClient) SaveMarketplaceCredentials(ctx context.Context, reques
 	return c.putJSON(ctx, "/admin/api/marketplaces/"+request.ID+"/credentials", body, true)
 }
 
+// RefreshSiteLinks kicks off the background catalog crawl and waits for it to
+// finish: the endpoint returns 202 immediately, progress is exposed on the
+// same path via GET. A large catalog takes many minutes, so completion must be
+// awaited before the publish step reads the crawled links.
 func (c *HTTPAdminClient) RefreshSiteLinks(ctx context.Context) error {
-	return c.postJSON(ctx, "/admin/api/site-links/refresh", map[string]string{}, true)
+	if err := c.postJSON(ctx, "/admin/api/site-links/refresh", map[string]string{}, true); err != nil {
+		return err
+	}
+	interval := c.pollInterval
+	if interval <= 0 {
+		interval = 3 * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+		status, err := c.refreshStatus(ctx)
+		if err != nil {
+			return err
+		}
+		switch status.State {
+		case "done":
+			return nil
+		case "error":
+			if status.Error != "" {
+				return errors.New(status.Error)
+			}
+			return errors.New("catalog refresh failed")
+		}
+	}
+}
+
+func (c *HTTPAdminClient) refreshStatus(ctx context.Context) (refreshStatus, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/admin/api/site-links/refresh", nil)
+	if err != nil {
+		return refreshStatus{}, err
+	}
+	res, err := c.client.Do(req)
+	if err != nil {
+		return refreshStatus{}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return refreshStatus{}, responseError(res)
+	}
+	var status refreshStatus
+	if err := json.NewDecoder(res.Body).Decode(&status); err != nil {
+		return refreshStatus{}, err
+	}
+	return status, nil
+}
+
+type refreshStatus struct {
+	State   string `json:"state"`
+	Total   int    `json:"total"`
+	Crawled int    `json:"crawled"`
+	Error   string `json:"error"`
 }
 
 func (c *HTTPAdminClient) PublishReviews(ctx context.Context) error {

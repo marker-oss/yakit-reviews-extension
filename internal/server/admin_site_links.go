@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,36 +14,146 @@ import (
 	"reviews/internal/site"
 )
 
-// handleRefreshSiteLinks re-crawls the shop sitemap, rewrites the product-link
-// file, and regenerates the static export so newly added products are picked up
-// without using the CLI. Configured by REVIEWS_SITE_SITEMAP_URL.
+// The whole crawl gets a generous ceiling (a 4500-product shop takes about ten
+// minutes), each page fetch a short one so a hung connection cannot stall a
+// worker forever.
+const (
+	siteLinksJobTimeout    = 45 * time.Minute
+	siteLinksExportTimeout = 2 * time.Minute
+	siteLinksFetchTimeout  = 20 * time.Second
+)
+
+// siteLinksStatus is the JSON snapshot of the background catalog refresh job.
+type siteLinksStatus struct {
+	State      string     `json:"state"` // idle | running | done | error
+	Total      int        `json:"total"`
+	Crawled    int        `json:"crawled"`
+	Products   int        `json:"products"`
+	Articles   int        `json:"articles"`
+	Error      string     `json:"error,omitempty"`
+	StartedAt  *time.Time `json:"startedAt,omitempty"`
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+}
+
+func (s *Server) siteLinksSnapshot() siteLinksStatus {
+	s.siteLinksMu.Lock()
+	defer s.siteLinksMu.Unlock()
+	status := s.siteLinksJob
+	if status.State == "" {
+		status.State = "idle"
+	}
+	return status
+}
+
+func (s *Server) updateSiteLinksStatus(update func(*siteLinksStatus)) {
+	s.siteLinksMu.Lock()
+	defer s.siteLinksMu.Unlock()
+	update(&s.siteLinksJob)
+}
+
+// tryStartSiteLinksRefresh claims the single job slot; false when a refresh is
+// already running.
+func (s *Server) tryStartSiteLinksRefresh() bool {
+	s.siteLinksMu.Lock()
+	defer s.siteLinksMu.Unlock()
+	if s.siteLinksJob.State == "running" {
+		return false
+	}
+	now := time.Now().UTC()
+	s.siteLinksJob = siteLinksStatus{State: "running", StartedAt: &now}
+	return true
+}
+
+// handleRefreshSiteLinks starts a background re-crawl of the shop sitemap. The
+// crawl of a large catalog takes many minutes, so the request only kicks the
+// job off; progress is polled via handleSiteLinksRefreshStatus. By default the
+// crawl is incremental (only URLs missing from the persisted product-link
+// list); ?full=1 re-crawls everything.
 func (s *Server) handleRefreshSiteLinks(w http.ResponseWriter, r *http.Request) {
 	sitemapURL := s.effectiveSitemapURL(r.Context())
 	if sitemapURL == "" {
 		writeError(w, http.StatusBadRequest, errors.New("укажите адрес магазина или sitemap в Настройках, чтобы обновлять каталог товаров"))
 		return
 	}
+	full := r.URL.Query().Get("full") == "1" || r.URL.Query().Get("full") == "true"
 
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	if !s.tryStartSiteLinksRefresh() {
+		writeJSON(w, http.StatusConflict, s.siteLinksSnapshot())
+		return
+	}
+	go s.runSiteLinksRefresh(sitemapURL, full)
+	writeJSON(w, http.StatusAccepted, s.siteLinksSnapshot())
+}
+
+func (s *Server) handleSiteLinksRefreshStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.siteLinksSnapshot())
+}
+
+func (s *Server) runSiteLinksRefresh(sitemapURL string, full bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), siteLinksJobTimeout)
 	defer cancel()
+	client := &http.Client{Timeout: siteLinksFetchTimeout}
 
-	links, err := site.DiscoverKitProductLinks(ctx, sitemapURL, nil)
+	fail := func(err error) {
+		now := time.Now().UTC()
+		s.updateSiteLinksStatus(func(status *siteLinksStatus) {
+			status.State = "error"
+			status.Error = err.Error()
+			status.FinishedAt = &now
+		})
+		s.logger.Error("site links refresh failed", "error", err)
+	}
+
+	sitemapURLs, err := site.FetchProductURLs(ctx, client, sitemapURL)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		fail(fmt.Errorf("не удалось прочитать sitemap: %w", err))
 		return
 	}
 
-	products, articles, err := s.regenerateSiteData(ctx, links)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+	var known []site.ProductLink
+	if !full {
+		if known, err = s.productCatalogLinks(); err != nil {
+			fail(err)
+			return
+		}
 	}
+	todo := site.NewProductURLs(sitemapURLs, known)
+	s.updateSiteLinksStatus(func(status *siteLinksStatus) { status.Total = len(todo) })
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status":   "ok",
-		"products": products,
-		"articles": articles,
+	crawled, crawlErr := site.CrawlProductLinks(ctx, client, todo, func(done int) {
+		s.updateSiteLinksStatus(func(status *siteLinksStatus) { status.Crawled = done })
 	})
+	if crawlErr != nil && len(crawled) == 0 && len(todo) > 0 {
+		fail(fmt.Errorf("обход каталога не удался: %w", crawlErr))
+		return
+	}
+
+	merged := site.MergeProductLinks(known, sitemapURLs, crawled)
+
+	// The crawl may have consumed the whole job budget; persisting and
+	// regenerating the export must still succeed, so they run on a fresh
+	// context.
+	exportCtx, cancelExport := context.WithTimeout(context.Background(), siteLinksExportTimeout)
+	defer cancelExport()
+	products, articles, err := s.regenerateSiteData(exportCtx, merged)
+	if err != nil {
+		fail(err)
+		return
+	}
+
+	now := time.Now().UTC()
+	s.updateSiteLinksStatus(func(status *siteLinksStatus) {
+		status.Products = products
+		status.Articles = articles
+		status.FinishedAt = &now
+		if crawlErr != nil {
+			status.State = "error"
+			status.Error = fmt.Sprintf("успели обойти %d из %d новых товаров — каталог сохранён частично, запустите обновление ещё раз, обход продолжится с этого места (%v)", status.Crawled, status.Total, crawlErr)
+		} else {
+			status.State = "done"
+		}
+	})
+	s.logger.Info("site links refreshed", "products", products, "articles", articles, "crawled", len(crawled), "new_urls", len(todo))
 }
 
 // regenerateSiteData persists the crawled product links, swaps the in-memory
