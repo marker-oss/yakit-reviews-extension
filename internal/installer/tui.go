@@ -108,6 +108,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.buildInputs()
 			return m, nil
 		}
+		if m.page == pageReview && (msg.String() == "u" || msg.String() == "U") {
+			m.cfg.Deploy.AutoUpdate = !m.cfg.Deploy.AutoUpdate
+			return m, nil
+		}
 		if m.page == pageReview && msg.String() == "enter" {
 			if err := m.cfg.Validate(); err != nil {
 				m.err = err.Error()
@@ -393,7 +397,7 @@ func (m model) View() string {
 		m.saveInputs()
 		b.WriteString("Review\n\n")
 		b.WriteString(MaskedSummary(m.cfg) + "\n\n")
-		b.WriteString("Press Enter to install. Press Esc/Ctrl+C to quit.\n")
+		b.WriteString("Press Enter to install. Press [u] to toggle auto-updates. Press Esc/Ctrl+C to quit.\n")
 	case pageConsent:
 		b.WriteString("Подтвердите перед установкой:\n")
 		b.WriteString("  • Я имею право переопубликовывать отзывы со своих карточек товаров.\n")

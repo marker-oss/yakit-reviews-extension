@@ -617,8 +617,28 @@ git pull && docker compose up -d --build
 # Бинарник без Docker: скачать новый файл со страницы releases и перезапустить.
 ```
 
-О новых версиях: нажмите **Watch → Custom → Releases** на GitHub-странице
-проекта — придёт уведомление на почту.
+О новых версиях: админка сама показывает баннер «Доступна новая версия»
+(проверка раз в сутки; отключается `REVIEWS_UPDATE_CHECK=false` в `.env`).
+Дополнительно можно нажать **Watch → Custom → Releases** на GitHub-странице
+проекта — придёт уведомление на почту. Текущую версию показывает команда
+`reviews version`.
+
+**Автообновления (опционально).** Мастер установки включает их по умолчанию
+(на странице Review отключаются клавишей `u`): systemd-таймер раз в сутки
+(~04:00 + случайная задержка) запускает `/usr/local/bin/reviews-auto-update` —
+скрипт скачивает новый образ, перезапускает сервис только если образ изменился,
+ждёт `healthz` и **автоматически откатывается** на предыдущую версию, если
+сервис не поднялся. Выключить: `systemctl disable --now reviews-update.timer`;
+журнал: `journalctl -u reviews-update.service`.
+
+Для ручной установки то же самое ставится тремя файлами из
+[deploy/](deploy/): скопируйте `auto-update.sh` в
+`/usr/local/bin/reviews-auto-update` (chmod +x), `reviews-update.service` и
+`reviews-update.timer` в `/etc/systemd/system/` (поправьте
+`REVIEWS_COMPOSE_DIR` на каталог с `docker-compose.yml`), затем
+`systemctl daemon-reload && systemctl enable --now reviews-update.timer`.
+Работает для установки с GHCR-образом; при сборке из исходников обновляйтесь
+вручную через `git pull`.
 
 **Бэкап БД (SQLite):**
 ```sh

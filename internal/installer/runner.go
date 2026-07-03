@@ -172,6 +172,23 @@ func Run(ctx context.Context, cfg Config, exec Executor, resolver Resolver, admi
 	}); err != nil {
 		return err
 	}
+	if cfg.Deploy.AutoUpdate {
+		if err := step("Enable auto-updates", func() error {
+			if err := exec.WriteFile(ctx, "/usr/local/bin/reviews-auto-update", RenderAutoUpdateScript(), "0755", true); err != nil {
+				return err
+			}
+			if err := exec.WriteFile(ctx, "/etc/systemd/system/reviews-update.service", RenderAutoUpdateService(cfg), "0644", true); err != nil {
+				return err
+			}
+			if err := exec.WriteFile(ctx, "/etc/systemd/system/reviews-update.timer", RenderAutoUpdateTimer(), "0644", true); err != nil {
+				return err
+			}
+			_, err := exec.Run(ctx, "systemctl daemon-reload && systemctl enable --now reviews-update.timer", true)
+			return err
+		}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

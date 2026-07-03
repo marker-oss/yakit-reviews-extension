@@ -110,6 +110,52 @@ func TestRunHappyPath(t *testing.T) {
 	}
 }
 
+func TestRunEnablesAutoUpdates(t *testing.T) {
+	cfg := validConfig()
+	cfg.Deploy.AutoUpdate = true
+	exec := &fakeExecutor{osBody: "ID=ubuntu\n"}
+	err := Run(context.Background(), cfg, exec, fakeResolver{
+		"reviews.example.com": {net.ParseIP("203.0.113.10")},
+	}, &fakeAdmin{}, nil)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	script := exec.writes["/usr/local/bin/reviews-auto-update"]
+	if !strings.Contains(script, "docker compose pull") || !strings.Contains(script, "rolling back") {
+		t.Fatalf("auto-update script missing pull/rollback logic:\n%s", script)
+	}
+	service := exec.writes["/etc/systemd/system/reviews-update.service"]
+	if !strings.Contains(service, "REVIEWS_COMPOSE_DIR="+cfg.Deploy.SourceDir) {
+		t.Fatalf("service unit must point at the compose dir:\n%s", service)
+	}
+	timer := exec.writes["/etc/systemd/system/reviews-update.timer"]
+	if !strings.Contains(timer, "OnCalendar") || !strings.Contains(timer, "RandomizedDelaySec") {
+		t.Fatalf("timer unit missing schedule/jitter:\n%s", timer)
+	}
+	if !containsCommand(exec.calls, "systemctl enable --now reviews-update.timer") {
+		t.Fatalf("timer was not enabled: %+v", exec.calls)
+	}
+}
+
+func TestRunSkipsAutoUpdatesWhenDisabled(t *testing.T) {
+	cfg := validConfig()
+	cfg.Deploy.AutoUpdate = false
+	exec := &fakeExecutor{osBody: "ID=ubuntu\n"}
+	err := Run(context.Background(), cfg, exec, fakeResolver{
+		"reviews.example.com": {net.ParseIP("203.0.113.10")},
+	}, &fakeAdmin{}, nil)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if _, ok := exec.writes["/etc/systemd/system/reviews-update.timer"]; ok {
+		t.Fatalf("timer written despite AutoUpdate=false")
+	}
+	if containsCommand(exec.calls, "reviews-update.timer") {
+		t.Fatalf("timer enabled despite AutoUpdate=false: %+v", exec.calls)
+	}
+}
+
 func TestRunFailsUnsupportedOS(t *testing.T) {
 	cfg := validConfig()
 	exec := &fakeExecutor{osBody: "ID=fedora\n"}

@@ -87,6 +87,9 @@ type DeployConfig struct {
 	DeployRef string
 	SourceDir string
 	Image     string
+	// AutoUpdate installs a daily systemd timer that pulls the fresh image,
+	// health-checks the restarted service and rolls back on failure.
+	AutoUpdate bool
 }
 
 func DefaultConfig() Config {
@@ -104,10 +107,11 @@ func DefaultConfig() Config {
 			Login: "admin",
 		},
 		Deploy: DeployConfig{
-			RepoURL:   DefaultRepoURL,
-			DeployRef: DefaultDeployRef,
-			SourceDir: DefaultSourceDir,
-			Image:     DefaultImage,
+			RepoURL:    DefaultRepoURL,
+			DeployRef:  DefaultDeployRef,
+			SourceDir:  DefaultSourceDir,
+			Image:      DefaultImage,
+			AutoUpdate: true,
 		},
 	}
 }

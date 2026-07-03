@@ -58,6 +58,99 @@ func RenderCaddyfile(cfg Config) string {
 `, cfg.Domains.ReviewsDomain)
 }
 
+// autoUpdateScript is the safe daily updater installed to
+// /usr/local/bin/reviews-auto-update: pull the fresh image, restart only if it
+// changed, wait for /healthz and roll back to the previous image on failure.
+// A standalone copy for manual installs lives in deploy/auto-update.sh — keep
+// them in sync.
+const autoUpdateScript = `#!/bin/sh
+# Reviews auto-update: pull new image, health-check, roll back on failure.
+# Installed by the Reviews installer; run daily by reviews-update.timer.
+set -eu
+
+DIR="${REVIEWS_COMPOSE_DIR:-/srv/reviews-src}"
+SERVICE="${REVIEWS_SERVICE:-reviews}"
+HEALTH_URL="${REVIEWS_HEALTH_URL:-http://127.0.0.1:8080/healthz}"
+
+cd "$DIR"
+
+exec 9>/var/lock/reviews-auto-update.lock
+if ! flock -n 9; then
+    echo "another update run is in progress, exiting"
+    exit 0
+fi
+
+container="$(docker compose ps -q "$SERVICE")"
+if [ -z "$container" ]; then
+    echo "service $SERVICE is not running, skipping update"
+    exit 0
+fi
+old_image="$(docker inspect --format '{{.Image}}' "$container")"
+image_ref="$(docker inspect --format '{{.Config.Image}}' "$container")"
+
+docker compose pull --quiet "$SERVICE"
+new_image="$(docker image inspect --format '{{.Id}}' "$image_ref")"
+
+if [ "$old_image" = "$new_image" ]; then
+    echo "already up to date ($image_ref)"
+    exit 0
+fi
+
+echo "updating $image_ref"
+docker compose up -d "$SERVICE"
+
+healthy=0
+for _ in $(seq 1 12); do
+    sleep 5
+    if curl -fsS --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
+        healthy=1
+        break
+    fi
+done
+
+if [ "$healthy" = 1 ]; then
+    echo "update ok: $image_ref is healthy"
+    docker image prune -f >/dev/null 2>&1 || true
+    exit 0
+fi
+
+echo "update failed: $HEALTH_URL did not come up, rolling back"
+docker tag "$old_image" "$image_ref"
+docker compose up -d --pull never "$SERVICE"
+exit 1
+`
+
+func RenderAutoUpdateScript() string {
+	return autoUpdateScript
+}
+
+func RenderAutoUpdateService(cfg Config) string {
+	return fmt.Sprintf(`[Unit]
+Description=Reviews auto-update (pull new image, health-check, rollback)
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+Environment=REVIEWS_COMPOSE_DIR=%s
+ExecStart=/usr/local/bin/reviews-auto-update
+`, cfg.Deploy.SourceDir)
+}
+
+func RenderAutoUpdateTimer() string {
+	return `[Unit]
+Description=Daily Reviews auto-update
+
+[Timer]
+OnCalendar=*-*-* 04:00
+RandomizedDelaySec=45m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+`
+}
+
 func shellEnvValue(value string) string {
 	if value == "" {
 		return ""
@@ -144,8 +237,12 @@ func MaskedSummary(cfg Config) string {
 	if len(marketplaces) == 0 {
 		marketplaces = append(marketplaces, "none")
 	}
+	autoUpdate := "off"
+	if cfg.Deploy.AutoUpdate {
+		autoUpdate = "daily (health-checked, auto-rollback)"
+	}
 	return fmt.Sprintf(
-		"Server: %s@%s:%d\nReviews domain: %s\nShop origin: %s\nAdmin login: %s\nMarketplaces: %s\nRepo: %s@%s",
+		"Server: %s@%s:%d\nReviews domain: %s\nShop origin: %s\nAdmin login: %s\nMarketplaces: %s\nAuto-updates: %s\nRepo: %s@%s",
 		cfg.Server.User,
 		cfg.Server.Host,
 		cfg.Server.Port,
@@ -153,6 +250,7 @@ func MaskedSummary(cfg Config) string {
 		cfg.Domains.ShopOrigin,
 		cfg.Admin.Login,
 		strings.Join(marketplaces, ", "),
+		autoUpdate,
 		cfg.Deploy.RepoURL,
 		cfg.Deploy.DeployRef,
 	)
