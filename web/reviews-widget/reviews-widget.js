@@ -27,6 +27,9 @@
       pageSize: 3,
       pagination: "more",
     },
+    header: {
+      title: "Отзывы покупателей",
+    },
     visibility: {
       photos: true,
       sellerAnswers: true,
@@ -247,7 +250,7 @@
     root.__reviewsProxyBase = proxyBase;
     root.classList.toggle("rw-context-homepage", state.context === "homepage");
     root.classList.toggle("rw-is-expanded", state.expanded);
-    root.appendChild(renderShell(options.productName || "Отзывы покупательниц", config));
+    root.appendChild(renderShell(options.productName || config.header.title, config));
     bind(root, state);
     render(root, state);
 
@@ -1330,11 +1333,13 @@
       theme: { ...defaultConfig.theme, ...(config.theme || {}) },
       typography: { ...defaultConfig.typography, ...(config.typography || {}) },
       layout: { ...defaultConfig.layout, ...(config.layout || {}) },
+      header: { ...defaultConfig.header, ...(config.header || {}) },
       visibility: { ...defaultConfig.visibility, ...(config.visibility || {}) },
       defaults: { ...defaultConfig.defaults, ...(config.defaults || {}) },
       ranking: Array.isArray(config.ranking) && config.ranking.length ? config.ranking : defaultConfig.ranking,
       marketplacePolicy: normalizeMarketplacePolicy(config.marketplacePolicy),
     };
+    merged.header.title = String(merged.header.title || "").trim() || defaultConfig.header.title;
     merged.typography.scale = clampNumber(merged.typography.scale, 0.85, 1.25, 1);
     merged.typography.radius = clampNumber(merged.typography.radius, 0, 24, 8);
     merged.layout.columns = Math.round(clampNumber(merged.layout.columns, 1, 4, 2));

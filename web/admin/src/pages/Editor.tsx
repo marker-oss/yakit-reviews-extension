@@ -88,6 +88,10 @@ export default function Editor() {
     setCfg({ ...cfg, layout: { ...cfg.layout, [key]: value } })
   }
 
+  function setHeader<K extends keyof WidgetConfig['header']>(key: K, value: WidgetConfig['header'][K]) {
+    setCfg({ ...cfg, header: { ...cfg.header, [key]: value } })
+  }
+
   function setVisibility<K extends keyof WidgetConfig['visibility']>(key: K, value: WidgetConfig['visibility'][K]) {
     setCfg({ ...cfg, visibility: { ...cfg.visibility, [key]: value } })
   }
@@ -131,6 +135,15 @@ export default function Editor() {
         </div>
 
         <section className="panel form-grid">
+          <label>
+            <span>Заголовок</span>
+            <input
+              type="text"
+              value={cfg.header.title}
+              placeholder={defaultWidgetConfig.header.title}
+              onChange={(e) => setHeader('title', e.target.value)}
+            />
+          </label>
           <ColorField label="Акцент" value={cfg.theme.accent} onChange={(value) => setTheme('accent', value)} />
           <ColorField label="Текст" value={cfg.theme.text} onChange={(value) => setTheme('text', value)} />
           <ColorField label="Фон" value={cfg.theme.panel} onChange={(value) => setTheme('panel', value)} />

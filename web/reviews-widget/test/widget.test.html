@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>widget unit tests</title>
+<pre id="out"></pre>
+<script src="../reviews-widget.js"></script>
+<script>
+  var out = document.getElementById("out");
+  var pass = 0;
+  var fail = 0;
+
+  function eq(name, got, want) {
+    var ok = JSON.stringify(got) === JSON.stringify(want);
+    out.textContent +=
+      (ok ? "PASS " : "FAIL ") +
+      name +
+      (ok ? "" : " got=" + JSON.stringify(got) + " want=" + JSON.stringify(want)) +
+      "\n";
+    if (ok) {
+      pass++;
+    } else {
+      fail++;
+    }
+  }
+
+  function mountTitle(options) {
+    var host = document.createElement("div");
+    document.body.appendChild(host);
+    ReviewsWidget.mount(host, options || {});
+    var title = host.querySelector(".rw-dist-title");
+    var text = title ? title.textContent : null;
+    host.remove();
+    return text;
+  }
+
+  // Heading: neutral configurable default instead of the legacy hardcode.
+  eq("default heading is neutral", mountTitle({ reviews: [] }), "Отзывы покупателей");
+  eq("config header.title overrides default", mountTitle({ reviews: [], config: { header: { title: "Отзывы о ковриках" } } }), "Отзывы о ковриках");
+  eq("header.title is trimmed", mountTitle({ reviews: [], config: { header: { title: "  Наши отзывы  " } } }), "Наши отзывы");
+  eq("blank header.title falls back to default", mountTitle({ reviews: [], config: { header: { title: "   " } } }), "Отзывы покупателей");
+  eq("productName wins over default", mountTitle({ reviews: [], productName: "Платье летнее" }), "Платье летнее");
+  eq("productName wins over config title", mountTitle({ reviews: [], productName: "Платье летнее", config: { header: { title: "Отзывы о ковриках" } } }), "Платье летнее");
+
+  out.textContent += "\n" + pass + " passed, " + fail + " failed\n";
+  document.title = fail === 0 ? "ALL PASS" : "FAIL";
+</script>

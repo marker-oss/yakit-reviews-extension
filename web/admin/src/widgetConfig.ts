@@ -28,6 +28,9 @@ export type WidgetConfig = {
     pageSize: number
     pagination: 'more' | 'pages'
   }
+  header: {
+    title: string
+  }
   visibility: {
     photos: boolean
     sellerAnswers: boolean
@@ -75,6 +78,9 @@ export const defaultWidgetConfig: WidgetConfig = {
     pageSize: 3,
     pagination: 'more',
   },
+  header: {
+    title: 'Отзывы покупателей',
+  },
   visibility: {
     photos: true,
     sellerAnswers: true,
@@ -112,6 +118,7 @@ export function mergeWidgetConfig(value: Partial<WidgetConfig>): WidgetConfig {
     theme: { ...defaultWidgetConfig.theme, ...(value.theme ?? {}) },
     typography: { ...defaultWidgetConfig.typography, ...(value.typography ?? {}) },
     layout: { ...defaultWidgetConfig.layout, ...(value.layout ?? {}) },
+    header: { ...defaultWidgetConfig.header, ...(value.header ?? {}) },
     visibility: { ...defaultWidgetConfig.visibility, ...(value.visibility ?? {}) },
     defaults: { ...defaultWidgetConfig.defaults, ...(value.defaults ?? {}) },
     ranking: value.ranking?.length ? value.ranking : defaultWidgetConfig.ranking,
