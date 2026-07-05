@@ -33,6 +33,12 @@ func TestRenderComposeAndCaddy(t *testing.T) {
 	if !strings.Contains(compose, `"127.0.0.1:8080:8080"`) {
 		t.Fatalf("compose should bind app port to localhost:\n%s", compose)
 	}
+	// Without !override compose MERGES the base file's 0.0.0.0:8080 with the
+	// override's 127.0.0.1:8080 and the container fails to start on vanilla
+	// docker.io ("address already in use") — seen on a customer server.
+	if !strings.Contains(compose, "ports: !override") {
+		t.Fatalf("compose must replace (not merge) the base ports list:\n%s", compose)
+	}
 	if !strings.Contains(compose, "image: "+cfg.Deploy.Image) {
 		t.Fatalf("compose should pin the prebuilt image:\n%s", compose)
 	}

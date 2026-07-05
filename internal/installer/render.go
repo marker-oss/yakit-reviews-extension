@@ -40,12 +40,15 @@ func RenderEnv(cfg Config) string {
 // VPS pulls it instead of compiling from source, and binds the app port to
 // localhost (Caddy terminates TLS in front of it).
 func RenderComposeOverride(cfg Config) string {
+	// ports needs !override: compose otherwise MERGES this list with the base
+	// file's 0.0.0.0:8080 entry and the container self-conflicts at bind time
+	// ("address already in use") on vanilla docker.io engines.
 	return fmt.Sprintf(strings.TrimSpace(`
 services:
   reviews:
     image: %s
     pull_policy: always
-    ports:
+    ports: !override
       - "127.0.0.1:8080:8080"
 `), cfg.Deploy.Image) + "\n"
 }

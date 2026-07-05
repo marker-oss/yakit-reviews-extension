@@ -13,6 +13,11 @@ services:
       REVIEWS_SITE_PRODUCT_LINKS: /data/product-links.json
     volumes:
       - reviews-data:/data
+      # Published reviews-data export: must outlive container recreation
+      # (auto-updates), otherwise the widget loses its data until the next
+      # manual «Опубликовать».
+      - reviews-exports:/app/web/reviews-widget/reviews-data
 
 volumes:
   reviews-data:
+  reviews-exports:

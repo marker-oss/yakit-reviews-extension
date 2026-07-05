@@ -26,7 +26,7 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
     -o /out/reviews ./cmd/reviews
-RUN mkdir -p /out/data
+RUN mkdir -p /out/data /out/reviews-data
 
 # ---- final ----
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -36,6 +36,10 @@ WORKDIR /app
 COPY --from=builder /src/web/reviews-widget ./web/reviews-widget
 COPY --from=builder /out/reviews /usr/local/bin/reviews
 COPY --from=builder --chown=nonroot:nonroot /out/data /data
+# Published reviews-data export lives here; owned by nonroot so the named
+# volume mounted over it (docker-compose.yml) initializes writable and the
+# export survives container recreation (auto-updates).
+COPY --from=builder --chown=nonroot:nonroot /out/reviews-data ./web/reviews-widget/reviews-data
 
 # SQLite database lives on a mounted volume.
 ENV REVIEWS_DB_DSN=/data/reviews.db
