@@ -198,6 +198,7 @@ export default function Marketplaces() {
                 <span className={item.configured ? 'status-ok' : 'status-warn'}>
                   {item.configured ? 'настроены' : 'нет'}
                 </span>
+                {item.warning && <p className="status-warn">{item.warning}</p>}
                 <button className="secondary" onClick={() => sync(item.id)} disabled={busy !== '' || !item.enabled}>
                   Запуск
                 </button>

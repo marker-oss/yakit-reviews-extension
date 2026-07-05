@@ -408,6 +408,13 @@ func (c *Client) ProductArticles(ctx context.Context) (map[string]string, error)
 	}
 }
 
+// CheckProductsAccess verifies the Api-Key can list the seller's products —
+// the role the review→article mapping needs. One cheap page call.
+func (c *Client) CheckProductsAccess(ctx context.Context) error {
+	_, err := c.fetchProductPage(ctx, "")
+	return err
+}
+
 // cachedProductArticles memoizes the product map so a paged review sync does
 // not re-list the catalog on every page. A failed listing (typically an
 // Api-Key without the products role) degrades to an empty map: seller

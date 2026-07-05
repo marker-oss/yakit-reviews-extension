@@ -15,6 +15,9 @@ type MarketplaceStatus struct {
 	Enabled    bool            `json:"enabled"`
 	Configured bool            `json:"configured"`
 	Fields     map[string]bool `json:"fields,omitempty"`
+	// Warning surfaces marketplace-specific misconfiguration the seller must
+	// fix themselves (e.g. an Ozon Api-Key without the products role).
+	Warning string `json:"warning,omitempty"`
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +85,10 @@ func (s *Server) handleSaveMarketplaceCredentials(w http.ResponseWriter, r *http
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	if id == "ozon" {
+		// New credentials must re-probe immediately, not after the cache TTL.
+		s.invalidateOzonProbe()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"marketplace": statusFromCredential(id, cred)})
 }
 
@@ -106,7 +113,11 @@ func (s *Server) marketplaceStatuses(r *http.Request) []MarketplaceStatus {
 
 	items := make([]MarketplaceStatus, 0, len(order))
 	for _, id := range order {
-		items = append(items, byID[id])
+		item := byID[id]
+		if item.ID == "ozon" && item.Enabled && item.Configured {
+			item.Warning = s.ozonProductsWarning(r.Context())
+		}
+		items = append(items, item)
 	}
 	return items
 }

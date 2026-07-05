@@ -57,6 +57,11 @@ type Config struct {
 	// LatestReleaseURL is the JSON feed of the newest release (GitHub
 	// releases/latest API). Empty disables the update check.
 	LatestReleaseURL string
+	// OzonProductsProbe checks whether the current Ozon credentials can list
+	// products (the role review→article mapping needs). nil disables the
+	// admin-panel warning; the closure must use the effective (DB-overlaid)
+	// credentials at call time.
+	OzonProductsProbe func(ctx context.Context) error
 }
 
 type Server struct {
@@ -86,6 +91,12 @@ type Server struct {
 	versionMu        sync.Mutex
 	versionCache     latestRelease
 	versionCheckedAt time.Time
+
+	// ozonProbeMu guards the cached Ozon products-role probe result shown as a
+	// warning on the admin Marketplaces page.
+	ozonProbeMu      sync.Mutex
+	ozonProbeAt      time.Time
+	ozonProbeWarning string
 }
 
 // productLinks returns the current article→URL map under a read lock.

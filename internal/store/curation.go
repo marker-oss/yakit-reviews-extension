@@ -12,15 +12,15 @@ import (
 )
 
 func (s *Store) SetReviewVisibility(ctx context.Context, id uint, visibility string) error {
-	return s.db.WithContext(ctx).Model(&Review{}).
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).Model(&Review{}).
 		Where("id = ?", id).
-		Update("visibility", visibility).Error
+		Update("visibility", visibility).Error)
 }
 
 func (s *Store) SetReviewPinned(ctx context.Context, id uint, pinned bool) error {
-	return s.db.WithContext(ctx).Model(&Review{}).
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).Model(&Review{}).
 		Where("id = ?", id).
-		Update("pinned", pinned).Error
+		Update("pinned", pinned).Error)
 }
 
 // SetReviewsVisibility updates visibility for every id in one statement. An
@@ -29,9 +29,9 @@ func (s *Store) SetReviewsVisibility(ctx context.Context, ids []uint, visibility
 	if len(ids) == 0 {
 		return nil
 	}
-	return s.db.WithContext(ctx).Model(&Review{}).
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).Model(&Review{}).
 		Where("id IN ?", ids).
-		Update("visibility", visibility).Error
+		Update("visibility", visibility).Error)
 }
 
 // SetReviewsPinned updates the pinned flag for every id in one statement. An
@@ -40,30 +40,30 @@ func (s *Store) SetReviewsPinned(ctx context.Context, ids []uint, pinned bool) e
 	if len(ids) == 0 {
 		return nil
 	}
-	return s.db.WithContext(ctx).Model(&Review{}).
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).Model(&Review{}).
 		Where("id IN ?", ids).
-		Update("pinned", pinned).Error
+		Update("pinned", pinned).Error)
 }
 
 func (s *Store) SoftDeleteReview(ctx context.Context, id uint) error {
-	return s.db.WithContext(ctx).Model(&Review{}).
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).Model(&Review{}).
 		Where("id = ?", id).
-		Update("status", "deleted").Error
+		Update("status", "deleted").Error)
 }
 
 func (s *Store) RestoreReview(ctx context.Context, id uint) error {
-	return s.db.WithContext(ctx).Model(&Review{}).
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).Model(&Review{}).
 		Where("id = ?", id).
-		Update("status", "imported").Error
+		Update("status", "imported").Error)
 }
 
 func (s *Store) SetReviewsStatus(ctx context.Context, ids []uint, status string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return s.db.WithContext(ctx).Model(&Review{}).
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).Model(&Review{}).
 		Where("id IN ?", ids).
-		Update("status", status).Error
+		Update("status", status).Error)
 }
 
 func (s *Store) SetReviewReply(ctx context.Context, id uint, text *string) error {
@@ -80,9 +80,9 @@ func (s *Store) SetReviewReply(ctx context.Context, id uint, text *string) error
 		updates["admin_reply_text"] = value
 		updates["admin_reply_at"] = now
 	}
-	return s.db.WithContext(ctx).Model(&Review{}).
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).Model(&Review{}).
 		Where("id = ?", id).
-		Updates(updates).Error
+		Updates(updates).Error)
 }
 
 // ListReviewsWithCount returns a page of reviews plus the total matching count
@@ -228,10 +228,10 @@ func (s *Store) SaveShowcaseRule(ctx context.Context, rule ShowcaseRule) error {
 	if rule.Limit <= 0 {
 		rule.Limit = 12
 	}
-	return s.db.WithContext(ctx).
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).
 		Where("tenant_id = ?", DefaultTenantID).
 		Assign(rule).
-		FirstOrCreate(&rule).Error
+		FirstOrCreate(&rule).Error)
 }
 
 func (s *Store) ShowcaseReviews(ctx context.Context, rule ShowcaseRule) ([]Review, error) {
@@ -290,18 +290,18 @@ func (s *Store) SetShowcasePin(ctx context.Context, article string, reviewID uin
 		ReviewID:      reviewID,
 		Position:      position,
 	}
-	return s.db.WithContext(ctx).Clauses(clause.OnConflict{
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{
 			{Name: "tenant_id"},
 			{Name: "seller_article"},
 			{Name: "review_id"},
 		},
 		DoUpdates: clause.AssignmentColumns([]string{"position"}),
-	}).Create(&pin).Error
+	}).Create(&pin).Error)
 }
 
 func (s *Store) ReplaceShowcasePins(ctx context.Context, article string, reviewIDs []uint) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("tenant_id = ? AND seller_article = ?", DefaultTenantID, article).
 			Delete(&ShowcasePin{}).Error; err != nil {
 			return err
@@ -318,13 +318,13 @@ func (s *Store) ReplaceShowcasePins(ctx context.Context, article string, reviewI
 			}
 		}
 		return nil
-	})
+	}))
 }
 
 func (s *Store) RemoveShowcasePin(ctx context.Context, article string, reviewID uint) error {
-	return s.db.WithContext(ctx).
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).
 		Where("tenant_id = ? AND seller_article = ? AND review_id = ?", DefaultTenantID, article, reviewID).
-		Delete(&ShowcasePin{}).Error
+		Delete(&ShowcasePin{}).Error)
 }
 
 func (s *Store) AllShowcasePins(ctx context.Context) (map[string][]uint, error) {
@@ -374,6 +374,7 @@ func (s *Store) HardDeleteReview(ctx context.Context, id uint) error {
 	for _, path := range paths {
 		_ = os.Remove(path)
 	}
+	s.markExportDirtyBestEffort(ctx)
 	return nil
 }
 
@@ -399,6 +400,9 @@ func (s *Store) RemapSellerArticles(ctx context.Context, marketplaceID string, a
 	})
 	if err != nil {
 		return 0, err
+	}
+	if total > 0 {
+		s.markExportDirtyBestEffort(ctx)
 	}
 	return total, nil
 }

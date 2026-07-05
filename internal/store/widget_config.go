@@ -43,6 +43,11 @@ func (s *Store) PublishWidgetConfig(ctx context.Context, widgetContext, payload 
 		}
 		return tx.Create(&created).Error
 	})
+	// The active config feeds the static export (marketplace policy), so a new
+	// version makes the published data stale.
+	if err == nil {
+		s.markExportDirtyBestEffort(ctx)
+	}
 	return created, err
 }
 
@@ -56,7 +61,7 @@ func (s *Store) ListWidgetConfigVersions(ctx context.Context, widgetContext stri
 }
 
 func (s *Store) SetActiveWidgetConfigVersion(ctx context.Context, widgetContext string, version int) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return s.dirtyOnSuccess(ctx, s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var cfg WidgetConfig
 		if err := tx.Where("tenant_id = ? AND context = ? AND version = ?", DefaultTenantID, widgetContext, version).
 			First(&cfg).Error; err != nil {
@@ -71,5 +76,5 @@ func (s *Store) SetActiveWidgetConfigVersion(ctx context.Context, widgetContext 
 			return err
 		}
 		return tx.Model(&WidgetConfig{}).Where("id = ?", cfg.ID).Update("active", true).Error
-	})
+	}))
 }

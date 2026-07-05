@@ -44,6 +44,7 @@ export type MarketplaceStatus = {
   enabled: boolean
   configured: boolean
   fields?: Record<string, boolean>
+  warning?: string
 }
 
 export type Question = {

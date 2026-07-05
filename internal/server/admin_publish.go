@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,44 +12,61 @@ import (
 	"reviews/internal/site"
 )
 
-func (s *Server) handlePublishReviewsData(w http.ResponseWriter, r *http.Request) {
-	reviews, err := s.store.ListVisibleReviews(r.Context())
+type publishResult struct {
+	GeneratedAt time.Time
+	Articles    int
+	Reviews     int
+}
+
+// publishReviewsData regenerates the static reviews-data export. Shared by
+// the admin «Опубликовать» handler and the auto-publish loop.
+func (s *Server) publishReviewsData(ctx context.Context) (publishResult, error) {
+	reviews, err := s.store.ListVisibleReviews(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		return publishResult{}, err
 	}
-	pins, err := s.store.AllShowcasePins(r.Context())
+	pins, err := s.store.AllShowcasePins(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		return publishResult{}, err
 	}
 	mapper := reviewjson.Mapper{
 		ProductURLTemplate: s.cfg.ProductURLTemplate,
 		ProductLinks:       s.productLinks(),
-		MarketplacePolicy:  s.activeMarketplacePolicy(r.Context(), "product"),
+		MarketplacePolicy:  s.activeMarketplacePolicy(ctx, "product"),
 	}
 	bundles := staticexport.BuildBundles(reviews, mapper, pins)
 	generatedAt := time.Now().UTC()
 	outDir := filepath.Join(s.cfg.StaticDir, "reviews-data")
 	if err := staticexport.Write(outDir, bundles, generatedAt); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		return publishResult{}, err
 	}
 	if links, err := s.productCatalogLinks(); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		return publishResult{}, err
 	} else if len(links) > 0 {
 		linkIndex := staticexport.BuildLinkIndex(links, generatedAt)
 		if err := staticexport.WriteLinks(outDir, linkIndex); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+			return publishResult{}, err
 		}
+	}
+	return publishResult{GeneratedAt: generatedAt, Articles: len(bundles), Reviews: len(reviews)}, nil
+}
+
+func (s *Server) handlePublishReviewsData(w http.ResponseWriter, r *http.Request) {
+	result, err := s.publishReviewsData(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	// A manual publish covers everything up to now.
+	if err := s.store.MarkExportPublished(r.Context(), result.GeneratedAt); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "ok",
-		"generatedAt": generatedAt,
-		"articles":    len(bundles),
-		"reviews":     len(reviews),
+		"generatedAt": result.GeneratedAt,
+		"articles":    result.Articles,
+		"reviews":     result.Reviews,
 	})
 }
 

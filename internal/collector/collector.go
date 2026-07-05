@@ -145,6 +145,14 @@ func (r *Runner) runMarketplace(ctx context.Context, marketplaceID string) Resul
 		}
 	}
 
+	// New reviews make the static export stale; the auto-publish loop picks
+	// this up. Best-effort: a failed mark only delays one republish.
+	if result.Upserted > 0 {
+		if err := r.store.MarkExportDirty(ctx); err != nil {
+			r.logger.Warn("mark export dirty failed", "marketplace", marketplaceID, "error", err)
+		}
+	}
+
 	// Heal seller articles stored before the adapter could map them (e.g. Ozon
 	// reviews keyed by marketplace sku until the product role was granted).
 	// Non-fatal: a missing map (API role, network) must not fail the sync.

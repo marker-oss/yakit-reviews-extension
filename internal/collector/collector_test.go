@@ -87,4 +87,10 @@ func TestRunOnceRemapsExistingSellerArticles(t *testing.T) {
 	if articles["oz-new"] != "85555" {
 		t.Fatalf("fresh review lost its article: %v", articles)
 	}
+
+	// The sync changed data, so the static export must be flagged stale for
+	// the auto-publish loop.
+	if _, dirty, err := s.ExportDirtySince(context.Background()); err != nil || !dirty {
+		t.Fatalf("export not marked dirty after sync (dirty=%v err=%v)", dirty, err)
+	}
 }

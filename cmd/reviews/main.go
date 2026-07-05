@@ -357,7 +357,26 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		ReviewTermsURL:           cfg.Web.ReviewTermsURL,
 		Version:                  version,
 		LatestReleaseURL:         updateCheckURL(),
+		OzonProductsProbe: func(probeCtx context.Context) error {
+			effective := applyStoredMarketplaceCredentials(probeCtx, db, cfg, logger)
+			if !effective.Marketplaces.Ozon.Enabled {
+				return nil
+			}
+			probeCtx, cancel := context.WithTimeout(probeCtx, 10*time.Second)
+			defer cancel()
+			return ozon.New(effective.Marketplaces.Ozon).CheckProductsAccess(probeCtx)
+		},
 	}, logger)
+
+	// Continuous publish: the static export regenerates itself after data
+	// changes, and the catalog re-crawls daily — no manual «Опубликовать» /
+	// «Обновить каталог» needed in steady state.
+	autoPublishEvery := envDuration("REVIEWS_AUTOPUBLISH_INTERVAL", 5*time.Minute, logger)
+	httpServer.StartAutoPublish(ctx, autoPublishEvery)
+	catalogRefreshEvery := envDuration("REVIEWS_CATALOG_REFRESH_INTERVAL", 24*time.Hour, logger)
+	httpServer.StartCatalogAutoRefresh(ctx, catalogRefreshEvery)
+	logger.Info("continuous publish enabled", "publish_interval", autoPublishEvery.String(), "catalog_interval", catalogRefreshEvery.String())
+
 	if err := httpServer.Run(ctx); err != nil {
 		logger.Error("server stopped with error", "error", err)
 		return exitRunError
@@ -365,6 +384,23 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 
 	logger.Info("shutdown complete")
 	return exitOK
+}
+
+// envDuration reads a duration env var; "0"/"off" disable the feature (zero).
+func envDuration(key string, fallback time.Duration, logger *slog.Logger) time.Duration {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	if value == "0" || strings.EqualFold(value, "off") || strings.EqualFold(value, "false") {
+		return 0
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		logger.Warn("invalid duration, using default", "env", key, "value", value, "default", fallback.String())
+		return fallback
+	}
+	return parsed
 }
 
 // syncRunnerAdapter adapts collector.Runner to scheduler.Runner and logs the

@@ -113,6 +113,22 @@ func TestFetchReviewsFallsBackToSKUWithoutProductRole(t *testing.T) {
 	}
 }
 
+func TestCheckProductsAccess(t *testing.T) {
+	okPages := []map[string]any{{"result": map[string]any{"items": []map[string]any{}, "last_id": ""}}}
+	httpClient := &http.Client{Transport: productListTransport(t, okPages, http.StatusOK, nil)}
+	client := NewWithHTTPClient(config.OzonConfig{ClientID: "client", APIKey: "key"}, "https://api-seller.test", httpClient, 100)
+	if err := client.CheckProductsAccess(context.Background()); err != nil {
+		t.Fatalf("access with role: %v", err)
+	}
+
+	httpClient = &http.Client{Transport: productListTransport(t, nil, http.StatusForbidden, nil)}
+	client = NewWithHTTPClient(config.OzonConfig{ClientID: "client", APIKey: "key"}, "https://api-seller.test", httpClient, 100)
+	err := client.CheckProductsAccess(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "role") {
+		t.Fatalf("missing role must surface the API message, got %v", err)
+	}
+}
+
 func TestProductArticlesPaginates(t *testing.T) {
 	pages := []map[string]any{
 		{"result": map[string]any{
