@@ -145,6 +145,21 @@ func (r *Runner) runMarketplace(ctx context.Context, marketplaceID string) Resul
 		}
 	}
 
+	// Heal seller articles stored before the adapter could map them (e.g. Ozon
+	// reviews keyed by marketplace sku until the product role was granted).
+	// Non-fatal: a missing map (API role, network) must not fail the sync.
+	if mapper, ok := adapter.(marketplace.ArticleMapper); ok {
+		if articles, mErr := mapper.ProductArticles(ctx); mErr != nil {
+			r.logger.Warn("product article map unavailable", "marketplace", marketplaceID, "error", mErr)
+		} else if len(articles) > 0 {
+			if updated, rErr := r.store.RemapSellerArticles(ctx, marketplaceID, articles); rErr != nil {
+				r.logger.Warn("seller article remap failed", "marketplace", marketplaceID, "error", rErr)
+			} else if updated > 0 {
+				r.logger.Info("seller articles remapped", "marketplace", marketplaceID, "updated", updated)
+			}
+		}
+	}
+
 	if watermark.IsZero() {
 		watermark = startedAt
 	}

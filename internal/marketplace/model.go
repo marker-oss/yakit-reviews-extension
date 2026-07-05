@@ -46,6 +46,14 @@ type ReplyPublisher interface {
 	PublishReply(ctx context.Context, externalReviewID, text string) error
 }
 
+// ArticleMapper is implemented by adapters that can enumerate the seller's
+// marketplace catalog and report which seller article (offer id / vendor
+// code) each external product id belongs to. The collector uses it to heal
+// reviews stored before the mapping was available.
+type ArticleMapper interface {
+	ProductArticles(ctx context.Context) (map[string]string, error)
+}
+
 // Question is a product question fetched from a marketplace.
 type Question struct {
 	ExternalQuestionID string

@@ -18,6 +18,7 @@ const (
 	marketplaceID   = config.MarketplaceOzon
 	defaultBaseURL  = "https://api-seller.ozon.ru"
 	defaultPageSize = 100
+	productMapTTL   = 10 * time.Minute
 )
 
 type Client struct {
@@ -26,6 +27,11 @@ type Client struct {
 	apiKey     string
 	httpClient *http.Client
 	pageSize   int
+
+	// productArticles caches the sku→offer_id map between review pages; see
+	// cachedProductArticles.
+	productArticles   map[string]string
+	productArticlesAt time.Time
 }
 
 func New(cfg config.OzonConfig) *Client {
@@ -64,12 +70,16 @@ func (c *Client) FetchReviews(ctx context.Context, since time.Time, cursor strin
 		return nil, "", err
 	}
 
+	articles := c.cachedProductArticles(ctx)
 	reviews := make([]marketplace.Review, 0, len(payload.Reviews))
 	stopPaging := false
 	for _, item := range payload.Reviews {
 		review, err := item.toReview()
 		if err != nil {
 			return nil, "", err
+		}
+		if article, ok := articles[review.ExternalProductID]; ok && article != "" {
+			review.SellerArticle = article
 		}
 		if !since.IsZero() && review.CreatedAtMP.Before(since) {
 			stopPaging = true
@@ -371,4 +381,108 @@ func (s *flexString) UnmarshalJSON(data []byte) error {
 
 func (s flexString) String() string {
 	return string(s)
+}
+
+// ProductArticles returns the seller's sku→offer_id map by paginating
+// /v3/product/list. offer_id is the seller's own article, so it is the value
+// that matches the shop site's articles; the review payload only carries the
+// marketplace sku. Requires the Api-Key to have the products role.
+func (c *Client) ProductArticles(ctx context.Context) (map[string]string, error) {
+	articles := make(map[string]string)
+	lastID := ""
+	for {
+		payload, err := c.fetchProductPage(ctx, lastID)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range payload.Result.Items {
+			sku := item.SKU.String()
+			if sku != "" && item.OfferID != "" {
+				articles[sku] = item.OfferID
+			}
+		}
+		if len(payload.Result.Items) < c.pageSize || payload.Result.LastID == "" {
+			return articles, nil
+		}
+		lastID = payload.Result.LastID
+	}
+}
+
+// cachedProductArticles memoizes the product map so a paged review sync does
+// not re-list the catalog on every page. A failed listing (typically an
+// Api-Key without the products role) degrades to an empty map: seller
+// articles then keep the marketplace sku — the pre-mapping behavior.
+func (c *Client) cachedProductArticles(ctx context.Context) map[string]string {
+	if c.productArticles != nil && time.Since(c.productArticlesAt) < productMapTTL {
+		return c.productArticles
+	}
+	articles, err := c.ProductArticles(ctx)
+	if err != nil {
+		articles = map[string]string{}
+	}
+	c.productArticles = articles
+	c.productArticlesAt = time.Now()
+	return articles
+}
+
+func (c *Client) fetchProductPage(ctx context.Context, cursor string) (ozonProductListResponse, error) {
+	requestPayload := ozonProductListRequest{
+		Filter: ozonProductListFilter{Visibility: "ALL"},
+		Limit:  c.pageSize,
+		LastID: cursor,
+	}
+	body, err := json.Marshal(requestPayload)
+	if err != nil {
+		return ozonProductListResponse{}, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v3/product/list", bytes.NewReader(body))
+	if err != nil {
+		return ozonProductListResponse{}, err
+	}
+	req.Header.Set("Client-Id", c.clientID)
+	req.Header.Set("Api-Key", c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return ozonProductListResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	var payload ozonProductListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return ozonProductListResponse{}, fmt.Errorf("decode Ozon product list response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if payload.Message != "" {
+			return ozonProductListResponse{}, fmt.Errorf("Ozon product list: status %d: %s", resp.StatusCode, payload.Message)
+		}
+		return ozonProductListResponse{}, fmt.Errorf("Ozon product list: status %d", resp.StatusCode)
+	}
+	return payload, nil
+}
+
+type ozonProductListRequest struct {
+	Filter ozonProductListFilter `json:"filter"`
+	Limit  int                   `json:"limit"`
+	LastID string                `json:"last_id,omitempty"`
+}
+
+type ozonProductListFilter struct {
+	Visibility string `json:"visibility"`
+}
+
+type ozonProductListResponse struct {
+	Result struct {
+		Items  []ozonProductListItem `json:"items"`
+		LastID string                `json:"last_id"`
+	} `json:"result"`
+	Message string `json:"message"`
+}
+
+type ozonProductListItem struct {
+	OfferID string     `json:"offer_id"`
+	SKU     flexString `json:"sku"`
 }

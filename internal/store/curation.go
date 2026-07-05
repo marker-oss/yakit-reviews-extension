@@ -376,3 +376,29 @@ func (s *Store) HardDeleteReview(ctx context.Context, id uint) error {
 	}
 	return nil
 }
+
+// RemapSellerArticles rewrites seller_article for a marketplace's reviews
+// using an externalProductID→article map. Returns the number of rows changed.
+func (s *Store) RemapSellerArticles(ctx context.Context, marketplaceID string, articles map[string]string) (int64, error) {
+	var total int64
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for externalID, article := range articles {
+			if externalID == "" || article == "" {
+				continue
+			}
+			res := tx.Model(&Review{}).
+				Where("tenant_id = ? AND marketplace = ? AND external_product_id = ? AND seller_article <> ?",
+					DefaultTenantID, marketplaceID, externalID, article).
+				Update("seller_article", article)
+			if res.Error != nil {
+				return res.Error
+			}
+			total += res.RowsAffected
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}

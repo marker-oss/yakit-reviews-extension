@@ -29,8 +29,129 @@ func jsonResponse(status int, payload any) *http.Response {
 	}
 }
 
+// productListTransport serves /v3/product/list with the given pages and
+// delegates /v1/review/list to reviewHandler.
+func productListTransport(t *testing.T, pages []map[string]any, productStatus int, reviewHandler func(*http.Request) *http.Response) roundTripFunc {
+	t.Helper()
+	call := 0
+	return func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Path {
+		case "/v3/product/list":
+			if productStatus != http.StatusOK {
+				return jsonResponse(productStatus, map[string]any{"code": 7, "message": "Api-Key is missing a required role for a method"}), nil
+			}
+			if call >= len(pages) {
+				t.Fatalf("unexpected extra product list call %d", call)
+			}
+			page := pages[call]
+			call++
+			return jsonResponse(http.StatusOK, page), nil
+		case "/v1/review/list":
+			return reviewHandler(r), nil
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+			return nil, nil
+		}
+	}
+}
+
+func reviewPage(sku any) func(*http.Request) *http.Response {
+	return func(*http.Request) *http.Response {
+		return jsonResponse(http.StatusOK, map[string]any{
+			"reviews": []map[string]any{
+				{
+					"id":           "r-1",
+					"sku":          sku,
+					"text":         "ok",
+					"rating":       5,
+					"status":       "UNPROCESSED",
+					"published_at": "2026-02-02T10:00:00Z",
+				},
+			},
+			"has_next": false,
+			"last_id":  "",
+		})
+	}
+}
+
+func TestFetchReviewsResolvesSellerArticleViaOfferID(t *testing.T) {
+	pages := []map[string]any{
+		{"result": map[string]any{
+			"items":   []map[string]any{{"product_id": 1, "offer_id": "85467", "sku": 181649408}},
+			"total":   1,
+			"last_id": "",
+		}},
+	}
+	httpClient := &http.Client{Transport: productListTransport(t, pages, http.StatusOK, reviewPage(181649408))}
+	client := NewWithHTTPClient(config.OzonConfig{ClientID: "client", APIKey: "key"}, "https://api-seller.test", httpClient, 100)
+
+	reviews, _, err := client.FetchReviews(context.Background(), time.Time{}, "")
+	if err != nil {
+		t.Fatalf("FetchReviews: %v", err)
+	}
+	if len(reviews) != 1 {
+		t.Fatalf("reviews = %d, want 1", len(reviews))
+	}
+	if reviews[0].SellerArticle != "85467" {
+		t.Fatalf("SellerArticle = %q, want offer_id 85467", reviews[0].SellerArticle)
+	}
+	if reviews[0].ExternalProductID != "181649408" {
+		t.Fatalf("ExternalProductID = %q, want marketplace sku preserved", reviews[0].ExternalProductID)
+	}
+}
+
+func TestFetchReviewsFallsBackToSKUWithoutProductRole(t *testing.T) {
+	httpClient := &http.Client{Transport: productListTransport(t, nil, http.StatusForbidden, reviewPage(181649408))}
+	client := NewWithHTTPClient(config.OzonConfig{ClientID: "client", APIKey: "key"}, "https://api-seller.test", httpClient, 100)
+
+	reviews, _, err := client.FetchReviews(context.Background(), time.Time{}, "")
+	if err != nil {
+		t.Fatalf("FetchReviews should not fail when product role is missing: %v", err)
+	}
+	if len(reviews) != 1 || reviews[0].SellerArticle != "181649408" {
+		t.Fatalf("SellerArticle = %+v, want fallback to sku", reviews)
+	}
+}
+
+func TestProductArticlesPaginates(t *testing.T) {
+	pages := []map[string]any{
+		{"result": map[string]any{
+			"items": []map[string]any{
+				{"product_id": 1, "offer_id": "A-1", "sku": 11},
+				{"product_id": 2, "offer_id": "A-2", "sku": 22},
+			},
+			"total":   3,
+			"last_id": "cursor-1",
+		}},
+		{"result": map[string]any{
+			"items":   []map[string]any{{"product_id": 3, "offer_id": "A-3", "sku": 33}},
+			"total":   3,
+			"last_id": "cursor-2",
+		}},
+	}
+	httpClient := &http.Client{Transport: productListTransport(t, pages, http.StatusOK, nil)}
+	client := NewWithHTTPClient(config.OzonConfig{ClientID: "client", APIKey: "key"}, "https://api-seller.test", httpClient, 2)
+
+	articles, err := client.ProductArticles(context.Background())
+	if err != nil {
+		t.Fatalf("ProductArticles: %v", err)
+	}
+	want := map[string]string{"11": "A-1", "22": "A-2", "33": "A-3"}
+	if len(articles) != len(want) {
+		t.Fatalf("articles = %v, want %v", articles, want)
+	}
+	for k, v := range want {
+		if articles[k] != v {
+			t.Fatalf("articles[%s] = %q, want %q", k, articles[k], v)
+		}
+	}
+}
+
 func TestFetchReviewsMapsOzonResponse(t *testing.T) {
 	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v3/product/list" {
+			return jsonResponse(http.StatusForbidden, map[string]any{"code": 7, "message": "no role"}), nil
+		}
 		if got := r.Method; got != http.MethodPost {
 			t.Fatalf("method = %q", got)
 		}
@@ -113,6 +234,9 @@ func TestFetchReviewsMapsOzonResponse(t *testing.T) {
 
 func TestFetchReviewsUsesLastIDCursor(t *testing.T) {
 	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v3/product/list" {
+			return jsonResponse(http.StatusForbidden, map[string]any{"code": 7, "message": "no role"}), nil
+		}
 		var req ozonReviewListRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("decode request: %v", err)
