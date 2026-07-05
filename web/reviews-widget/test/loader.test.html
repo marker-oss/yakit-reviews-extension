@@ -221,9 +221,12 @@
   eq("custom anchor clears host margin", customHost.style.marginTop, "0px");
   eq("custom anchor mounts reviews", customHost.getAttribute("data-mounted-reviews"), "1");
 
+  // A product page with zero reviews keeps the styled shell (empty state +
+  // submission form); only the homepage hides an empty widget.
   I.render({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 }, reviews: [] }, "1523");
-  eq("empty bundle removes host", document.getElementById(I.cfg.hostId), null);
-  eq("empty bundle collapses custom anchor", customAnchor.style.minHeight, "0px");
+  var emptyProductHost = document.getElementById(I.cfg.hostId);
+  eq("empty product bundle keeps host", emptyProductHost ? emptyProductHost.getAttribute("data-mounted-reviews") : null, "0");
+  eq("empty product bundle keeps custom anchor height", customAnchor.style.minHeight, "320px");
 
   cleanupLoaderFixture();
   history.replaceState({}, "", "/");
@@ -236,8 +239,12 @@
   I.render(renderBundle, "homepage:/", "homepage");
   var homepageHost = document.getElementById(I.cfg.hostId);
   var homepageFullFeed = new URL(homepageHost.getAttribute("data-full-feed-source"));
-  eq("homepage render uses full feed", homepageFullFeed.pathname + homepageFullFeed.search, "/api/reviews?sort=newest&limit=24");
+  eq("homepage render uses full feed", homepageFullFeed.pathname + homepageFullFeed.search, "/api/reviews?context=homepage&sort=newest&limit=24");
   eq("homepage full feed starts at zero", homepageHost.getAttribute("data-full-feed-offset"), "0");
+
+  I.render({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 }, reviews: [] }, "homepage:/", "homepage");
+  eq("empty homepage bundle removes host", document.getElementById(I.cfg.hostId), null);
+  eq("empty homepage bundle collapses custom anchor", document.getElementById("reviews-homepage").style.minHeight, "0px");
 
   cleanupLoaderFixture();
   history.replaceState({}, "", "/products/plate-letnee-povsednevnoe-lilovyiy-102212");

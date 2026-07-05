@@ -33,6 +33,14 @@
     }
   }
 
+  // Unlike log(), always emits: misconfiguration (CORS, wrong asset URLs) must
+  // be visible in the embedding site's console without the debug flag.
+  function warn() {
+    if (window.console && console.warn) {
+      console.warn.apply(console, ["[reviews-embed]"].concat([].slice.call(arguments)));
+    }
+  }
+
   function isProductPath(pathname) {
     return typeof pathname === "string" && pathname.indexOf(CFG.productPathPrefix) === 0;
   }
@@ -371,6 +379,12 @@
       document.head.appendChild(script);
     });
 
+    // A failure (CORS, network) must not be cached for the page's lifetime:
+    // the next navigation retries the assets.
+    widgetLoading.catch(function () {
+      widgetLoading = null;
+    });
+
     return widgetLoading;
   }
 
@@ -536,6 +550,14 @@
     }
   }
 
+  function clearRenderedWidget() {
+    if (currentArticle !== null || document.getElementById(CFG.hostId)) {
+      removeHost();
+      currentArticle = null;
+    }
+    collapseCustomAnchor();
+  }
+
   function injectJsonLd(bundle) {
     var data = buildJsonLd(bundle, CFG.maxJsonLdReviews);
     if (!data) {
@@ -687,30 +709,33 @@
 
     Promise.all([loadWidgetAssets(), loadWidgetConfig("homepage")])
       .then(function () {
-        return fetch(url, { headers: { Accept: "application/json" } });
-      })
-      .then(function (response) {
-        if (!response.ok) {
-          throw new Error("showcase " + response.status);
-        }
-        return response.json();
-      })
-      .then(function (data) {
-        if (seq !== requestSeq || location.pathname !== pathAtCall) {
-          return;
-        }
-        render(normalizeReviewsResponse(data), normalizedArticle, "homepage");
+        return fetch(url, { headers: { Accept: "application/json" } })
+          .then(function (response) {
+            if (!response.ok) {
+              throw new Error("showcase " + response.status);
+            }
+            return response.json();
+          })
+          .then(function (data) {
+            if (seq !== requestSeq || location.pathname !== pathAtCall) {
+              return;
+            }
+            render(normalizeReviewsResponse(data), normalizedArticle, "homepage");
+          })
+          .catch(function (error) {
+            if (seq !== requestSeq) {
+              return;
+            }
+            clearRenderedWidget();
+            log("skip", url, error && error.message);
+          });
       })
       .catch(function (error) {
         if (seq !== requestSeq) {
           return;
         }
-        if (currentArticle !== null || document.getElementById(CFG.hostId)) {
-          removeHost();
-          currentArticle = null;
-        }
-        collapseCustomAnchor();
-        log("skip", url, error && error.message);
+        clearRenderedWidget();
+        warn("widget assets failed, skipping render:", error && error.message, "— check CORS (REVIEWS_SHOP_ORIGIN) and asset URLs on the reviews server");
       });
   }
 
@@ -754,28 +779,37 @@
       var url = bundleUrl(normalizedArticle);
       log("fetch", url);
 
+      // Asset failures and data failures must not be conflated: without the
+      // CSS the shell would render unstyled, so a broken asset load skips the
+      // render entirely, while a missing bundle renders the styled empty state.
       Promise.all([loadWidgetAssets(), loadWidgetConfig("product")])
         .then(function () {
-          return fetch(url, { headers: { Accept: "application/json" } });
-        })
-        .then(function (response) {
-          if (!response.ok) {
-            throw new Error("bundle " + response.status);
-          }
-          return response.json();
-        })
-        .then(function (bundle) {
-          if (seq !== requestSeq) {
-            return;
-          }
-          render(bundle, normalizedArticle, "product");
+          return fetch(url, { headers: { Accept: "application/json" } })
+            .then(function (response) {
+              if (!response.ok) {
+                throw new Error("bundle " + response.status);
+              }
+              return response.json();
+            })
+            .then(function (bundle) {
+              if (seq !== requestSeq) {
+                return;
+              }
+              render(bundle, normalizedArticle, "product");
+            })
+            .catch(function (error) {
+              if (seq !== requestSeq) {
+                return;
+              }
+              render({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 }, reviews: [] }, normalizedArticle, "product");
+              log("empty product bundle", url, error && error.message);
+            });
         })
         .catch(function (error) {
           if (seq !== requestSeq) {
             return;
           }
-          render({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 }, reviews: [] }, normalizedArticle, "product");
-          log("empty product bundle", url, error && error.message);
+          warn("widget assets failed, skipping render:", error && error.message, "— check CORS (REVIEWS_SHOP_ORIGIN) and asset URLs on the reviews server");
         });
     });
   }
