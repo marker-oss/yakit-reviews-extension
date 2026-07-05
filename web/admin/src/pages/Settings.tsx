@@ -3,12 +3,14 @@ import { apiGet, apiWrite } from '../api'
 
 interface SettingsResponse {
   agreementUrl: string
+  reviewTermsUrl: string
   shopOrigin: string
   sitemapUrl: string
 }
 
 export default function Settings() {
   const [agreementUrl, setAgreementUrl] = useState('')
+  const [reviewTermsUrl, setReviewTermsUrl] = useState('')
   const [shopOrigin, setShopOrigin] = useState('')
   const [sitemapUrl, setSitemapUrl] = useState('')
   const [busy, setBusy] = useState(false)
@@ -26,6 +28,7 @@ export default function Settings() {
     apiGet<SettingsResponse>('/admin/api/settings')
       .then((data) => {
         setAgreementUrl(data.agreementUrl ?? '')
+        setReviewTermsUrl(data.reviewTermsUrl ?? '')
         setShopOrigin(data.shopOrigin ?? '')
         setSitemapUrl(data.sitemapUrl ?? '')
       })
@@ -40,10 +43,12 @@ export default function Settings() {
     try {
       const data = await apiWrite<SettingsResponse>('PUT', '/admin/api/settings', {
         agreementUrl: agreementUrl.trim(),
+        reviewTermsUrl: reviewTermsUrl.trim(),
         shopOrigin: shopOrigin.trim(),
         sitemapUrl: sitemapUrl.trim(),
       })
       setAgreementUrl(data.agreementUrl ?? '')
+      setReviewTermsUrl(data.reviewTermsUrl ?? '')
       setShopOrigin(data.shopOrigin ?? '')
       setSitemapUrl(data.sitemapUrl ?? '')
       setMessage('Сохранено')
@@ -114,12 +119,24 @@ export default function Settings() {
               placeholder="https://ваш-магазин.ру/personal-data-consent"
             />
           </label>
+          <label className="stack">
+            <span>URL правил публикации отзывов (показывается в форме, необязательно)</span>
+            <input
+              type="url"
+              value={reviewTermsUrl}
+              onChange={(e) => setReviewTermsUrl(e.target.value)}
+              placeholder="https://ваш-магазин.ру/review-terms"
+            />
+          </label>
 
-          <h3>Каталог товаров</h3>
+          <h3>Магазин и каталог</h3>
           <p className="muted">
-            Источник для кнопки «Обновить каталог товаров» на странице «Маркетплейсы». Каталог
-            строится обходом sitemap магазина. Укажите адрес магазина — sitemap возьмётся как
-            <code> /sitemap.xml</code>, либо задайте точный адрес sitemap, если он по другому пути.
+            Адрес магазина используется в двух местах: он разрешает сайту магазина загружать
+            виджет отзывов (CORS — без него виджет на сайте останется без стилей и данных;
+            www-вариант домена разрешается автоматически, изменения применяются сразу после
+            сохранения) и служит источником для кнопки «Обновить каталог товаров» на странице
+            «Маркетплейсы» — sitemap возьмётся как <code>/sitemap.xml</code>, либо задайте точный
+            адрес sitemap, если он по другому пути.
           </p>
           <label className="stack">
             <span>Адрес магазина (origin)</span>

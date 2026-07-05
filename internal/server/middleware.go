@@ -3,9 +3,13 @@ package server
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
+
+	"reviews/internal/store"
 )
 
 type ctxKey string
@@ -27,6 +31,57 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
+// reloadShopOrigins rebuilds the admin-configured CORS origin set from the
+// stored shop_origin setting. Called when the route tree is built and again
+// whenever the setting is saved, so a seller can fix CORS from the admin
+// panel without a restart.
+func (s *Server) reloadShopOrigins(ctx context.Context) {
+	set := make(map[string]bool)
+	if s.store != nil {
+		if value, err := s.store.GetAppSetting(ctx, store.SettingShopOrigin); err == nil {
+			for _, origin := range originAndSibling(value) {
+				set[origin] = true
+			}
+		}
+	}
+	s.originsMu.Lock()
+	s.shopOrigins = set
+	s.originsMu.Unlock()
+}
+
+// shopOriginAllowed reports whether origin matches the admin-configured shop
+// origin (or its www/apex sibling).
+func (s *Server) shopOriginAllowed(origin string) bool {
+	s.originsMu.RLock()
+	defer s.originsMu.RUnlock()
+	return s.shopOrigins[origin]
+}
+
+// originAndSibling normalizes a stored shop origin (sellers often paste a URL
+// with a path or trailing slash) to its scheme://host origin, paired with its
+// www/apex sibling because shops commonly answer on both hosts. IPs and
+// dot-less hosts (localhost) get no sibling.
+func originAndSibling(value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	u, err := url.Parse(value)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil
+	}
+	origin := u.Scheme + "://" + u.Host
+	host := u.Hostname()
+	if net.ParseIP(host) != nil || !strings.Contains(host, ".") {
+		return []string{origin}
+	}
+	sibling := "www." + u.Host
+	if strings.HasPrefix(u.Host, "www.") {
+		sibling = strings.TrimPrefix(u.Host, "www.")
+	}
+	return []string{origin, u.Scheme + "://" + sibling}
+}
+
 // cors adds Access-Control headers for configured shop origins on public
 // routes so the embedded widget can fetch reviews data cross-origin. Admin
 // routes are skipped (same-origin only). When no origins are configured the
@@ -39,8 +94,8 @@ func (s *Server) cors(next http.Handler) http.Handler {
 		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if len(allowed) > 0 && !strings.HasPrefix(r.URL.Path, "/admin/") {
-			if origin := r.Header.Get("Origin"); origin != "" && allowed[origin] {
+		if !strings.HasPrefix(r.URL.Path, "/admin/") {
+			if origin := r.Header.Get("Origin"); origin != "" && (allowed[origin] || s.shopOriginAllowed(origin)) {
 				h := w.Header()
 				h.Set("Access-Control-Allow-Origin", origin)
 				h.Add("Vary", "Origin")

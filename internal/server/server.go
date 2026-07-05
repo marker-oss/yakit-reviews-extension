@@ -77,6 +77,11 @@ type Server struct {
 	siteLinksMu  sync.Mutex
 	siteLinksJob siteLinksStatus
 
+	// originsMu guards shopOrigins — the admin-configured CORS origins merged
+	// into the env whitelist; rebuilt whenever the shop_origin setting changes.
+	originsMu   sync.RWMutex
+	shopOrigins map[string]bool
+
 	// versionMu guards the cached latest-release lookup (update banner).
 	versionMu        sync.Mutex
 	versionCache     latestRelease
@@ -119,6 +124,7 @@ func New(store *store.Store, cfg Config, logger *slog.Logger) *Server {
 // handler builds the full public + admin route tree wrapped in the middleware
 // chain. Exposed for tests so the CORS/security middleware is exercised.
 func (s *Server) handler() http.Handler {
+	s.reloadShopOrigins(context.Background())
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/reviews", s.handleReviews)
 	mux.HandleFunc("GET /api/showcase", s.handleShowcase)

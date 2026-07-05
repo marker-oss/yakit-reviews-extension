@@ -130,7 +130,7 @@ func (s *Server) handleReviewSubmissionConfig(w http.ResponseWriter, r *http.Req
 		MaxTotalBytes:  maxSubmissionBytes,
 		AllowedTypes:   []string{"image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "video/quicktime"},
 		PrivacyURL:     s.agreementURL(r),
-		ReviewTermsURL: s.cfg.ReviewTermsURL,
+		ReviewTermsURL: s.reviewTermsURL(r),
 	})
 }
 

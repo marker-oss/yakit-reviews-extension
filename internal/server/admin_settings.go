@@ -12,6 +12,7 @@ import (
 
 type settingsResponse struct {
 	AgreementURL       string `json:"agreementUrl"`
+	ReviewTermsURL     string `json:"reviewTermsUrl"`
 	ShopOrigin         string `json:"shopOrigin"`
 	SitemapURL         string `json:"sitemapUrl"`
 	PublishRepliesWb   string `json:"publishRepliesWb"`
@@ -21,6 +22,7 @@ type settingsResponse struct {
 
 type settingsRequest struct {
 	AgreementURL       *string `json:"agreementUrl"`
+	ReviewTermsURL     *string `json:"reviewTermsUrl"`
 	ShopOrigin         *string `json:"shopOrigin"`
 	SitemapURL         *string `json:"sitemapUrl"`
 	PublishRepliesWb   *string `json:"publish_replies_wb"`
@@ -36,6 +38,15 @@ func (s *Server) agreementURL(r *http.Request) string {
 		return stored
 	}
 	return s.cfg.PrivacyURL
+}
+
+// reviewTermsURL resolves the review-publication rules URL the same way:
+// admin-stored value first, then the REVIEWS_REVIEW_TERMS_URL env default.
+func (s *Server) reviewTermsURL(r *http.Request) string {
+	if stored, err := s.store.GetAppSetting(r.Context(), store.SettingReviewTermsURL); err == nil && stored != "" {
+		return stored
+	}
+	return s.cfg.ReviewTermsURL
 }
 
 // effectiveSitemapURL resolves the shop sitemap the catalog refresh crawls.
@@ -72,6 +83,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		label string
 	}{
 		{store.SettingAgreementURL, req.AgreementURL, "agreement URL"},
+		{store.SettingReviewTermsURL, req.ReviewTermsURL, "review terms URL"},
 		{store.SettingShopOrigin, req.ShopOrigin, "shop origin"},
 		{store.SettingSitemapURL, req.SitemapURL, "sitemap URL"},
 	}
@@ -88,6 +100,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+	}
+	if req.ShopOrigin != nil {
+		s.reloadShopOrigins(r.Context())
 	}
 	toggleUpdates := []struct {
 		key   string
@@ -119,6 +134,10 @@ func (s *Server) loadSettings(ctx context.Context) (settingsResponse, error) {
 	if err != nil {
 		return settingsResponse{}, err
 	}
+	reviewTerms, err := s.store.GetAppSetting(ctx, store.SettingReviewTermsURL)
+	if err != nil {
+		return settingsResponse{}, err
+	}
 	origin, err := s.store.GetAppSetting(ctx, store.SettingShopOrigin)
 	if err != nil {
 		return settingsResponse{}, err
@@ -141,6 +160,7 @@ func (s *Server) loadSettings(ctx context.Context) (settingsResponse, error) {
 	}
 	return settingsResponse{
 		AgreementURL:       agreement,
+		ReviewTermsURL:     reviewTerms,
 		ShopOrigin:         origin,
 		SitemapURL:         sitemap,
 		PublishRepliesWb:   publishWb,

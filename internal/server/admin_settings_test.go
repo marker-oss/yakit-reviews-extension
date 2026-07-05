@@ -68,6 +68,55 @@ func TestAdminSettingsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAdminSettingsReviewTermsURL(t *testing.T) {
+	s := newAuthTestServer(t)
+	cookie := loginTestAdmin(t, s)
+	csrf := getCSRFToken(t, s, cookie)
+
+	req := httptest.NewRequest(http.MethodPut, "/admin/api/settings",
+		strings.NewReader(`{"reviewTermsUrl":"https://shop.example/review-terms"}`))
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var got settingsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.ReviewTermsURL != "https://shop.example/review-terms" {
+		t.Fatalf("review terms url = %q, want stored value", got.ReviewTermsURL)
+	}
+
+	rec = httptest.NewRecorder()
+	s.handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/review-submission-config", nil))
+	var cfg submissionConfigResponse
+	if err := json.NewDecoder(rec.Body).Decode(&cfg); err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+	if cfg.ReviewTermsURL != "https://shop.example/review-terms" {
+		t.Fatalf("submission config reviewTermsUrl = %q, want stored value", cfg.ReviewTermsURL)
+	}
+}
+
+func TestReviewTermsURLFallsBackToEnv(t *testing.T) {
+	s := newAuthTestServer(t)
+	s.cfg.ReviewTermsURL = "https://env.example/terms"
+
+	rec := httptest.NewRecorder()
+	s.handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/review-submission-config", nil))
+	var cfg submissionConfigResponse
+	if err := json.NewDecoder(rec.Body).Decode(&cfg); err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+	if cfg.ReviewTermsURL != "https://env.example/terms" {
+		t.Fatalf("submission config reviewTermsUrl = %q, want env fallback", cfg.ReviewTermsURL)
+	}
+}
+
 func TestAdminSettingsCatalogSource(t *testing.T) {
 	s := newAuthTestServer(t)
 	cookie := loginTestAdmin(t, s)

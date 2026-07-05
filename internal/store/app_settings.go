@@ -16,8 +16,13 @@ const (
 	// data consent page shown next to the public submission form's consent
 	// checkbox. Editable from the admin panel; falls back to REVIEWS_PRIVACY_URL.
 	SettingAgreementURL = "agreement_url"
-	// SettingShopOrigin is the seller's shop origin (e.g. https://shop.ru). When
-	// no explicit sitemap URL is set, the catalog refresh derives the sitemap as
+	// SettingReviewTermsURL is the URL of the seller's review-publication rules
+	// shown next to the public submission form. Editable from the admin panel;
+	// falls back to REVIEWS_REVIEW_TERMS_URL.
+	SettingReviewTermsURL = "review_terms_url"
+	// SettingShopOrigin is the seller's shop origin (e.g. https://shop.ru).
+	// Feeds the CORS whitelist (with its www/apex sibling) and, when no explicit
+	// sitemap URL is set, the catalog refresh derives the sitemap as
 	// <shop_origin>/sitemap.xml. Editable from the admin panel.
 	SettingShopOrigin = "shop_origin"
 	// SettingSitemapURL is an explicit shop sitemap URL crawled by the catalog
