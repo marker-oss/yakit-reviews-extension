@@ -114,6 +114,10 @@ export default function App() {
   const [error, setError] = useState('')
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
   const [dismissedVersion, setDismissedVersion] = useState(() => localStorage.getItem(DISMISSED_KEY) ?? '')
+  const [counts, setCounts] = useState<{ pendingReviews: number; pendingQuestions: number }>({
+    pendingReviews: 0,
+    pendingQuestions: 0,
+  })
 
   useEffect(() => {
     apiGet('/admin/api/me')
@@ -138,6 +142,13 @@ export default function App() {
       .then(setVersionInfo)
       .catch(() => {})
   }, [mode])
+
+  useEffect(() => {
+    if (mode !== 'authed') return
+    apiGet<{ pendingReviews: number; pendingQuestions: number }>('/admin/api/counts')
+      .then(setCounts)
+      .catch(() => {})
+  }, [mode, route])
 
   function dismissUpdate(version: string) {
     localStorage.setItem(DISMISSED_KEY, version)
@@ -226,10 +237,10 @@ export default function App() {
               Сводка
             </a>
             <a className={route === 'reviews' ? 'active' : ''} href="#/reviews">
-              Отзывы
+              Отзывы {counts.pendingReviews > 0 && <span className="nav-count">{counts.pendingReviews}</span>}
             </a>
             <a className={route === 'questions' ? 'active' : ''} href="#/questions">
-              Вопросы
+              Вопросы {counts.pendingQuestions > 0 && <span className="nav-count">{counts.pendingQuestions}</span>}
             </a>
             <div className="nav-group">
               <span className={`nav-group-label${routeSection(route) === 'widget' ? ' active' : ''}`}>
