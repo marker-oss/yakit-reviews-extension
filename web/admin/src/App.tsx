@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiGet, apiWrite, clearCSRF } from './api'
+import ToastHost from './components/ToastHost'
 import Dashboard from './pages/Dashboard'
 import Editor from './pages/Editor'
 import Embed from './pages/Embed'
@@ -174,116 +175,125 @@ export default function App() {
 
   if (mode === 'loading') {
     return (
-      <main className="auth-screen">
-        <p className="muted">Загрузка...</p>
-      </main>
+      <>
+        <main className="auth-screen">
+          <p className="muted">Загрузка...</p>
+        </main>
+        <ToastHost />
+      </>
     )
   }
 
   if (mode !== 'authed') {
     return (
-      <main className="auth-screen">
-        <form className="auth-panel" onSubmit={submit}>
-          <p className="eyebrow">{mode === 'setup' ? 'Первый запуск' : 'Вход'}</p>
-          <h1>{mode === 'setup' ? 'Создать администратора' : 'Войти'}</h1>
-          <label>
-            <span>Логин</span>
-            <input value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" />
-          </label>
-          <label>
-            <span>Пароль</span>
-            <input
-              value={password}
-              type="password"
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
-            />
-          </label>
-          <button type="submit">{mode === 'setup' ? 'Создать' : 'Войти'}</button>
-          {error && <p className="error">{error}</p>}
-        </form>
-      </main>
+      <>
+        <main className="auth-screen">
+          <form className="auth-panel" onSubmit={submit}>
+            <p className="eyebrow">{mode === 'setup' ? 'Первый запуск' : 'Вход'}</p>
+            <h1>{mode === 'setup' ? 'Создать администратора' : 'Войти'}</h1>
+            <label>
+              <span>Логин</span>
+              <input value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" />
+            </label>
+            <label>
+              <span>Пароль</span>
+              <input
+                value={password}
+                type="password"
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
+              />
+            </label>
+            <button type="submit">{mode === 'setup' ? 'Создать' : 'Войти'}</button>
+            {error && <p className="error">{error}</p>}
+          </form>
+        </main>
+        <ToastHost />
+      </>
     )
   }
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div>
-          <p className="eyebrow">Отзывы</p>
-          <h1>Админка</h1>
-        </div>
-        <nav>
-          <a className={route === 'dashboard' ? 'active' : ''} href="#/dashboard">
-            Сводка
-          </a>
-          <a className={route === 'reviews' ? 'active' : ''} href="#/reviews">
-            Отзывы
-          </a>
-          <a className={route === 'questions' ? 'active' : ''} href="#/questions">
-            Вопросы
-          </a>
-          <div className="nav-group">
-            <span className={`nav-group-label${routeSection(route) === 'widget' ? ' active' : ''}`}>
-              Виджет
-            </span>
-            <a className={`nav-sub${route === 'widget/showcase' ? ' active' : ''}`} href="#/widget/showcase">
-              Витрина
-            </a>
-            <a className={`nav-sub${route === 'widget/editor' ? ' active' : ''}`} href="#/widget/editor">
-              Редактор
-            </a>
-            <a className={`nav-sub${route === 'widget/embed' ? ' active' : ''}`} href="#/widget/embed">
-              Встраивание
-            </a>
+    <>
+      <div className="app-shell">
+        <aside className="sidebar">
+          <div>
+            <p className="eyebrow">Отзывы</p>
+            <h1>Админка</h1>
           </div>
-          <div className="nav-group">
-            <span className={`nav-group-label${routeSection(route) === 'settings' ? ' active' : ''}`}>
-              Настройки
-            </span>
-            <a className={`nav-sub${route === 'settings/general' ? ' active' : ''}`} href="#/settings/general">
-              Общие
+          <nav>
+            <a className={route === 'dashboard' ? 'active' : ''} href="#/dashboard">
+              Сводка
             </a>
-            <a className={`nav-sub${route === 'settings/marketplaces' ? ' active' : ''}`} href="#/settings/marketplaces">
-              Маркетплейсы
+            <a className={route === 'reviews' ? 'active' : ''} href="#/reviews">
+              Отзывы
             </a>
-          </div>
-        </nav>
-        <button className="secondary" onClick={logout}>
-          Выйти
-        </button>
-        {error && <p className="error">{error}</p>}
-      </aside>
-      <main className="workspace">
-        {showUpdateBanner && versionInfo && (
-          <div className="update-banner">
-            <span>
-              Доступна новая версия <strong>{versionInfo.latest}</strong> (у вас {versionInfo.current}).{' '}
-              <a href={versionInfo.releaseUrl} target="_blank" rel="noreferrer">
-                Что нового
-              </a>{' '}
-              ·{' '}
-              <a href={UPDATE_DOCS_URL} target="_blank" rel="noreferrer">
-                Как обновиться
+            <a className={route === 'questions' ? 'active' : ''} href="#/questions">
+              Вопросы
+            </a>
+            <div className="nav-group">
+              <span className={`nav-group-label${routeSection(route) === 'widget' ? ' active' : ''}`}>
+                Виджет
+              </span>
+              <a className={`nav-sub${route === 'widget/showcase' ? ' active' : ''}`} href="#/widget/showcase">
+                Витрина
               </a>
-            </span>
-            <button className="secondary" onClick={() => dismissUpdate(versionInfo.latest)}>
-              Скрыть
-            </button>
-          </div>
-        )}
-        <header className="topbar">
-          <h2>{title}</h2>
-        </header>
-        {route === 'dashboard' && <Dashboard />}
-        {route === 'reviews' && <Reviews />}
-        {route === 'questions' && <Questions />}
-        {route === 'widget/showcase' && <Showcase />}
-        {route === 'widget/editor' && <Editor />}
-        {route === 'widget/embed' && <Embed />}
-        {route === 'settings/general' && <Settings />}
-        {route === 'settings/marketplaces' && <Marketplaces />}
-      </main>
-    </div>
+              <a className={`nav-sub${route === 'widget/editor' ? ' active' : ''}`} href="#/widget/editor">
+                Редактор
+              </a>
+              <a className={`nav-sub${route === 'widget/embed' ? ' active' : ''}`} href="#/widget/embed">
+                Встраивание
+              </a>
+            </div>
+            <div className="nav-group">
+              <span className={`nav-group-label${routeSection(route) === 'settings' ? ' active' : ''}`}>
+                Настройки
+              </span>
+              <a className={`nav-sub${route === 'settings/general' ? ' active' : ''}`} href="#/settings/general">
+                Общие
+              </a>
+              <a className={`nav-sub${route === 'settings/marketplaces' ? ' active' : ''}`} href="#/settings/marketplaces">
+                Маркетплейсы
+              </a>
+            </div>
+          </nav>
+          <button className="secondary" onClick={logout}>
+            Выйти
+          </button>
+          {error && <p className="error">{error}</p>}
+        </aside>
+        <main className="workspace">
+          {showUpdateBanner && versionInfo && (
+            <div className="update-banner">
+              <span>
+                Доступна новая версия <strong>{versionInfo.latest}</strong> (у вас {versionInfo.current}).{' '}
+                <a href={versionInfo.releaseUrl} target="_blank" rel="noreferrer">
+                  Что нового
+                </a>{' '}
+                ·{' '}
+                <a href={UPDATE_DOCS_URL} target="_blank" rel="noreferrer">
+                  Как обновиться
+                </a>
+              </span>
+              <button className="secondary" onClick={() => dismissUpdate(versionInfo.latest)}>
+                Скрыть
+              </button>
+            </div>
+          )}
+          <header className="topbar">
+            <h2>{title}</h2>
+          </header>
+          {route === 'dashboard' && <Dashboard />}
+          {route === 'reviews' && <Reviews />}
+          {route === 'questions' && <Questions />}
+          {route === 'widget/showcase' && <Showcase />}
+          {route === 'widget/editor' && <Editor />}
+          {route === 'widget/embed' && <Embed />}
+          {route === 'settings/general' && <Settings />}
+          {route === 'settings/marketplaces' && <Marketplaces />}
+        </main>
+      </div>
+      <ToastHost />
+    </>
   )
 }
