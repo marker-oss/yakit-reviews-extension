@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiWrite } from '../api'
 import { toast } from '../toast'
+import { useDirty } from '../useDirty'
 import type { ShowcaseRule } from '../types'
 
 export default function Showcase() {
   const [rule, setRule] = useState<ShowcaseRule | null>(null)
+  const [baseline, setBaseline] = useState<ShowcaseRule | null>(null)
+  const dirty = useDirty(rule, baseline)
 
   useEffect(() => {
     apiGet<ShowcaseRule>('/admin/api/showcase-rule')
-      .then(setRule)
+      .then((data) => {
+        setRule(data)
+        setBaseline(data)
+      })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }, [])
 
@@ -21,6 +27,7 @@ export default function Showcase() {
   async function save() {
     try {
       await apiWrite('PUT', '/admin/api/showcase-rule', rule)
+      setBaseline(rule)
       toast.success('Сохранено')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
@@ -64,6 +71,7 @@ export default function Showcase() {
       </section>
       <div className="toolbar">
         <button onClick={save}>Сохранить правило</button>
+        {dirty && <span className="dirty-badge">Есть изменения</span>}
       </div>
     </section>
   )

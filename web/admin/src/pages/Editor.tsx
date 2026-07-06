@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiGet, apiWrite } from '../api'
 import { toast } from '../toast'
+import { useDirty } from '../useDirty'
 import { defaultWidgetConfig, mergeWidgetConfig, type MarketplacePolicy, type WidgetConfig, type WidgetContext } from '../widgetConfig'
 
 type VersionItem = {
@@ -35,6 +36,7 @@ const marketplaceLabels: Record<keyof WidgetConfig['marketplacePolicy'], string>
 export default function Editor() {
   const [context, setContext] = useState<WidgetContext>('product')
   const [cfg, setCfg] = useState<WidgetConfig>(defaultWidgetConfig)
+  const [baseline, setBaseline] = useState<WidgetConfig>(defaultWidgetConfig)
   const [versions, setVersions] = useState<VersionItem[]>([])
 
   function load(nextContext = context) {
@@ -44,6 +46,7 @@ export default function Editor() {
     ])
       .then(([config, versionData]) => {
         setCfg(mergeWidgetConfig(config))
+        setBaseline(mergeWidgetConfig(config))
         setVersions(versionData.versions)
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Запрос не выполнен'))
@@ -52,11 +55,13 @@ export default function Editor() {
   useEffect(() => load(context), [context])
 
   const preview = useMemo(() => previewDocument(cfg, context), [cfg, context])
+  const dirty = useDirty(cfg, baseline)
 
   async function publish() {
     try {
       const res = await apiWrite<{ version: number }>('POST', `/admin/api/widget-config/${context}`, cfg)
       toast.success(`Опубликована v${res.version} — уже на сайте`)
+      setBaseline(cfg)
       load(context)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
@@ -128,6 +133,7 @@ export default function Editor() {
             <option value="homepage">Главная</option>
           </select>
           <button onClick={publish}>Опубликовать</button>
+          {dirty && <span className="dirty-badge">Есть изменения</span>}
         </div>
 
         <section className="panel form-grid">

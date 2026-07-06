@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiWrite } from '../api'
 import { toast } from '../toast'
+import { useDirty } from '../useDirty'
 
 interface SettingsResponse {
   agreementUrl: string
@@ -15,6 +16,12 @@ export default function Settings() {
   const [shopOrigin, setShopOrigin] = useState('')
   const [sitemapUrl, setSitemapUrl] = useState('')
   const [busy, setBusy] = useState(false)
+  const [baseline, setBaseline] = useState<SettingsResponse>({
+    agreementUrl: '',
+    reviewTermsUrl: '',
+    shopOrigin: '',
+    sitemapUrl: '',
+  })
 
   // DSR (152-ФЗ) state
   const [dsrEmail, setDsrEmail] = useState('')
@@ -24,13 +31,23 @@ export default function Settings() {
   useEffect(() => {
     apiGet<SettingsResponse>('/admin/api/settings')
       .then((data) => {
-        setAgreementUrl(data.agreementUrl ?? '')
-        setReviewTermsUrl(data.reviewTermsUrl ?? '')
-        setShopOrigin(data.shopOrigin ?? '')
-        setSitemapUrl(data.sitemapUrl ?? '')
+        const next = {
+          agreementUrl: data.agreementUrl ?? '',
+          reviewTermsUrl: data.reviewTermsUrl ?? '',
+          shopOrigin: data.shopOrigin ?? '',
+          sitemapUrl: data.sitemapUrl ?? '',
+        }
+        setAgreementUrl(next.agreementUrl)
+        setReviewTermsUrl(next.reviewTermsUrl)
+        setShopOrigin(next.shopOrigin)
+        setSitemapUrl(next.sitemapUrl)
+        setBaseline(next)
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }, [])
+
+  const current: SettingsResponse = { agreementUrl, reviewTermsUrl, shopOrigin, sitemapUrl }
+  const dirty = useDirty(current, baseline)
 
   async function save(event: React.FormEvent) {
     event.preventDefault()
@@ -42,10 +59,17 @@ export default function Settings() {
         shopOrigin: shopOrigin.trim(),
         sitemapUrl: sitemapUrl.trim(),
       })
-      setAgreementUrl(data.agreementUrl ?? '')
-      setReviewTermsUrl(data.reviewTermsUrl ?? '')
-      setShopOrigin(data.shopOrigin ?? '')
-      setSitemapUrl(data.sitemapUrl ?? '')
+      const next = {
+        agreementUrl: data.agreementUrl ?? '',
+        reviewTermsUrl: data.reviewTermsUrl ?? '',
+        shopOrigin: data.shopOrigin ?? '',
+        sitemapUrl: data.sitemapUrl ?? '',
+      }
+      setAgreementUrl(next.agreementUrl)
+      setReviewTermsUrl(next.reviewTermsUrl)
+      setShopOrigin(next.shopOrigin)
+      setSitemapUrl(next.sitemapUrl)
+      setBaseline(next)
       toast.success('Сохранено')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
@@ -152,6 +176,7 @@ export default function Settings() {
             <button type="submit" disabled={busy}>
               {busy ? 'Сохраняем' : 'Сохранить'}
             </button>
+            {dirty && <span className="dirty-badge">Есть изменения</span>}
           </div>
         </form>
       </section>
