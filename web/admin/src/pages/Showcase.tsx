@@ -1,36 +1,38 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiWrite } from '../api'
+import { toast } from '../toast'
 import type { ShowcaseRule } from '../types'
 
 export default function Showcase() {
   const [rule, setRule] = useState<ShowcaseRule | null>(null)
-  const [message, setMessage] = useState('')
 
   useEffect(() => {
     apiGet<ShowcaseRule>('/admin/api/showcase-rule')
       .then(setRule)
-      .catch((err) => setMessage(err instanceof Error ? err.message : 'Запрос не выполнен'))
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }, [])
 
-  if (!rule) return <p className={message ? 'error' : 'muted'}>{message || 'Загрузка...'}</p>
+  if (!rule) return <p className="muted">Загрузка...</p>
 
   function set<K extends keyof ShowcaseRule>(key: K, value: ShowcaseRule[K]) {
     setRule({ ...rule!, [key]: value })
   }
 
   async function save() {
-    setMessage('')
     try {
       await apiWrite('PUT', '/admin/api/showcase-rule', rule)
-      setMessage('Сохранено')
+      toast.success('Сохранено')
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
   return (
     <section className="stack">
-      {message && <p className="muted">{message}</p>}
+      <p className="muted">
+        Витрина — это <strong>отбор отзывов для главной страницы</strong> (какие отзывы попадают в
+        подборку), а не оформление виджета. Внешний вид настраивается на вкладке «Виджет».
+      </p>
       <section className="panel form-grid">
         <label>
           <span>Минимальная оценка</span>

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
+import { toast } from '../toast'
 
 export default function Embed() {
   const [baseUrl, setBaseUrl] = useState(window.location.origin)
   const [anchorSelector, setAnchorSelector] = useState('')
-  const [message, setMessage] = useState('')
 
   const snippet = useMemo(() => {
     const base = baseUrl.replace(/\/$/, '')
@@ -29,7 +29,7 @@ window.REVIEWS_EMBED_CONFIG = ${json};
 
   async function copy() {
     await navigator.clipboard.writeText(snippet)
-    setMessage('Скопировано')
+    toast.success('Скопировано')
   }
 
   return (
@@ -46,7 +46,6 @@ window.REVIEWS_EMBED_CONFIG = ${json};
       </section>
       <div className="toolbar">
         <button onClick={copy}>Скопировать</button>
-        {message && <p className="muted">{message}</p>}
       </div>
       {insecureBase && (
         <p className="status-warn">

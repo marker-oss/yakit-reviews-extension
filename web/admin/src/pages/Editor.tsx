@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiGet, apiWrite } from '../api'
+import { toast } from '../toast'
 import { defaultWidgetConfig, mergeWidgetConfig, type MarketplacePolicy, type WidgetConfig, type WidgetContext } from '../widgetConfig'
 
 type VersionItem = {
@@ -35,10 +36,8 @@ export default function Editor() {
   const [context, setContext] = useState<WidgetContext>('product')
   const [cfg, setCfg] = useState<WidgetConfig>(defaultWidgetConfig)
   const [versions, setVersions] = useState<VersionItem[]>([])
-  const [message, setMessage] = useState('')
 
   function load(nextContext = context) {
-    setMessage('')
     Promise.all([
       apiGet<Partial<WidgetConfig>>(`/admin/api/widget-config/${nextContext}`),
       apiGet<{ versions: VersionItem[] }>(`/admin/api/widget-config/${nextContext}/versions`),
@@ -47,7 +46,7 @@ export default function Editor() {
         setCfg(mergeWidgetConfig(config))
         setVersions(versionData.versions)
       })
-      .catch((err) => setMessage(err instanceof Error ? err.message : 'Запрос не выполнен'))
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }
 
   useEffect(() => load(context), [context])
@@ -55,24 +54,22 @@ export default function Editor() {
   const preview = useMemo(() => previewDocument(cfg, context), [cfg, context])
 
   async function publish() {
-    setMessage('')
     try {
       const res = await apiWrite<{ version: number }>('POST', `/admin/api/widget-config/${context}`, cfg)
-      setMessage(`Опубликована версия ${res.version}`)
+      toast.success(`Опубликована v${res.version} — уже на сайте`)
       load(context)
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
   async function rollback(version: number) {
-    setMessage('')
     try {
       await apiWrite('POST', `/admin/api/widget-config/${context}/rollback/${version}`)
-      setMessage(`Активна версия ${version}`)
+      toast.success(`Активна версия ${version}`)
       load(context)
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
@@ -131,7 +128,6 @@ export default function Editor() {
             <option value="homepage">Главная</option>
           </select>
           <button onClick={publish}>Опубликовать</button>
-          {message && <p className="muted">{message}</p>}
         </div>
 
         <section className="panel form-grid">

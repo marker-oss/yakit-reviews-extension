@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiWrite } from '../api'
+import { toast } from '../toast'
 import type { MarketplaceStatus } from '../types'
 
 const fieldLabels: Record<string, Record<string, string>> = {
@@ -47,7 +48,6 @@ export default function Marketplaces() {
   const [items, setItems] = useState<MarketplaceStatus[]>([])
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({})
   const [busy, setBusy] = useState('')
-  const [message, setMessage] = useState('')
   const [publish, setPublish] = useState<Record<string, boolean>>(defaultPublish)
   const [catalog, setCatalog] = useState<CatalogStatus | null>(null)
   const [catalogPollEpoch, setCatalogPollEpoch] = useState(0)
@@ -76,7 +76,7 @@ export default function Marketplaces() {
   function load() {
     apiGet<{ marketplaces: MarketplaceStatus[] }>('/admin/api/marketplaces')
       .then((data) => setItems(data.marketplaces))
-      .catch((err) => setMessage(err instanceof Error ? err.message : 'Запрос не выполнен'))
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }
 
   useEffect(load, [])
@@ -96,18 +96,17 @@ export default function Marketplaces() {
     try {
       await apiWrite('PUT', '/admin/api/settings', { [`publish_replies_${mp}`]: value ? 'true' : 'false' })
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
   async function sync(marketplace?: string) {
     setBusy(marketplace ?? 'all')
-    setMessage('')
     try {
       await apiWrite('POST', marketplace ? `/admin/api/sync?marketplace=${marketplace}` : '/admin/api/sync')
-      setMessage('Синхронизация запущена')
+      toast.success('Синхронизация запущена')
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     } finally {
       setBusy('')
     }
@@ -115,14 +114,13 @@ export default function Marketplaces() {
 
   async function refreshCatalog(full = false) {
     setBusy('catalog')
-    setMessage('')
     try {
       await apiWrite<CatalogStatus>('POST', `/admin/api/site-links/refresh${full ? '?full=1' : ''}`)
     } catch (err) {
       // 409 «уже идёт» тоже прилетает сюда — тогда просто продолжаем опрашивать.
       const status = await apiGet<CatalogStatus>('/admin/api/site-links/refresh').catch(() => null)
       if (!status || status.state !== 'running') {
-        setMessage(err instanceof Error ? err.message : 'Запрос не выполнен')
+        toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
         setBusy('')
         return
       }
@@ -133,17 +131,19 @@ export default function Marketplaces() {
 
   async function save(item: MarketplaceStatus, enabled = item.enabled) {
     setBusy(`save-${item.id}`)
-    setMessage('')
     try {
       await apiWrite('PUT', `/admin/api/marketplaces/${item.id}/credentials`, {
         enabled,
         values: drafts[item.id] ?? {},
       })
       setDrafts({ ...drafts, [item.id]: {} })
-      setMessage('Доступы сохранены')
+      toast.success('Доступы сохранены. Запустите синхронизацию, чтобы подтянуть отзывы', {
+        label: 'Синхронизировать',
+        onClick: () => sync(item.id),
+      })
       load()
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     } finally {
       setBusy('')
     }
@@ -175,7 +175,6 @@ export default function Marketplaces() {
         >
           Пересканировать полностью
         </button>
-        {message && <p className="muted">{message}</p>}
         {catalogStatusText(catalog) && <p className="muted">{catalogStatusText(catalog)}</p>}
       </div>
       <section className="panel">

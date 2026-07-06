@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { apiGet, apiWrite } from '../api'
+import { toast } from '../toast'
 import type { Review } from '../types'
 
 type ListResponse = {
@@ -48,8 +49,6 @@ export default function Reviews() {
   const [articlePins, setArticlePins] = useState<Set<number>>(new Set())
   const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({})
   const [editDrafts, setEditDrafts] = useState<Record<number, ReviewDraft>>({})
-  const [error, setError] = useState('')
-  const [publishMessage, setPublishMessage] = useState('')
   const [publishing, setPublishing] = useState(false)
   const [mediaViewer, setMediaViewer] = useState<MediaViewerState | null>(null)
 
@@ -71,7 +70,7 @@ export default function Reviews() {
         setEditDrafts(Object.fromEntries(next.reviews.map((review) => [review.id, draftFromReview(review)])))
         return loadPins()
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Запрос не выполнен'))
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }
 
   useEffect(() => load(offset), [marketplace, visibility, status, sort, search, article, offset])
@@ -160,42 +159,38 @@ export default function Reviews() {
       cons?: string
     },
   ) {
-    setError('')
     try {
       await apiWrite('PATCH', `/admin/api/reviews/${id}`, body)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
   async function deleteReview(id: number) {
-    setError('')
     try {
       await apiWrite('DELETE', `/admin/api/reviews/${id}`)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
   async function restoreReview(id: number) {
-    setError('')
     try {
       await apiWrite('POST', `/admin/api/reviews/${id}/restore`)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
   async function purgeReview(id: number) {
-    setError('')
     try {
       await apiWrite('DELETE', `/admin/api/reviews/${id}/purge`)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
@@ -215,22 +210,21 @@ export default function Reviews() {
   }
 
   async function saveReply(id: number) {
-    setError('')
     try {
       await apiWrite('PUT', `/admin/api/reviews/${id}/reply`, { text: replyDrafts[id] ?? '' })
+      toast.success('Ответ сохранён')
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
   async function retryPublish(id: number) {
-    setError('')
     try {
       await apiWrite('POST', `/admin/api/reviews/${id}/reply/retry`)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
@@ -240,37 +234,31 @@ export default function Reviews() {
     const next = articlePins.has(id)
       ? [...articlePins].filter((reviewID) => reviewID !== id)
       : [...articlePins, id]
-    setError('')
     try {
       await apiWrite('PUT', `/admin/api/articles/${encodeURIComponent(currentArticle)}/pins`, { reviewIds: next })
       setArticlePins(new Set(next))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
   async function bulkModerate(body: { visibility?: 'visible' | 'hidden'; pinned?: boolean; status?: 'approved' | 'rejected' | 'pending' | 'deleted' }) {
     if (selected.size === 0) return
-    setError('')
     try {
       await apiWrite('POST', '/admin/api/reviews/bulk', { ids: [...selected], ...body })
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
   async function publishChanges() {
-    setError('')
-    setPublishMessage('')
     setPublishing(true)
     try {
       const result = await apiWrite<PublishResponse>('POST', '/admin/api/reviews/publish')
-      setPublishMessage(
-        `Опубликовано: ${result.reviews} отзывов, ${result.articles} артикулов · ${new Date(result.generatedAt).toLocaleString()}`,
-      )
+      toast.success(`Опубликовано: ${result.reviews} отзывов, ${result.articles} артикулов`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Публикация не выполнена')
+      toast.error(err instanceof Error ? err.message : 'Публикация не выполнена')
     } finally {
       setPublishing(false)
     }
@@ -380,8 +368,6 @@ export default function Reviews() {
         </button>
         <span className="muted">Отзывов: {data.total}</span>
       </div>
-      {error && <p className="error">{error}</p>}
-      {publishMessage && <p className="status-ok publish-status">{publishMessage}</p>}
       {selected.size > 0 && (
         <div className="toolbar bulk-bar">
           <span className="muted">Выбрано: {selected.size}</span>

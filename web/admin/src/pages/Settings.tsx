@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiWrite } from '../api'
+import { toast } from '../toast'
 
 interface SettingsResponse {
   agreementUrl: string
@@ -14,14 +15,10 @@ export default function Settings() {
   const [shopOrigin, setShopOrigin] = useState('')
   const [sitemapUrl, setSitemapUrl] = useState('')
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
 
   // DSR (152-ФЗ) state
   const [dsrEmail, setDsrEmail] = useState('')
   const [dsrResult, setDsrResult] = useState<{ reviews: unknown[] } | null>(null)
-  const [dsrMsg, setDsrMsg] = useState('')
-  const [dsrError, setDsrError] = useState('')
   const [dsrBusy, setDsrBusy] = useState(false)
 
   useEffect(() => {
@@ -32,14 +29,12 @@ export default function Settings() {
         setShopOrigin(data.shopOrigin ?? '')
         setSitemapUrl(data.sitemapUrl ?? '')
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Запрос не выполнен'))
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }, [])
 
   async function save(event: React.FormEvent) {
     event.preventDefault()
     setBusy(true)
-    setMessage('')
-    setError('')
     try {
       const data = await apiWrite<SettingsResponse>('PUT', '/admin/api/settings', {
         agreementUrl: agreementUrl.trim(),
@@ -51,17 +46,15 @@ export default function Settings() {
       setReviewTermsUrl(data.reviewTermsUrl ?? '')
       setShopOrigin(data.shopOrigin ?? '')
       setSitemapUrl(data.sitemapUrl ?? '')
-      setMessage('Сохранено')
+      toast.success('Сохранено')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     } finally {
       setBusy(false)
     }
   }
 
   async function dsrLookup() {
-    setDsrMsg('')
-    setDsrError('')
     setDsrResult(null)
     setDsrBusy(true)
     try {
@@ -69,9 +62,9 @@ export default function Settings() {
         `/admin/api/dsr/lookup?email=${encodeURIComponent(dsrEmail)}`,
       )
       setDsrResult(data)
-      setDsrMsg(`Найдено отзывов: ${data.reviews.length}`)
+      toast.info(`Найдено отзывов: ${data.reviews.length}`)
     } catch (e) {
-      setDsrError(e instanceof Error ? e.message : 'Ошибка')
+      toast.error(e instanceof Error ? e.message : 'Ошибка')
     } finally {
       setDsrBusy(false)
     }
@@ -86,16 +79,14 @@ export default function Settings() {
       return
     if (!window.confirm(`Подтвердите: безвозвратно удалить данные для "${dsrEmail}"?`)) return
     setDsrBusy(true)
-    setDsrMsg('')
-    setDsrError('')
     try {
       const r = await apiWrite<{ deleted: number }>('POST', '/admin/api/dsr/delete', {
         email: dsrEmail,
       })
-      setDsrMsg(`Удалено: ${r.deleted}`)
+      toast.success(`Удалено: ${r.deleted}`)
       setDsrResult(null)
     } catch (e) {
-      setDsrError(e instanceof Error ? e.message : 'Ошибка')
+      toast.error(e instanceof Error ? e.message : 'Ошибка')
     } finally {
       setDsrBusy(false)
     }
@@ -161,8 +152,6 @@ export default function Settings() {
             <button type="submit" disabled={busy}>
               {busy ? 'Сохраняем' : 'Сохранить'}
             </button>
-            {message && <p className="muted">{message}</p>}
-            {error && <p className="error">{error}</p>}
           </div>
         </form>
       </section>
@@ -203,8 +192,6 @@ export default function Settings() {
               </button>
             )}
           </div>
-          {dsrMsg && <p className="muted">{dsrMsg}</p>}
-          {dsrError && <p className="error">{dsrError}</p>}
           <p className="muted">
             Для отзывов с маркетплейсов удаляется только наша копия. Оригинал на WB / Ozon /
             Яндекс Маркет удаляется через сам маркетплейс.

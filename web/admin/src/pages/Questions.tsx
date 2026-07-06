@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiWrite } from '../api'
+import { toast } from '../toast'
 import type { Question } from '../types'
 
 type ListResponse = {
@@ -21,7 +22,6 @@ export default function Questions() {
   const [status, setStatus] = useState('')
   const [offset, setOffset] = useState(0)
   const [answerDrafts, setAnswerDrafts] = useState<Record<number, string>>({})
-  const [error, setError] = useState('')
 
   function load(nextOffset = offset) {
     const query = new URLSearchParams()
@@ -34,7 +34,7 @@ export default function Questions() {
         setData(next)
         setAnswerDrafts(Object.fromEntries(next.questions.map((q) => [q.id, q.answer?.text ?? ''])))
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Запрос не выполнен'))
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }
 
   useEffect(() => load(offset), [marketplace, status, offset])
@@ -47,22 +47,21 @@ export default function Questions() {
   }
 
   async function saveAnswer(id: number) {
-    setError('')
     try {
       await apiWrite('PUT', `/admin/api/questions/${id}/answer`, { text: answerDrafts[id] ?? '' })
+      toast.success('Ответ сохранён')
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
   async function retryPublish(id: number) {
-    setError('')
     try {
       await apiWrite('POST', `/admin/api/questions/${id}/answer/retry`)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Запрос не выполнен')
+      toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
     }
   }
 
@@ -87,7 +86,6 @@ export default function Questions() {
         </select>
         <span className="muted">Вопросов: {total}</span>
       </div>
-      {error && <p className="error">{error}</p>}
       <section className="panel">
         <div className="table">
           <div className="table-head grid-questions">
