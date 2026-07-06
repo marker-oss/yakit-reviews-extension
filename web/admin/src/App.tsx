@@ -9,12 +9,14 @@ import Questions from './pages/Questions'
 import Reviews from './pages/Reviews'
 import Settings from './pages/Settings'
 import Showcase from './pages/Showcase'
+import Status from './pages/Status'
 
 type Mode = 'loading' | 'setup' | 'login' | 'authed'
 type Route =
   | 'dashboard'
   | 'reviews'
   | 'questions'
+  | 'status'
   | 'widget/showcase'
   | 'widget/editor'
   | 'widget/embed'
@@ -46,6 +48,7 @@ const ROUTES: Route[] = [
   'dashboard',
   'reviews',
   'questions',
+  'status',
   'widget/showcase',
   'widget/editor',
   'widget/embed',
@@ -64,6 +67,7 @@ function routeSection(route: Route): 'dashboard' | 'reviews' | 'questions' | 'wi
   if (route === 'dashboard') return 'dashboard'
   if (route === 'reviews') return 'reviews'
   if (route === 'questions') return 'questions'
+  if (route === 'status') return 'dashboard'
   return route.startsWith('widget/') ? 'widget' : 'settings'
 }
 
@@ -75,6 +79,8 @@ function routeTitle(route: Route): string {
       return 'Отзывы'
     case 'questions':
       return 'Вопросы'
+    case 'status':
+      return 'Состояние'
     case 'widget/showcase':
       return 'Виджет · Витрина'
     case 'widget/editor':
@@ -242,6 +248,9 @@ export default function App() {
             <a className={route === 'questions' ? 'active' : ''} href="#/questions">
               Вопросы {counts.pendingQuestions > 0 && <span className="nav-count">{counts.pendingQuestions}</span>}
             </a>
+            <a className={route === 'status' ? 'active' : ''} href="#/status">
+              Состояние
+            </a>
             <div className="nav-group">
               <span className={`nav-group-label${routeSection(route) === 'widget' ? ' active' : ''}`}>
                 Виджет
@@ -297,6 +306,7 @@ export default function App() {
           {route === 'dashboard' && <Dashboard />}
           {route === 'reviews' && <Reviews />}
           {route === 'questions' && <Questions />}
+          {route === 'status' && <Status />}
           {route === 'widget/showcase' && <Showcase />}
           {route === 'widget/editor' && <Editor />}
           {route === 'widget/embed' && <Embed />}

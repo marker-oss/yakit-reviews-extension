@@ -1018,3 +1018,34 @@ small {
   font-size: 12px;
   font-weight: 700;
 }
+.diag-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--admin-border);
+  border-radius: 10px;
+  border-left-width: 4px;
+}
+.diag-item > div { flex: 1; min-width: 0; }
+.diag-item p { margin: 4px 0 0; }
+.diag-mark { font-size: 16px; font-weight: 700; line-height: 1.5; }
+.diag-ok { border-left-color: var(--ok); }
+.diag-ok .diag-mark { color: var(--ok); }
+.diag-warn { border-left-color: var(--warn); }
+.diag-warn .diag-mark { color: var(--warn); }
+.diag-fail { border-left-color: var(--danger); }
+.diag-fail .diag-mark { color: var(--danger); }
+.diag-fix {
+  align-self: center;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.activity-row {
+  display: flex;
+  gap: 12px;
+  border-top: 1px solid var(--admin-border);
+  padding-top: 10px;
+}
+.activity-fail span:last-child { color: var(--danger); }
