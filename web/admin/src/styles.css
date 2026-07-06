@@ -66,7 +66,7 @@ input:focus-visible,
 select:focus-visible,
 a:focus-visible {
   outline: 0;
-  box-shadow: 0 0 0 3px rgba(117, 102, 160, 0.18);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.25);
 }
 
 button:disabled {
@@ -81,7 +81,7 @@ button.secondary {
 }
 
 button.secondary:hover {
-  border-color: #ded6ec;
+  border-color: #c7d2fe;
   background: var(--admin-iris-tint);
   color: var(--admin-iris);
 }
@@ -246,9 +246,9 @@ h3 {
   gap: 16px;
   padding: 10px 14px;
   margin-bottom: 16px;
-  border: 1px solid #d9c58a;
+  border: 1px solid var(--admin-border);
   border-radius: 10px;
-  background: #fdf6e3;
+  background: var(--accent-tint);
   font-size: 14px;
 }
 
@@ -394,7 +394,7 @@ small {
 }
 
 .review-media-thumb:hover {
-  border-color: #ded6ec;
+  border-color: #c7d2fe;
   background: var(--admin-iris-tint);
 }
 
