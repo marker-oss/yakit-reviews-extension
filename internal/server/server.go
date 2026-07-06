@@ -212,6 +212,7 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.Handle("DELETE /admin/api/articles/{article}/pins/{reviewID}", requireCSRF(http.HandlerFunc(s.handleRemoveArticlePin)))
 	protected.HandleFunc("GET /admin/api/version", s.handleVersion)
 	protected.HandleFunc("GET /admin/api/dashboard", s.handleDashboard)
+	protected.HandleFunc("GET /admin/api/diagnostics", s.handleDiagnostics)
 	protected.HandleFunc("GET /admin/api/counts", s.handleCounts)
 	protected.HandleFunc("GET /admin/api/marketplaces", s.handleMarketplaces)
 	protected.Handle("PUT /admin/api/marketplaces/{id}/credentials", requireCSRF(http.HandlerFunc(s.handleSaveMarketplaceCredentials)))
