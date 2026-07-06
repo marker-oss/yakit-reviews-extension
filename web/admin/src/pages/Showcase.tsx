@@ -7,6 +7,7 @@ import type { ShowcaseRule } from '../types'
 export default function Showcase() {
   const [rule, setRule] = useState<ShowcaseRule | null>(null)
   const [baseline, setBaseline] = useState<ShowcaseRule | null>(null)
+  const [loadError, setLoadError] = useState('')
   const dirty = useDirty(rule, baseline)
 
   useEffect(() => {
@@ -15,9 +16,14 @@ export default function Showcase() {
         setRule(data)
         setBaseline(data)
       })
-      .catch((err) => toast.error(err instanceof Error ? err.message : 'Запрос не выполнен'))
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Запрос не выполнен'
+        toast.error(msg)
+        setLoadError(msg)
+      })
   }, [])
 
+  if (loadError && !rule) return <p className="error">{loadError}</p>
   if (!rule) return <p className="muted">Загрузка...</p>
 
   function set<K extends keyof ShowcaseRule>(key: K, value: ShowcaseRule[K]) {

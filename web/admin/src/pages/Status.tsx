@@ -10,6 +10,7 @@ const levelLabel: Record<DiagItem['level'], string> = { ok: '✓', warn: '⚠', 
 
 export default function Status() {
   const [data, setData] = useState<Diagnostics | null>(null)
+  const [loadError, setLoadError] = useState('')
   const [productUrl, setProductUrl] = useState('')
   const [probe, setProbe] = useState<DiagItem[] | null>(null)
   const [probing, setProbing] = useState(false)
@@ -17,7 +18,11 @@ export default function Status() {
   useEffect(() => {
     apiGet<Diagnostics>('/admin/api/diagnostics')
       .then(setData)
-      .catch((e) => toast.error(e instanceof Error ? e.message : 'Не удалось загрузить диагностику'))
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : 'Не удалось загрузить диагностику'
+        toast.error(msg)
+        setLoadError(msg)
+      })
   }, [])
 
   async function runProbe() {
@@ -34,6 +39,7 @@ export default function Status() {
     }
   }
 
+  if (loadError && !data) return <p className="error">{loadError}</p>
   if (!data) return <p className="muted">Загрузка...</p>
 
   return (

@@ -9,6 +9,15 @@ function syncStatus(value: string) {
   return value
 }
 
+// Russian plural agreement: forms = [one, few, many] (1 проблема, 2 проблемы, 5 проблем).
+function plural(n: number, forms: [string, string, string]) {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return forms[0]
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return forms[1]
+  return forms[2]
+}
+
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState('')
@@ -36,7 +45,9 @@ export default function Dashboard() {
         const warns = diag.checks.filter((c) => c.level === 'warn').length
         const tone = fails > 0 ? 'fail' : warns > 0 ? 'warn' : 'ok'
         const label =
-          tone === 'ok' ? 'Всё в порядке' : `${fails} проблем · ${warns} предупреждений`
+          tone === 'ok'
+            ? 'Всё в порядке'
+            : `${fails} ${plural(fails, ['проблема', 'проблемы', 'проблем'])} · ${warns} ${plural(warns, ['предупреждение', 'предупреждения', 'предупреждений'])}`
         return (
           <a className={`health-strip health-${tone}`} href="#/status">
             <span>Состояние: {label}</span>
