@@ -30,7 +30,7 @@ export function dismiss(id: number) {
 function push(kind: ToastKind, message: string, action?: ToastAction) {
   const id = ++seq
   // Errors linger (8s) and success/info auto-clear faster (4s).
-  const ttl = kind === 'error' ? 8000 : 4000
+  const ttl = action ? 10000 : kind === 'error' ? 8000 : 4000
   toasts = [...toasts, { id, kind, message, action, ttl }]
   emit()
   window.setTimeout(() => dismiss(id), ttl)

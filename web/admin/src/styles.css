@@ -357,7 +357,7 @@ small {
 }
 
 .bulk-bar {
-  background: var(--surface, #f4f1fb);
+  background: var(--admin-warm);
   border-radius: 10px;
   padding: 10px 14px;
 }

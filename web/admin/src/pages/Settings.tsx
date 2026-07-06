@@ -211,7 +211,7 @@ export default function Settings() {
                 type="button"
                 onClick={dsrDelete}
                 disabled={dsrBusy}
-                style={{ color: 'var(--color-danger, #c0392b)' }}
+                style={{ color: 'var(--danger)' }}
               >
                 Удалить все данные
               </button>
