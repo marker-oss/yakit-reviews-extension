@@ -12,6 +12,7 @@ function syncStatus(value: string) {
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState('')
+  const [diag, setDiag] = useState<{ checks: { id: string; level: string }[] } | null>(null)
 
   useEffect(() => {
     apiGet<DashboardData>('/admin/api/dashboard')
@@ -19,11 +20,30 @@ export default function Dashboard() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }, [])
 
+  useEffect(() => {
+    apiGet<{ checks: { id: string; level: string }[] }>('/admin/api/diagnostics')
+      .then(setDiag)
+      .catch(() => {})
+  }, [])
+
   if (error) return <p className="error">{error}</p>
   if (!data) return <p className="muted">Загрузка...</p>
 
   return (
     <section className="stack">
+      {diag && (() => {
+        const fails = diag.checks.filter((c) => c.level === 'fail').length
+        const warns = diag.checks.filter((c) => c.level === 'warn').length
+        const tone = fails > 0 ? 'fail' : warns > 0 ? 'warn' : 'ok'
+        const label =
+          tone === 'ok' ? 'Всё в порядке' : `${fails} проблем · ${warns} предупреждений`
+        return (
+          <a className={`health-strip health-${tone}`} href="#/status">
+            <span>Состояние: {label}</span>
+            <span className="muted">Подробнее →</span>
+          </a>
+        )
+      })()}
       <div className="metrics">
         <div className="metric">
           <span>Всего отзывов</span>
