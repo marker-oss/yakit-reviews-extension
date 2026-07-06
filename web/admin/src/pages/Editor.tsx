@@ -41,6 +41,7 @@ export default function Editor() {
   const [baseline, setBaseline] = useState<WidgetConfig>(defaultWidgetConfig)
   const [versions, setVersions] = useState<VersionItem[]>([])
   const [tab, setTab] = useState<EditorTab>('look')
+  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
 
   function load(nextContext = context) {
     Promise.all([
@@ -329,7 +330,15 @@ export default function Editor() {
         )}
       </section>
 
-      <section className="preview-pane">
+      <section className={`preview-pane${device === 'mobile' ? ' is-mobile' : ''}`}>
+        <div className="preview-toolbar">
+          <button className={`secondary${device === 'desktop' ? ' active' : ''}`} onClick={() => setDevice('desktop')}>
+            Десктоп
+          </button>
+          <button className={`secondary${device === 'mobile' ? ' active' : ''}`} onClick={() => setDevice('mobile')}>
+            Мобайл
+          </button>
+        </div>
         <iframe title="Предпросмотр виджета" srcDoc={preview} />
       </section>
     </section>

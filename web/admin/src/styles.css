@@ -993,3 +993,15 @@ small {
   font-size: 12px;
   font-weight: 600;
 }
+.preview-toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+  border-bottom: 1px solid var(--admin-border);
+}
+.preview-toolbar .active { border-color: var(--accent); color: var(--accent); }
+.preview-pane.is-mobile iframe {
+  width: 390px;
+  max-width: 100%;
+  margin: 0 auto;
+}
