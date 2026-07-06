@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -142,4 +143,88 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"checks": checks, "activity": activity})
+}
+
+type probeRequest struct {
+	ProductURL string `json:"productUrl"`
+}
+
+func (s *Server) handleDiagnosticsProbe(w http.ResponseWriter, r *http.Request) {
+	var req probeRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req) // empty body is fine
+	}
+	ctx := r.Context()
+	checks := []DiagItem{}
+
+	origin, _ := s.store.GetAppSetting(ctx, store.SettingShopOrigin)
+	origin = strings.TrimSpace(origin)
+	if origin == "" {
+		checks = append(checks, DiagItem{
+			ID: "site-reachable", Level: "warn",
+			Title:   "Адрес магазина не задан",
+			Detail:  "Укажите адрес магазина в «Настройках», чтобы проверить доступность сайта.",
+			FixHref: "#/settings/general",
+		})
+	} else {
+		client := &http.Client{Timeout: 8 * time.Second}
+		resp, err := client.Get(origin)
+		if err != nil {
+			checks = append(checks, DiagItem{
+				ID: "site-reachable", Level: "fail",
+				Title:  "Сайт магазина недоступен",
+				Detail: "Не удалось открыть " + origin + ": " + err.Error(),
+			})
+		} else {
+			resp.Body.Close()
+			level, detail := "ok", "Ответ "+itoa(resp.StatusCode)
+			if resp.StatusCode >= 400 {
+				level = "warn"
+			}
+			checks = append(checks, DiagItem{
+				ID: "site-reachable", Level: level,
+				Title: "Сайт магазина отвечает", Detail: detail,
+			})
+		}
+	}
+
+	if strings.TrimSpace(req.ProductURL) != "" {
+		checks = append(checks, s.probeProductURL(req.ProductURL))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"checks": checks})
+}
+
+// probeProductURL resolves the article for a product URL against the same
+// product-link map the widget uses. It never performs a "snippet present"
+// check — that cannot be done reliably server-side when the snippet is
+// injected by Tag Manager (documented limitation, surfaced in the UI).
+func (s *Server) probeProductURL(productURL string) DiagItem {
+	article := s.resolveArticleFromURL(productURL)
+	if article == "" {
+		return DiagItem{
+			ID: "article-resolve", Level: "warn",
+			Title:   "Артикул для этой страницы не найден",
+			Detail:  "URL нет в каталоге — обновите каталог или проверьте адрес. Виджет не сможет подобрать отзывы.",
+			FixHref: "#/settings/marketplaces",
+		}
+	}
+	return DiagItem{
+		ID: "article-resolve", Level: "ok",
+		Title:  "Артикул найден",
+		Detail: "URL сопоставлен с артикулом " + article,
+	}
+}
+
+// resolveArticleFromURL inverts the in-memory article→URL map (s.productLinks(),
+// which is keyed by seller article — verified in server.go / site.ProductLinkMap)
+// to find the article whose product page matches productURL.
+func (s *Server) resolveArticleFromURL(productURL string) string {
+	target := strings.TrimRight(strings.TrimSpace(productURL), "/")
+	for article, u := range s.productLinks() {
+		if strings.TrimRight(u, "/") == target {
+			return article
+		}
+	}
+	return ""
 }
