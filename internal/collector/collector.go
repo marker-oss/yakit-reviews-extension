@@ -133,6 +133,7 @@ func (r *Runner) runMarketplace(ctx context.Context, marketplaceID string) Resul
 					ExternalSKU:        q.ExternalSKU,
 					AuthorName:         q.AuthorName,
 					Text:               q.Text,
+					Answer:             q.Answer,
 					CreatedAtMP:        q.CreatedAtMP,
 				}); uErr != nil {
 					r.logger.Warn("upsert question failed", "marketplace", marketplaceID, "question", q.ExternalQuestionID, "error", uErr)

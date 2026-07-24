@@ -329,6 +329,17 @@ func TestFetchQuestionsMapsOzonResponse(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %q, want POST", r.Method)
 		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/question/answer/list" {
+			_, _ = w.Write([]byte(`{
+				"answers": [
+					{"text": "Да, подходит", "author_name": "seller", "status": "published"}
+				],
+				"has_next": false,
+				"last_id": ""
+			}`))
+			return
+		}
 		if r.URL.Path != "/v1/question/list" {
 			t.Errorf("path = %q, want /v1/question/list", r.URL.Path)
 		}
@@ -338,7 +349,6 @@ func TestFetchQuestionsMapsOzonResponse(t *testing.T) {
 		if got := r.Header.Get("Api-Key"); got != "key" {
 			t.Errorf("Api-Key = %q", got)
 		}
-		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"items": [
 				{
@@ -381,6 +391,9 @@ func TestFetchQuestionsMapsOzonResponse(t *testing.T) {
 	}
 	if q.Text != "Этот товар подходит для детей?" {
 		t.Errorf("Text = %q", q.Text)
+	}
+	if q.Answer == nil || q.Answer.Text != "Да, подходит" {
+		t.Errorf("Answer = %+v", q.Answer)
 	}
 	expected := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
 	if !q.CreatedAtMP.Equal(expected) {

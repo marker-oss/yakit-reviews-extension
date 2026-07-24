@@ -248,6 +248,122 @@ func TestFetchReviewsErrorsOnNon2xx(t *testing.T) {
 	}
 }
 
+func TestFetchQuestionsMapsYMResponse(t *testing.T) {
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if got := r.Method; got != http.MethodPost {
+			t.Fatalf("method = %q", got)
+		}
+		if got := r.Header.Get("Api-Key"); got != "key" {
+			t.Fatalf("api-key header = %q", got)
+		}
+		if r.URL.Path == "/v1/businesses/777/goods-questions/answers" {
+			return jsonResponse(http.StatusOK, map[string]any{
+				"status": "OK",
+				"result": map[string]any{
+					"answers": []map[string]any{
+						{
+							"id":         2001,
+							"questionId": 1001,
+							"text":       "Да, есть",
+							"status":     "PUBLISHED",
+							"author":     map[string]any{"type": "BUSINESS", "name": "seller"},
+							"createdAt":  "2026-07-20T11:30:00Z",
+						},
+					},
+				},
+			}), nil
+		}
+		if got := r.URL.Path; got != "/v1/businesses/777/goods-questions" {
+			t.Fatalf("path = %q", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "50" {
+			t.Fatalf("limit = %q", got)
+		}
+		if got := r.URL.Query().Get("pageToken"); got != "" {
+			t.Fatalf("pageToken should be empty on first page, got %q", got)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["needAnswer"] != false || body["sort"] != "CREATED_AT_DESC" || body["dateFrom"] != "2026-07-01" {
+			t.Fatalf("body = %+v", body)
+		}
+		return jsonResponse(http.StatusOK, map[string]any{
+			"status": "OK",
+			"result": map[string]any{
+				"questions": []map[string]any{
+					{
+						"questionIdentifiers": map[string]any{
+							"id":         1001,
+							"categoryId": 7,
+							"offerId":    "SKU-42",
+						},
+						"text":      "Есть ли размер M?",
+						"createdAt": "2026-07-20T10:30:00Z",
+						"author":    map[string]any{"type": "USER", "name": "Мария"},
+					},
+				},
+				"paging": map[string]any{"nextPageToken": "NEXT"},
+			},
+		}), nil
+	})}
+
+	client := NewWithHTTPClient(config.YMConfig{APIKey: "key", BusinessID: "777"}, "https://api.partner.test", httpClient, 50)
+	questions, nextCursor, err := client.FetchQuestions(context.Background(), time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), "")
+	if err != nil {
+		t.Fatalf("fetch questions: %v", err)
+	}
+	if !strings.HasPrefix(nextCursor, "2026-07-01|") || !strings.HasSuffix(nextCursor, "|NEXT") {
+		t.Fatalf("next cursor = %q", nextCursor)
+	}
+	if len(questions) != 1 {
+		t.Fatalf("questions len = %d", len(questions))
+	}
+
+	q := questions[0]
+	if q.ExternalQuestionID != "1001" || q.ExternalProductID != "SKU-42" || q.SellerArticle != "SKU-42" {
+		t.Fatalf("ids = %+v", q)
+	}
+	if q.Text != "Есть ли размер M?" || q.AuthorName != "Мария" {
+		t.Fatalf("content = %+v", q)
+	}
+	if q.Answer == nil || q.Answer.Text != "Да, есть" || q.Answer.State != "published" {
+		t.Fatalf("answer = %+v", q.Answer)
+	}
+	if !q.CreatedAtMP.Equal(time.Date(2026, 7, 20, 10, 30, 0, 0, time.UTC)) {
+		t.Fatalf("createdAt = %v", q.CreatedAtMP)
+	}
+}
+
+func TestFetchQuestionsYMAdvancesMonthlyBackfill(t *testing.T) {
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["dateFrom"] != "2026-01-01" || body["dateTo"] != "2026-02-01" {
+			t.Fatalf("body = %+v", body)
+		}
+		return jsonResponse(http.StatusOK, map[string]any{
+			"status": "OK",
+			"result": map[string]any{
+				"questions": []map[string]any{},
+				"paging":    map[string]any{"nextPageToken": ""},
+			},
+		}), nil
+	})}
+
+	client := NewWithHTTPClient(config.YMConfig{APIKey: "key", BusinessID: "777"}, "https://api.partner.test", httpClient, 50)
+	_, nextCursor, err := client.FetchQuestions(context.Background(), time.Time{}, "2026-01-01|2026-02-01|")
+	if err != nil {
+		t.Fatalf("fetch questions: %v", err)
+	}
+	if !strings.HasPrefix(nextCursor, "2026-02-01|2026-03-01|") {
+		t.Fatalf("next cursor = %q", nextCursor)
+	}
+}
+
 func TestPublishReplyPostsComment(t *testing.T) {
 	var gotPath, gotBody, gotKey string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -279,5 +395,42 @@ func TestPublishReplyBadID(t *testing.T) {
 	c := NewWithHTTPClient(config.YMConfig{APIKey: "key", BusinessID: "42"}, "http://unused", nil, 0)
 	if err := c.PublishReply(context.Background(), "not-a-number", "x"); err == nil {
 		t.Fatal("expected error for non-numeric feedback id")
+	}
+}
+
+func TestPublishQuestionAnswerPostsUpdate(t *testing.T) {
+	var gotPath, gotBody, gotKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotKey = r.Header.Get("Api-Key")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"OK"}`))
+	}))
+	defer srv.Close()
+
+	c := NewWithHTTPClient(config.YMConfig{APIKey: "key", BusinessID: "42"}, srv.URL, srv.Client(), 0)
+	if err := c.PublishQuestionAnswer(context.Background(), "1001", "", "Да, есть"); err != nil {
+		t.Fatalf("publish question answer: %v", err)
+	}
+	if gotPath != "/v1/businesses/42/goods-questions/update" {
+		t.Fatalf("path = %s", gotPath)
+	}
+	if gotKey != "key" {
+		t.Fatalf("api-key = %q", gotKey)
+	}
+	if !strings.Contains(gotBody, `"operationType":"CREATE"`) ||
+		!strings.Contains(gotBody, `"type":"QUESTION"`) ||
+		!strings.Contains(gotBody, `"id":1001`) ||
+		!strings.Contains(gotBody, `"text":"Да, есть"`) {
+		t.Fatalf("body = %s", gotBody)
+	}
+}
+
+func TestPublishQuestionAnswerBadID(t *testing.T) {
+	c := NewWithHTTPClient(config.YMConfig{APIKey: "key", BusinessID: "42"}, "http://unused", nil, 0)
+	if err := c.PublishQuestionAnswer(context.Background(), "not-a-number", "", "x"); err == nil {
+		t.Fatal("expected error for non-numeric question id")
 	}
 }

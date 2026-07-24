@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"reviews/internal/marketplace"
 )
 
 func TestQuestionAnswerFlow(t *testing.T) {
@@ -64,5 +66,33 @@ func TestSiteQuestionHiddenUntilAnswered(t *testing.T) {
 	vis, _ = s.ListQuestions(ctx, QuestionFilter{Visibility: "visible", SellerArticle: "a1"})
 	if len(vis) != 1 {
 		t.Fatalf("answered site question should be visible, got %d", len(vis))
+	}
+}
+
+func TestUpsertQuestionStoresMarketplaceAnswer(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	q, err := s.UpsertQuestion(ctx, QuestionInput{
+		Marketplace: "ym", ExternalQuestionID: "q1", SellerArticle: "a1",
+		AuthorName: "Иван Иванов", Text: "Есть?", CreatedAtMP: time.Unix(1700000000, 0).UTC(),
+		Answer: &marketplace.Answer{Text: "Да", State: "published"},
+	})
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if q.AnswerText == nil || *q.AnswerText != "Да" || q.Visibility != "visible" || q.Status != "answered" {
+		t.Fatalf("answer not stored: %+v", q)
+	}
+
+	q, err = s.UpsertQuestion(ctx, QuestionInput{
+		Marketplace: "ym", ExternalQuestionID: "q1", SellerArticle: "a1",
+		AuthorName: "Иван Иванов", Text: "Есть?", CreatedAtMP: time.Unix(1700000000, 0).UTC(),
+	})
+	if err != nil {
+		t.Fatalf("upsert without answer: %v", err)
+	}
+	if q.AnswerText == nil || *q.AnswerText != "Да" {
+		t.Fatalf("unanswered refresh cleared answer: %+v", q)
 	}
 }

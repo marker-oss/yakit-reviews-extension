@@ -137,7 +137,9 @@ func TestPublishReplyPostsAnswer(t *testing.T) {
 }
 
 func TestFetchQuestionsMapsWBResponse(t *testing.T) {
+	var call int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call++
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %q, want GET", r.Method)
 		}
@@ -147,8 +149,12 @@ func TestFetchQuestionsMapsWBResponse(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "tok" {
 			t.Errorf("Authorization = %q", got)
 		}
-		if got := r.URL.Query().Get("isAnswered"); got != "false" {
-			t.Errorf("isAnswered = %q", got)
+		wantAnswered := "false"
+		if call == 2 {
+			wantAnswered = "true"
+		}
+		if got := r.URL.Query().Get("isAnswered"); got != wantAnswered {
+			t.Errorf("isAnswered = %q, want %q", got, wantAnswered)
 		}
 		if got := r.URL.Query().Get("take"); got != "10" {
 			t.Errorf("take = %q", got)
@@ -165,6 +171,9 @@ func TestFetchQuestionsMapsWBResponse(t *testing.T) {
 						"text": "Есть ли в наличии?",
 						"createdDate": "2024-10-01T12:00:00+03:00",
 						"userName": "Пользователь",
+						"answer": {
+							"text": "Да, есть"
+						},
 						"productDetails": {
 							"nmId": 123456,
 							"supplierArticle": "MY-ART"
@@ -183,8 +192,8 @@ func TestFetchQuestionsMapsWBResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fetch questions: %v", err)
 	}
-	if nextCursor != "" {
-		t.Fatalf("next cursor = %q, want empty (fewer than pageSize)", nextCursor)
+	if nextCursor != "answered:0" {
+		t.Fatalf("next cursor = %q, want answered stage", nextCursor)
 	}
 	if len(questions) != 1 {
 		t.Fatalf("questions len = %d", len(questions))
@@ -204,6 +213,17 @@ func TestFetchQuestionsMapsWBResponse(t *testing.T) {
 	}
 	if q.Text != "Есть ли в наличии?" {
 		t.Errorf("Text = %q", q.Text)
+	}
+	if q.Answer == nil || q.Answer.Text != "Да, есть" {
+		t.Errorf("Answer = %+v", q.Answer)
+	}
+
+	_, nextCursor, err = c.FetchQuestions(context.Background(), time.Time{}, nextCursor)
+	if err != nil {
+		t.Fatalf("fetch answered questions: %v", err)
+	}
+	if nextCursor != "" {
+		t.Fatalf("final cursor = %q", nextCursor)
 	}
 }
 

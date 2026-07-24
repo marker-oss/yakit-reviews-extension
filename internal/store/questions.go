@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"reviews/internal/auth"
+	"reviews/internal/marketplace"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -19,6 +20,7 @@ type QuestionInput struct {
 	ExternalSKU        string
 	AuthorName         string
 	Text               string
+	Answer             *marketplace.Answer
 	CreatedAtMP        time.Time
 }
 
@@ -47,6 +49,17 @@ type SiteQuestionInput struct {
 func (s *Store) UpsertQuestion(ctx context.Context, in QuestionInput) (Question, error) {
 	now := time.Now().UTC()
 	authorName := AnonymizeAuthorName(in.AuthorName)
+	answerText, answerState := answerFields(in.Answer)
+	status := "imported"
+	visibility := "hidden"
+	var answerAt *time.Time
+	var publishedAt *time.Time
+	if answerText != nil && *answerText != "" {
+		status = "answered"
+		visibility = "visible"
+		answerAt = &now
+		publishedAt = &now
+	}
 
 	row := Question{
 		TenantID:           DefaultTenantID,
@@ -57,9 +70,13 @@ func (s *Store) UpsertQuestion(ctx context.Context, in QuestionInput) (Question,
 		ExternalSKU:        in.ExternalSKU,
 		AuthorName:         authorName,
 		Text:               in.Text,
+		AnswerText:         answerText,
+		AnswerAt:           answerAt,
 		CreatedAtMP:        in.CreatedAtMP,
-		Status:             "imported",
-		Visibility:         "hidden",
+		Status:             status,
+		Visibility:         visibility,
+		AnswerPublishState: answerState,
+		AnswerPublishedAt:  publishedAt,
 		FetchedAt:          now,
 	}
 
@@ -89,6 +106,21 @@ func (s *Store) UpsertQuestion(ctx context.Context, in QuestionInput) (Question,
 		Where("tenant_id = ? AND marketplace = ? AND external_question_id = ?",
 			DefaultTenantID, in.Marketplace, in.ExternalQuestionID).
 		First(&out).Error
+	if err != nil || answerText == nil || *answerText == "" {
+		return out, err
+	}
+	if err := s.db.WithContext(ctx).Model(&out).Updates(map[string]any{
+		"answer_text":          answerText,
+		"answer_at":            answerAt,
+		"status":               status,
+		"visibility":           visibility,
+		"answer_publish_state": answerState,
+		"answer_published_at":  publishedAt,
+		"answer_publish_error": nil,
+	}).Error; err != nil {
+		return Question{}, err
+	}
+	err = s.db.WithContext(ctx).First(&out, out.ID).Error
 	return out, err
 }
 

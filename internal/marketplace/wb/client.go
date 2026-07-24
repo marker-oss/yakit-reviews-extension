@@ -290,13 +290,15 @@ type wbQuestion struct {
 	Text           string           `json:"text"`
 	CreatedDate    string           `json:"createdDate"`
 	UserName       string           `json:"userName"`
+	Answer         *wbAnswer        `json:"answer"`
 	ProductDetails wbProductDetails `json:"productDetails"`
 }
 
 func (c *Client) FetchQuestions(ctx context.Context, since time.Time, cursor string) ([]marketplace.Question, string, error) {
-	_, skip, err := parseCursor(cursor)
+	stage, skip, err := parseCursor(cursor)
 	if err != nil {
 		// If cursor is not in the WB review-cursor format, treat as empty.
+		stage = wbStage{answered: false}
 		skip = 0
 	}
 
@@ -305,7 +307,7 @@ func (c *Client) FetchQuestions(ctx context.Context, since time.Time, cursor str
 		return nil, "", err
 	}
 	query := endpoint.Query()
-	query.Set("isAnswered", "false")
+	query.Set("isAnswered", strconv.FormatBool(stage.answered))
 	query.Set("take", strconv.Itoa(c.pageSize))
 	query.Set("skip", strconv.Itoa(skip))
 	if !since.IsZero() {
@@ -347,19 +349,26 @@ func (c *Client) FetchQuestions(ctx context.Context, since time.Time, cursor str
 		if err != nil {
 			return nil, "", fmt.Errorf("parse WB question createdDate for %s: %w", q.ID, err)
 		}
+		var answer *marketplace.Answer
+		if q.Answer != nil && q.Answer.Text != "" {
+			answer = &marketplace.Answer{Text: q.Answer.Text, State: "published"}
+		}
 		questions = append(questions, marketplace.Question{
 			ExternalQuestionID: q.ID,
 			ExternalProductID:  q.externalProductID(),
 			SellerArticle:      q.ProductDetails.SupplierArticle,
 			AuthorName:         q.UserName,
 			Text:               q.Text,
+			Answer:             answer,
 			CreatedAtMP:        createdAt,
 		})
 	}
 
 	nextCursor := ""
 	if len(payload.Data.Questions) >= c.pageSize {
-		nextCursor = fmt.Sprintf("unanswered:%d", skip+c.pageSize)
+		nextCursor = formatCursor(stage, skip+c.pageSize)
+	} else if !stage.answered {
+		nextCursor = formatCursor(wbStage{answered: true}, 0)
 	}
 	return questions, nextCursor, nil
 }

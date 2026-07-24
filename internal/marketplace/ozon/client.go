@@ -215,11 +215,32 @@ type ozonQuestionListResponse struct {
 }
 
 type ozonQuestion struct {
-	QuestionID string     `json:"question_id"`
-	SKU        flexString `json:"sku"`
-	Text       string     `json:"text"`
-	AuthorName string     `json:"author_name"`
-	CreatedAt  string     `json:"created_at"`
+	QuestionID   string     `json:"question_id"`
+	SKU          flexString `json:"sku"`
+	Text         string     `json:"text"`
+	AuthorName   string     `json:"author_name"`
+	CreatedAt    string     `json:"created_at"`
+	AnswersCount int        `json:"answers_count"`
+}
+
+type ozonAnswerListRequest struct {
+	QuestionID string `json:"question_id"`
+	SKU        string `json:"sku,omitempty"`
+	LastID     string `json:"last_id,omitempty"`
+}
+
+type ozonAnswerListResponse struct {
+	Answers []ozonAnswer      `json:"answers"`
+	HasNext bool              `json:"has_next"`
+	LastID  string            `json:"last_id"`
+	Message string            `json:"message"`
+	Details []json.RawMessage `json:"details"`
+}
+
+type ozonAnswer struct {
+	Text       string `json:"text"`
+	AuthorName string `json:"author_name"`
+	Status     string `json:"status"`
 }
 
 func (c *Client) FetchQuestions(ctx context.Context, since time.Time, cursor string) ([]marketplace.Question, string, error) {
@@ -273,12 +294,17 @@ func (c *Client) FetchQuestions(ctx context.Context, since time.Time, cursor str
 			continue
 		}
 		sku := q.SKU.String()
+		answer, err := c.fetchQuestionAnswer(ctx, q.QuestionID, sku)
+		if err != nil {
+			return nil, "", err
+		}
 		questions = append(questions, marketplace.Question{
 			ExternalQuestionID: q.QuestionID,
 			ExternalProductID:  sku,
 			ExternalSKU:        sku,
 			AuthorName:         q.AuthorName,
 			Text:               q.Text,
+			Answer:             answer,
 			CreatedAtMP:        createdAt,
 		})
 	}
@@ -288,6 +314,52 @@ func (c *Client) FetchQuestions(ctx context.Context, since time.Time, cursor str
 		nextCursor = payload.LastID
 	}
 	return questions, nextCursor, nil
+}
+
+func (c *Client) fetchQuestionAnswer(ctx context.Context, questionID, sku string) (*marketplace.Answer, error) {
+	payload := ozonAnswerListRequest{QuestionID: questionID, SKU: sku}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/question/answer/list", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", c.clientID)
+	req.Header.Set("Api-Key", c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result ozonAnswerListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode Ozon question answer list response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if result.Message != "" {
+			return nil, fmt.Errorf("Ozon question answer list: status %d: %s", resp.StatusCode, result.Message)
+		}
+		if len(result.Details) > 0 {
+			return nil, fmt.Errorf("Ozon question answer list: status %d: %s", resp.StatusCode, strings.TrimSpace(string(result.Details[0])))
+		}
+		return nil, fmt.Errorf("Ozon question answer list: status %d", resp.StatusCode)
+	}
+	for _, answer := range result.Answers {
+		if answer.Text != "" {
+			state := answer.Status
+			if state == "" {
+				state = "published"
+			}
+			return &marketplace.Answer{Text: answer.Text, State: state}, nil
+		}
+	}
+	return nil, nil
 }
 
 func (c *Client) PublishQuestionAnswer(ctx context.Context, externalQuestionID, sku, text string) error {

@@ -62,6 +62,7 @@ type Question struct {
 	ExternalSKU        string // Ozon needs numeric SKU to answer; WB leaves this empty
 	AuthorName         string
 	Text               string
+	Answer             *Answer
 	CreatedAtMP        time.Time
 }
 
