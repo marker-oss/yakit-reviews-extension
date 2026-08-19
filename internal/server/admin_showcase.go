@@ -45,11 +45,6 @@ func (s *Server) handleShowcase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	marketplacePolicy := s.activeMarketplacePolicy(r.Context(), "homepage")
-	aggregate, err := s.publicShowcaseAggregate(r.Context(), marketplacePolicy)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
 	mapper := reviewjson.Mapper{
 		ProductURLTemplate: s.cfg.ProductURLTemplate,
 		ProductLinks:       s.productLinks(),
@@ -62,6 +57,7 @@ func (s *Server) handleShowcase(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, mapper.ToReview(rv))
 	}
+	aggregate := publicReviewAggregate(items)
 	writeJSON(w, http.StatusOK, showcaseResponse{
 		Reviews: items,
 		Count:   len(items),

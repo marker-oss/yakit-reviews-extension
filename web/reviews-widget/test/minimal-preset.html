@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Minimal preset smoke</title>
+  <link rel="stylesheet" href="../reviews-widget.css" />
+  <style>
+    body {
+      --ys-font-family: "Mulish", Arial, sans-serif;
+      --ys-background-primary: #ffffff;
+      --ys-background-neutral: #f3f4f6;
+      --ys-color-token-text-primary: #0f2248;
+      --ys-color-token-text-secondary: #62708d;
+      --ys-color-token-border-primary: #dfe3eb;
+      --ys-color-token-brand-primary: #1677ff;
+      --ys-color-token-brand-primary-contrast: #ffffff;
+      margin: 0;
+      padding: 40px;
+      background: #fff;
+      color: var(--ys-color-token-text-primary);
+      font-family: var(--ys-font-family);
+    }
+    main { max-width: 1280px; margin: 0 auto; }
+  </style>
+</head>
+<body>
+  <main>
+    <section id="reviews-widget" class="reviews-widget" aria-label="Отзывы покупателей"></section>
+  </main>
+  <script src="../reviews-widget.js"></script>
+  <script>
+    ReviewsWidget.mount(document.querySelector('#reviews-widget'), {
+      reviews: ReviewsWidget.sampleReviews,
+      productName: 'Рейтинг товара',
+      sellerArticle: 'demo-article',
+      submissionUrl: '/api/review-submissions',
+      submissionConfigUrl: '/api/review-submission-config',
+      submissionConfig: { enabled: true, privacyUrl: '/privacy' },
+      questionsApiBase: '',
+      config: {
+        typography: { inheritSite: false, radius: 8, density: 'compact' },
+        layout: { mode: 'grid', columns: 2, pageSize: 4 },
+        theme: { accent: '#111827', text: '#111827', muted: '#6b7280', panel: '#ffffff', border: '#e5e7eb', star: '#f5b301' }
+      }
+    })
+  </script>
+</body>
+</html>

@@ -35,6 +35,80 @@ const marketplaceLabels: Record<keyof WidgetConfig['marketplacePolicy'], string>
 
 type EditorTab = 'look' | 'content' | 'marketplaces' | 'versions'
 
+type PresetSpec = {
+  id: WidgetConfig['appearance']['preset']
+  label: string
+  description: string
+  config: Partial<WidgetConfig>
+}
+
+const presets: PresetSpec[] = [
+  {
+    id: 'default',
+    label: 'Текущий',
+    description: 'Стандартный вид виджета',
+    config: defaultWidgetConfig,
+  },
+  {
+    id: 'native-kit',
+    label: 'Нативный Кит',
+    description: 'Наследует токены сайта, ближе к официальному блоку отзывов',
+    config: {
+      appearance: { preset: 'native-kit' },
+      theme: { ...defaultWidgetConfig.theme, accent: '#1677ff', text: '#0f2248', muted: '#62708d', panel: '#ffffff', border: '#dfe3eb', star: '#ffb800' },
+      typography: { ...defaultWidgetConfig.typography, inheritSite: true, radius: 16, density: 'compact' },
+      layout: { ...defaultWidgetConfig.layout, mode: 'carousel', columns: 3, pageSize: 3 },
+    },
+  },
+  {
+    id: 'minimal',
+    label: 'Минимализм',
+    description: 'Нейтральная сетка, меньше акцентов',
+    config: {
+      appearance: { preset: 'minimal' },
+      theme: { ...defaultWidgetConfig.theme, accent: '#111827', text: '#111827', muted: '#6b7280', panel: '#ffffff', border: '#e5e7eb', star: '#f5b301' },
+      typography: { ...defaultWidgetConfig.typography, inheritSite: false, radius: 8, density: 'compact' },
+      layout: { ...defaultWidgetConfig.layout, mode: 'grid', columns: 2, pageSize: 4 },
+    },
+  },
+  {
+    id: 'editorial',
+    label: 'Редакционный',
+    description: 'Крупная типографика, больше воздуха, премиальный вид',
+    config: {
+      appearance: { preset: 'editorial' },
+      theme: { ...defaultWidgetConfig.theme, accent: '#3f3f46', text: '#18181b', muted: '#71717a', panel: '#ffffff', border: '#e4e4e7', star: '#b45309' },
+      typography: { ...defaultWidgetConfig.typography, inheritSite: false, radius: 18, density: 'comfortable' },
+      layout: { ...defaultWidgetConfig.layout, mode: 'list', columns: 1, pageSize: 3 },
+      visibility: { ...defaultWidgetConfig.visibility, ratingDistribution: false, filters: false },
+    },
+  },
+  {
+    id: 'compact-commerce',
+    label: 'Компактный коммерс',
+    description: 'Плотнее, больше отзывов на первом экране',
+    config: {
+      appearance: { preset: 'compact-commerce' },
+      theme: { ...defaultWidgetConfig.theme, accent: '#1d4ed8', text: '#111827', muted: '#4b5563', panel: '#ffffff', border: '#d1d5db', star: '#d97706' },
+      typography: { ...defaultWidgetConfig.typography, inheritSite: false, radius: 10, density: 'compact' },
+      layout: { ...defaultWidgetConfig.layout, mode: 'grid', columns: 3, pageSize: 6 },
+      visibility: { ...defaultWidgetConfig.visibility, ratingDistribution: false, filters: false },
+    },
+  },
+  {
+    id: 'lead-summary',
+    label: 'Лидовый',
+    description: 'Сильный summary и медиа-лента поверх списка',
+    config: {
+      appearance: { preset: 'lead-summary' },
+      theme: { ...defaultWidgetConfig.theme, accent: '#7c3aed', text: '#111827', muted: '#6b7280', panel: '#ffffff', border: '#e5e7eb', star: '#f59e0b' },
+      typography: { ...defaultWidgetConfig.typography, inheritSite: false, radius: 14, density: 'compact' },
+      layout: { ...defaultWidgetConfig.layout, mode: 'carousel', columns: 3, pageSize: 4 },
+      visibility: { ...defaultWidgetConfig.visibility, photos: true, ratingDistribution: true, filters: false },
+    },
+  },
+]
+
 export default function Editor() {
   const [context, setContext] = useState<WidgetContext>('product')
   const [cfg, setCfg] = useState<WidgetConfig>(defaultWidgetConfig)
@@ -129,6 +203,10 @@ export default function Editor() {
     setCfg({ ...cfg, ranking: next })
   }
 
+  function applyPreset(preset: Partial<WidgetConfig>) {
+    setCfg(mergeWidgetConfig({ ...cfg, ...preset }))
+  }
+
   return (
     <section className="editor-layout">
       <section className="stack">
@@ -150,6 +228,23 @@ export default function Editor() {
 
         {tab === 'look' && (
           <>
+            <section className="panel">
+              <h3>Пресеты</h3>
+              <div className="preset-grid">
+                {presets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={`preset-card${cfg.appearance.preset === preset.id ? ' active' : ''}`}
+                    onClick={() => applyPreset(preset.config)}
+                  >
+                    <strong>{preset.label}</strong>
+                    <span>{preset.description}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="muted">Пресет меняет сетку, плотность, карточки, фильтры и формы как единый стиль.</p>
+            </section>
             <section className="panel form-grid">
               <label>
                 <span>Заголовок</span>
@@ -164,6 +259,11 @@ export default function Editor() {
               <ColorField label="Текст" value={cfg.theme.text} onChange={(value) => setTheme('text', value)} />
               <ColorField label="Фон" value={cfg.theme.panel} onChange={(value) => setTheme('panel', value)} />
               <ColorField label="Граница" value={cfg.theme.border} onChange={(value) => setTheme('border', value)} />
+              <ColorField label="Звёзды" value={cfg.theme.star} onChange={(value) => setTheme('star', value)} />
+              <label className="checkbox">
+                <input type="checkbox" checked={cfg.typography.inheritSite} onChange={(e) => setTypography('inheritSite', e.target.checked)} />
+                <span>Наследовать стиль сайта</span>
+              </label>
               <label>
                 <span>Масштаб</span>
                 <input type="number" step="0.05" min="0.85" max="1.25" value={cfg.typography.scale} onChange={(e) => setTypography('scale', Number(e.target.value))} />
@@ -177,6 +277,14 @@ export default function Editor() {
                 <select value={cfg.typography.density} onChange={(e) => setTypography('density', e.target.value as WidgetConfig['typography']['density'])}>
                   <option value="comfortable">Обычная</option>
                   <option value="compact">Компактная</option>
+                </select>
+              </label>
+              <label>
+                <span>Пресет</span>
+                <select value={cfg.appearance.preset} onChange={(e) => applyPreset(presets.find((p) => p.id === e.target.value)?.config || {})}>
+                  {presets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>{preset.label}</option>
+                  ))}
                 </select>
               </label>
               <label>

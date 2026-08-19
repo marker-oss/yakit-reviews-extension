@@ -13,10 +13,15 @@
       muted: "#6E6877",
       panel: "#ffffff",
       border: "#E7DFD7",
+      star: "#C99A3F",
       dark: false,
+    },
+    appearance: {
+      preset: "default",
     },
     typography: {
       fontFamily: 'Onest, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      inheritSite: false,
       scale: 1,
       radius: 16,
       density: "comfortable",
@@ -178,8 +183,8 @@
       rating: "all",
       mediaFilter: "all",
       sort: options.initialSort || config.defaults.initialSort || "newest",
-      visible: initialVisible(config, context),
-      expanded: context !== "homepage",
+      visible: initialVisible(config),
+      expanded: true,
       fullFeedSource: options.fullFeedSource || "",
       fullFeedLimit: clampNumber(options.fullFeedLimit, 1, 100, 24),
       fullFeedOffset: Number.isFinite(Number(options.fullFeedOffset)) ? Number(options.fullFeedOffset) : 0,
@@ -489,12 +494,6 @@
       if (state.loadingMore) {
         return;
       }
-      if (state.context === "homepage" && !state.expanded) {
-        state.expanded = true;
-        state.visible = Math.max(state.visible, state.reviews.length, state.config.layout.pageSize);
-        render(root, state);
-        return;
-      }
       if (state.fullFeedSource && state.visible >= state.reviews.length && !state.fullFeedExhausted) {
         loadMoreReviews(root, state);
         return;
@@ -565,11 +564,9 @@
     const canLoadRemote = Boolean(state.fullFeedSource && !state.fullFeedExhausted);
     loadMore.textContent = state.loadingMore
       ? "Загружаем"
-      : state.context === "homepage" && !state.expanded ? "Посмотреть отзывы" : "Показать ещё";
+      : "Показать ещё";
     loadMore.disabled = state.loadingMore;
-    loadMore.hidden = state.context === "homepage" && !state.expanded
-      ? filtered.length <= visibleCount
-      : visibleCount >= filtered.length && !canLoadRemote;
+    loadMore.hidden = visibleCount >= filtered.length && !canLoadRemote;
     renderSubmission(root, state);
   }
 
@@ -586,9 +583,7 @@
     root.querySelector('[data-role="score"]').textContent = average.toFixed(1);
     root.querySelector('[data-role="stars"]').style.setProperty("--rating", average.toFixed(2));
     root.querySelector('[data-role="review-count"]').textContent = String(total);
-    root.querySelector('[data-role="summary"]').textContent = state.context === "homepage"
-      ? pluralize(total, "отзыв", "отзыва", "отзывов")
-      : `${pluralize(total, "отзыв", "отзыва", "отзывов")} покупателей · ${pluralize(filtered.length, "показан", "показано", "показано")}`;
+    root.querySelector('[data-role="summary"]').textContent = `${pluralize(total, "отзыв", "отзыва", "отзывов")} покупателей · ${pluralize(filtered.length, "показан", "показано", "показано")}`;
   }
 
   function renderSegments(root, state, reviews) {
@@ -1334,6 +1329,7 @@
       typography: { ...defaultConfig.typography, ...(config.typography || {}) },
       layout: { ...defaultConfig.layout, ...(config.layout || {}) },
       header: { ...defaultConfig.header, ...(config.header || {}) },
+      appearance: { ...defaultConfig.appearance, ...(config.appearance || {}) },
       visibility: { ...defaultConfig.visibility, ...(config.visibility || {}) },
       defaults: { ...defaultConfig.defaults, ...(config.defaults || {}) },
       ranking: Array.isArray(config.ranking) && config.ranking.length ? config.ranking : defaultConfig.ranking,
@@ -1350,6 +1346,7 @@
     if (!["list", "grid", "carousel"].includes(merged.layout.mode)) {
       merged.layout.mode = "list";
     }
+    merged.typography.inheritSite = Boolean(merged.typography.inheritSite);
     merged.defaults.minRating = Math.round(clampNumber(merged.defaults.minRating, 0, 5, 0));
     if (!["all", "wb", "ozon", "ym"].includes(merged.defaults.marketplace)) {
       merged.defaults.marketplace = "all";
@@ -1374,22 +1371,16 @@
     return normalized;
   }
 
-  function initialVisible(config, context) {
-    if (context === "homepage") {
-      return Math.max(1, Math.min(config.layout.pageSize, 4));
-    }
+  function initialVisible(config) {
     return config.layout.pageSize;
   }
 
   function resetListingState(state) {
-    state.visible = initialVisible(state.config, state.context);
-    state.expanded = state.context !== "homepage";
+    state.visible = initialVisible(state.config);
+    state.expanded = true;
   }
 
   function effectiveVisibleCount(state, total) {
-    if (state.context === "homepage" && !state.expanded) {
-      return Math.min(total, initialVisible(state.config, state.context));
-    }
     return Math.min(total, state.visible);
   }
 
@@ -1411,20 +1402,75 @@
     };
   }
 
+  function colorChannels(value, fallback) {
+    let hex = String(value || "").trim().replace(/^#/, "");
+    if (hex.length === 3) {
+      hex = hex.replace(/./g, (digit) => digit + digit);
+    }
+    if (!/^[0-9a-f]{6}$/i.test(hex)) {
+      return colorChannels(fallback, "#000000");
+    }
+    return [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
+  }
+
+  function mixChannels(base, overlay, overlayWeight) {
+    return `#${base.map((channel, index) =>
+      Math.round(channel * (1 - overlayWeight) + overlay[index] * overlayWeight)
+        .toString(16)
+        .padStart(2, "0")
+    ).join("")}`;
+  }
+
+  function rgba(channels, alpha) {
+    return `rgba(${channels.join(", ")}, ${alpha})`;
+  }
   function applyConfig(root, config) {
+    const siteStyle = config.typography.inheritSite ? getComputedStyle(root.ownerDocument.body) : null;
+    const siteValue = (name, fallback) => siteStyle?.getPropertyValue(name).trim() || fallback;
+    const theme = config.typography.inheritSite ? {
+      ...config.theme,
+      accent: siteValue("--ys-color-token-brand-primary", config.theme.accent),
+      accentInk: siteValue("--ys-color-token-brand-primary-contrast", config.theme.accentInk),
+      text: siteValue("--ys-color-token-text-primary", config.theme.text),
+      muted: siteValue("--ys-color-token-text-secondary", config.theme.muted),
+      panel: siteValue("--ys-background-primary", config.theme.panel),
+      border: siteValue("--ys-color-token-border-primary", config.theme.border),
+    } : config.theme;
+    const accent = colorChannels(theme.accent, defaultConfig.theme.accent);
+    const text = colorChannels(theme.text, defaultConfig.theme.text);
+    const muted = colorChannels(theme.muted, defaultConfig.theme.muted);
+    const panel = colorChannels(theme.panel, defaultConfig.theme.panel);
+    const star = colorChannels(theme.star, defaultConfig.theme.star);
+    const trust = colorChannels("#4E7C59", "#4E7C59");
+
     root.__reviewsWidgetConfig = config;
-    root.style.setProperty("--rw-text", config.theme.text);
-    root.style.setProperty("--rw-muted", config.theme.muted);
-    root.style.setProperty("--rw-border", config.theme.border);
-    root.style.setProperty("--rw-panel", config.theme.panel);
-    root.style.setProperty("--rw-accent", config.theme.accent);
-    root.style.setProperty("--rw-accent-ink", config.theme.accentInk);
+    root.style.setProperty("--rw-text", theme.text);
+    root.style.setProperty("--rw-muted", theme.muted);
+    root.style.setProperty("--rw-border", theme.border);
+    root.style.setProperty("--rw-panel", theme.panel);
+    root.style.setProperty("--rw-accent", theme.accent);
+    root.style.setProperty("--rw-accent-ink", theme.accentInk);
+    root.style.setProperty("--rw-accent-hover", mixChannels(accent, [0, 0, 0], 0.15));
+    root.style.setProperty("--rw-accent-tint", mixChannels(panel, accent, 0.12));
+    root.style.setProperty("--rw-accent-tint-2", mixChannels(panel, accent, 0.24));
+    root.style.setProperty("--rw-soft", mixChannels(panel, text, 0.04));
+    root.style.setProperty("--rw-soft-muted", mixChannels(panel, muted, 0.55));
+    root.style.setProperty("--rw-star", mixChannels(star, star, 0));
+    root.style.setProperty("--rw-trust-tint", mixChannels(panel, trust, 0.1));
+    root.style.setProperty("--rw-shadow-sm", `0 1px 3px ${rgba(text, 0.06)}`);
+    root.style.setProperty("--rw-shadow-md", `0 4px 16px ${rgba(accent, 0.08)}`);
     root.style.setProperty("--rw-radius", `${config.typography.radius}px`);
     root.style.setProperty("--rw-font-scale", String(config.typography.scale));
     root.style.setProperty("--rw-grid-columns", String(config.layout.columns));
-    if (config.typography.fontFamily && config.typography.fontFamily !== "inherit") {
-      root.style.fontFamily = config.typography.fontFamily;
-    }
+    root.style.fontFamily = config.typography.inheritSite
+      ? siteValue("--ys-font-family", "inherit")
+      : config.typography.fontFamily || defaultConfig.typography.fontFamily;
+    root.classList.toggle("rw-preset-native-kit", config.appearance?.preset === "native-kit");
+    root.classList.toggle("rw-inherit-site", config.typography.inheritSite || config.appearance?.preset === "native-kit");
+    root.classList.toggle("rw-preset-minimal", config.appearance?.preset === "minimal");
+    root.classList.toggle("rw-preset-editorial", config.appearance?.preset === "editorial");
+    root.classList.toggle("rw-preset-compact-commerce", config.appearance?.preset === "compact-commerce");
+    root.classList.toggle("rw-preset-lead-summary", config.appearance?.preset === "lead-summary");
     root.classList.toggle("rw-density-compact", config.typography.density === "compact");
     root.classList.toggle("rw-layout-grid", config.layout.mode === "grid");
     root.classList.toggle("rw-layout-carousel", config.layout.mode === "carousel");

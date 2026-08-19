@@ -81,10 +81,10 @@ func TestPublicShowcaseEndpoint(t *testing.T) {
 	if response.Count != 1 || len(response.Reviews) != 1 {
 		t.Fatalf("expected one showcased review: %+v", response)
 	}
-	if response.Aggregate.TotalReviews != 2 || response.Aggregate.RatingCount != 2 {
-		t.Fatalf("unexpected aggregate counts: %+v", response.Aggregate)
+	if response.Aggregate.TotalReviews != 1 || response.Aggregate.RatingCount != 1 {
+		t.Fatalf("aggregate must match showcased reviews: %+v", response.Aggregate)
 	}
-	if response.Aggregate.AverageRating != 4 {
-		t.Fatalf("average rating = %v, want 4", response.Aggregate.AverageRating)
+	if response.Aggregate.AverageRating != 5 {
+		t.Fatalf("average rating = %v, want 5", response.Aggregate.AverageRating)
 	}
 }

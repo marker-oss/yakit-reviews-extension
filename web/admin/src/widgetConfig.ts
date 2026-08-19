@@ -6,7 +6,12 @@ export type MarketplacePolicy = {
   showSourceLinks: boolean
 }
 
+export type WidgetAppearancePreset = 'default' | 'native-kit' | 'minimal' | 'editorial' | 'compact-commerce' | 'lead-summary'
+
 export type WidgetConfig = {
+  appearance: {
+    preset: WidgetAppearancePreset
+  }
   theme: {
     accent: string
     accentInk: string
@@ -14,10 +19,12 @@ export type WidgetConfig = {
     muted: string
     panel: string
     border: string
+    star: string
     dark: boolean
   }
   typography: {
     fontFamily: string
+    inheritSite: boolean
     scale: number
     radius: number
     density: 'comfortable' | 'compact'
@@ -57,6 +64,9 @@ export type WidgetConfig = {
 }
 
 export const defaultWidgetConfig: WidgetConfig = {
+  appearance: {
+    preset: 'default',
+  },
   theme: {
     accent: '#68478D',
     accentInk: '#ffffff',
@@ -64,10 +74,12 @@ export const defaultWidgetConfig: WidgetConfig = {
     muted: '#6E6877',
     panel: '#ffffff',
     border: '#E7DFD7',
+    star: '#C99A3F',
     dark: false,
   },
   typography: {
     fontFamily: 'Onest, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    inheritSite: false,
     scale: 1,
     radius: 16,
     density: 'comfortable',
@@ -115,6 +127,7 @@ export const defaultWidgetConfig: WidgetConfig = {
 
 export function mergeWidgetConfig(value: Partial<WidgetConfig>): WidgetConfig {
   return {
+    appearance: { ...defaultWidgetConfig.appearance, ...(value.appearance ?? {}) },
     theme: { ...defaultWidgetConfig.theme, ...(value.theme ?? {}) },
     typography: { ...defaultWidgetConfig.typography, ...(value.typography ?? {}) },
     layout: { ...defaultWidgetConfig.layout, ...(value.layout ?? {}) },

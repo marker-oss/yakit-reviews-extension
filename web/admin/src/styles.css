@@ -951,6 +951,42 @@ small {
   font-weight: 600;
 }
 
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.preset-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+.preset-card:hover {
+  border-color: var(--admin-iris);
+  box-shadow: var(--admin-shadow-sm);
+  transform: translateY(-1px);
+}
+.preset-card.active {
+  border-color: var(--admin-iris);
+  background: var(--admin-iris-tint);
+}
+.preset-card strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+.preset-card span {
+  color: var(--admin-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .editor-toolbar {
   position: sticky;
   top: 0;
