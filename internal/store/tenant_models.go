@@ -53,6 +53,13 @@ func (s *Store) TenantByID(ctx context.Context) (Tenant, error) {
 	return tenant, err
 }
 
+// UpdateTenantShopOrigin keeps the tenant row in sync when the admin edits
+// the shop origin setting, so key-scoped CORS on SaaS follows shop moves.
+func (s *Store) UpdateTenantShopOrigin(ctx context.Context, tenantID uint, shopOrigin string) error {
+	return s.db.WithContext(ctx).Model(&Tenant{}).Where("id = ?", tenantID).
+		Update("shop_origin", shopOrigin).Error
+}
+
 // TenantByPublicKey resolves a tenant by its public key. Returns ErrNotFound
 // for an unknown key.
 func (s *Store) TenantByPublicKey(ctx context.Context, publicKey string) (Tenant, error) {

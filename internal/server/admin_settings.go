@@ -103,6 +103,12 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ShopOrigin != nil {
 		s.reloadShopOrigins(r.Context())
+		// Keep the tenant row in sync: key-scoped CORS (SaaS) reads
+		// tenants.shop_origin, not the AppSetting.
+		if err := s.store.UpdateTenantShopOrigin(r.Context(), store.TenantIDFromCtx(r.Context()), strings.TrimSpace(*req.ShopOrigin)); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 	}
 	toggleUpdates := []struct {
 		key   string

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,9 +15,17 @@ import (
 
 type ctxKey string
 
-const userIDKey ctxKey = "adminUserID"
+const (
+	userIDKey ctxKey = "adminUserID"
 
-const sessionCookieName = "reviews_session"
+	// tenantOriginsKey carries the per-tenant CORS allowlist resolved from
+	// the public_key in tenantScope; the cors middleware prefers it over
+	// the global env/AppSetting list so SaaS widgets preflight against
+	// their own shop origin.
+	tenantOriginsKey ctxKey = "tenantOrigins"
+
+	sessionCookieName = "reviews_session"
+)
 
 // securityHeaders sets conservative defaults for all responses.
 func securityHeaders(next http.Handler) http.Handler {
@@ -82,7 +91,7 @@ func originAndSibling(value string) []string {
 	return []string{origin, u.Scheme + "://" + sibling}
 }
 
-// cors adds Access-Control headers for configured shop origins on public
+// cors adds Access-Control headers for the allowed shop origin on public
 // routes so the embedded widget can fetch reviews data cross-origin. Admin
 // routes are skipped (same-origin only). When no origins are configured the
 // middleware is a no-op, preserving prior behavior.
@@ -95,7 +104,7 @@ func (s *Server) cors(next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/admin/") {
-			if origin := r.Header.Get("Origin"); origin != "" && (allowed[origin] || s.shopOriginAllowed(origin)) {
+			if origin := r.Header.Get("Origin"); origin != "" && (allowed[origin] || s.shopOriginAllowed(origin) || tenantOriginsAllowed(r, origin)) {
 				h := w.Header()
 				h.Set("Access-Control-Allow-Origin", origin)
 				h.Add("Vary", "Origin")
@@ -110,6 +119,17 @@ func (s *Server) cors(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// tenantOriginsAllowed reports whether origin belongs to the tenant resolved
+// from the request's public_key. Set by tenantScope for keyed requests; absent
+// for everything else (compat mode, admin, health probes).
+func tenantOriginsAllowed(r *http.Request, origin string) bool {
+	origins, ok := r.Context().Value(tenantOriginsKey).([]string)
+	if !ok {
+		return false
+	}
+	return slices.Contains(origins, origin)
 }
 
 // requireSession rejects requests without a valid session cookie and stamps

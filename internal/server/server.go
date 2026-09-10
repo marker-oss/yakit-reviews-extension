@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -178,10 +179,17 @@ func (s *Server) tenantScope(next http.Handler) http.Handler {
 			// tenant the key resolves to. Tenants without a recorded origin
 			// (the compat default) keep the AppSetting/env CORS mechanism.
 			if tenant.ShopOrigin != "" {
-				if origin := r.Header.Get("Origin"); origin != "" && !slices.Contains(originAndSibling(tenant.ShopOrigin), origin) {
+				origins := originAndSibling(tenant.ShopOrigin)
+				if origin := r.Header.Get("Origin"); origin != "" && !slices.Contains(origins, origin) {
 					writeError(w, http.StatusForbidden, errors.New("origin not allowed for this public key"))
 					return
 				}
+				// Same-request CORS allowlist: the cors middleware (running
+				// inside this handler) must echo the tenant's own origin, not
+				// the global AppSetting/env list — otherwise a SaaS widget's
+				// preflight from tenant B's shop fails even though the guard
+				// passed.
+				ctx = context.WithValue(ctx, tenantOriginsKey, origins)
 			}
 			ctx = store.WithTenant(ctx, tenant.ID)
 		} else if store.StrictTenantMode() && !admin && !tenantless {
@@ -282,6 +290,12 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	customFilters, err := s.customFieldFilters(r.Context(), r.URL.Query())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	filter.CustomFilters = customFilters
 	filter.Visibility = "visible"
 	filter.Status = "public"
 
@@ -375,8 +389,39 @@ func parseReviewFilter(r *http.Request) (store.ReviewListFilter, error) {
 		}
 		filter.Rating = parsed
 	}
-
 	return filter, nil
+}
+
+// customFieldFilters validates custom_<fieldId> query params against the
+// configured customFields. Only filterable fields with a configured option
+// pass; anything else is a 400 so the public API can't be probed.
+func (s *Server) customFieldFilters(ctx context.Context, query url.Values) ([]store.CustomFilter, error) {
+	var filters []store.CustomFilter
+	for key, values := range query {
+		if !strings.HasPrefix(key, "custom_") {
+			continue
+		}
+		fieldID := strings.TrimPrefix(key, "custom_")
+		value := ""
+		if len(values) > 0 {
+			value = values[0]
+		}
+		var match *customField
+		for i, field := range s.customFields(ctx) {
+			if field.ID == fieldID {
+				match = &s.customFields(ctx)[i]
+				break
+			}
+		}
+		if match == nil || !match.Filterable {
+			return nil, fmt.Errorf("unknown custom field filter %q", fieldID)
+		}
+		if !slices.Contains(match.Options, value) {
+			return nil, fmt.Errorf("invalid value for custom field %q", fieldID)
+		}
+		filters = append(filters, store.CustomFilter{FieldID: fieldID, Value: value})
+	}
+	return filters, nil
 }
 
 type widgetRulesPayload struct {
