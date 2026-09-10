@@ -34,7 +34,7 @@ const (
 )
 
 // customField describes one extra selectable parameter on the review form
-// (the Yotpo-style "height / weight / fit" questions).
+// (товарные атрибуты вида "рост / вес / посадка").
 type customField struct {
 	ID       string   `json:"id"`
 	Label    string   `json:"label"`

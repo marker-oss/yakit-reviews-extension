@@ -1269,7 +1269,7 @@
     `;
   }
 
-  // ── Custom form fields (Yotpo-style attributes: рост/вес/посадка) ──────────
+  // ── Custom form fields (товарные атрибуты: рост/вес/посадка) ──────────
 
   // Clamp an admin-configured customFields list the same way normalizeConfig
   // clamps its knobs: hard limits, type whitelist, option cleanup.
