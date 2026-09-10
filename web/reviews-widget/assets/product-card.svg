@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="Cotton T-shirt">
+  <rect width="320" height="320" fill="#f7f8f4"/>
+  <rect x="28" y="28" width="264" height="264" rx="18" fill="#ffffff" stroke="#d9ded7"/>
+  <path d="M104 86 72 112 95 150 113 137v98h94v-98l18 13 23-38-32-26-36 13c-8 10-31 10-39 0z" fill="#dfe8df" stroke="#9aa999" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M139 99c6 9 36 9 42 0" fill="none" stroke="#839480" stroke-width="4" stroke-linecap="round"/>
+  <path d="M104 197h112" stroke="#b6c4b5" stroke-width="3" stroke-linecap="round"/>
+  <path d="M119 217h82" stroke="#b6c4b5" stroke-width="3" stroke-linecap="round"/>
+</svg>

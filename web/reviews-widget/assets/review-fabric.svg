@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="Fabric detail">
+  <rect width="180" height="180" fill="#edf3ed"/>
+  <path d="M0 50c34-20 63-20 96 0s58 20 84 0v130H0z" fill="#cfdccc"/>
+  <path d="M0 88c34-20 63-20 96 0s58 20 84 0" fill="none" stroke="#aebfab" stroke-width="5"/>
+  <path d="M0 126c34-20 63-20 96 0s58 20 84 0" fill="none" stroke="#aebfab" stroke-width="5"/>
+  <circle cx="44" cy="42" r="10" fill="#ffffff" opacity=".8"/>
+</svg>

@@ -1,0 +1,458 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>widget unit tests</title>
+<pre id="out"></pre>
+<script src="../reviews-widget.js"></script>
+<script>
+  var out = document.getElementById("out");
+  var pass = 0;
+  var fail = 0;
+
+  function eq(name, got, want) {
+    var ok = JSON.stringify(got) === JSON.stringify(want);
+    out.textContent +=
+      (ok ? "PASS " : "FAIL ") +
+      name +
+      (ok ? "" : " got=" + JSON.stringify(got) + " want=" + JSON.stringify(want)) +
+      "\n";
+    if (ok) {
+      pass++;
+    } else {
+      fail++;
+    }
+  }
+
+  function mountTitle(options) {
+    var host = document.createElement("div");
+    document.body.appendChild(host);
+    ReviewsWidget.mount(host, options || {});
+    var title = host.querySelector(".rw-dist-title");
+    var text = title ? title.textContent : null;
+    host.remove();
+    return text;
+  }
+
+  // Heading: neutral configurable default instead of the legacy hardcode.
+  eq("default heading is neutral", mountTitle({ reviews: [] }), "Отзывы покупателей");
+  eq("config header.title overrides default", mountTitle({ reviews: [], config: { header: { title: "Отзывы о ковриках" } } }), "Отзывы о ковриках");
+  eq("header.title is trimmed", mountTitle({ reviews: [], config: { header: { title: "  Наши отзывы  " } } }), "Наши отзывы");
+  eq("blank header.title falls back to default", mountTitle({ reviews: [], config: { header: { title: "   " } } }), "Отзывы покупателей");
+  eq("productName wins over default", mountTitle({ reviews: [], productName: "Платье летнее" }), "Платье летнее");
+  eq("productName wins over config title", mountTitle({ reviews: [], productName: "Платье летнее", config: { header: { title: "Отзывы о ковриках" } } }), "Платье летнее");
+
+  // ── Video carousel (layout.mode "video") ───────────────────────────────────
+  function normVideo(config) {
+    var host = document.createElement("div");
+    document.body.appendChild(host);
+    ReviewsWidget.mount(host, { reviews: [], config: config });
+    var got = host.__reviewsWidgetConfig;
+    host.remove();
+    return got;
+  }
+  eq("video layout mode is whitelisted", normVideo({ layout: { mode: "video" } }).layout.mode, "video");
+  eq("unknown layout mode falls back to list", normVideo({ layout: { mode: "banana" } }).layout.mode, "list");
+  eq("video tileWidth clamps invalid 0 to min 140", normVideo({ layout: { mode: "video", video: { tileWidth: 0 } } }).layout.video.tileWidth, 140);
+  eq("video tileWidth keeps valid custom value", normVideo({ layout: { mode: "video", video: { tileWidth: 150 } } }).layout.video.tileWidth, 150);
+  eq("video aspect enum rejects unknown", normVideo({ layout: { mode: "video", video: { aspect: "21:9" } } }).layout.video.aspect, "9:16");
+  eq("video aspect enum accepts 9:16", normVideo({ layout: { mode: "video", video: { aspect: "9:16" } } }).layout.video.aspect, "9:16");
+  eq("videoRail defaults to true", normVideo({}).visibility.videoRail, true);
+  eq("videoRail false is respected", normVideo({ visibility: { videoRail: false } }).visibility.videoRail, false);
+  eq("video booleans default true", normVideo({ layout: { mode: "video" } }).layout.video, { aspect: "9:16", tileWidth: 260, showSourceBadge: true, showAuthor: true, autoplayInViewer: true, productPanel: true });
+
+  function videoReview() {
+    return {
+      marketplace: "ozon",
+      rating: 5,
+      authorName: "Мария К.",
+      text: "Видео отзыв",
+      createdAt: "2026-05-28T12:20:00+03:00",
+      media: [{ kind: "video", url: "https://cdn.test/v.mp4", previewUrl: "https://cdn.test/poster.jpg" }],
+    };
+  }
+  function mountVideoStrip(options) {
+    var host = document.createElement("div");
+    document.body.appendChild(host);
+    ReviewsWidget.mount(host, options);
+    var strip = host.querySelector('[data-role="media-strip"]');
+    host.remove();
+    return strip;
+  }
+  var stripVideoMode = mountVideoStrip({ reviews: [videoReview()], config: { layout: { mode: "video" } } });
+  eq("video mode renders dedicated video rail", stripVideoMode.querySelector(".rw-media-rail--video") !== null, true);
+  eq("video rail head says Видео покупателей", (stripVideoMode.querySelector(".rw-media-rail--video").previousElementSibling || {}).textContent !== null && stripVideoMode.textContent.indexOf("Видео покупателей") !== -1, true);
+  eq("video mode photo rail excludes videos", stripVideoMode.querySelector(".rw-media-rail:not(.rw-media-rail--video)") === null, true);
+  eq("video tile carries data-marketplace", stripVideoMode.querySelector(".rw-video-card").getAttribute("data-marketplace"), "ozon");
+  eq("video tile keeps media viewer trigger", stripVideoMode.querySelector(".rw-video-card").getAttribute("data-media-viewer"), "true");
+  eq("video tile has play badge", stripVideoMode.querySelector(".rw-video-card .rw-play-badge") !== null, true);
+  eq("video tile source pill label", stripVideoMode.querySelector(".rw-video-card-src").textContent, "Ozon");
+  eq("video tile author chip", stripVideoMode.querySelector(".rw-video-card-author").textContent, "Мария К.");
+  var stripMergedMode = mountVideoStrip({ reviews: [videoReview()], config: { visibility: { videoRail: false } } });
+  eq("videoRail false keeps merged rail", stripMergedMode.querySelector(".rw-media-rail--video") === null && stripMergedMode.querySelector(".rw-video-card") === null, true);
+  eq("merged rail still renders video item", stripMergedMode.querySelectorAll(".rw-strip-media-item").length, 1);
+  var stripNoVideo = mountVideoStrip({ reviews: [{ marketplace: "wb", rating: 5, authorName: "Ольга", text: "Без медиа", createdAt: "2026-05-01T00:00:00+03:00", media: [] }], config: { layout: { mode: "video" } } });
+  eq("no video reviews hides video rail", stripNoVideo.querySelector(".rw-media-rail--video") === null, true);
+  eq("layout video class toggled on root", (function () {
+    var host = document.createElement("div");
+    document.body.appendChild(host);
+    ReviewsWidget.mount(host, { reviews: [], config: { layout: { mode: "video" } } });
+    var ok = host.classList.contains("rw-layout-video");
+    host.remove();
+    return ok;
+  })(), true);
+
+  // ── Social embed viewer (embedProvider/embedId groundwork) ─────────────────
+  function viewerStageHTML(media) {
+    var host = document.createElement("div");
+    document.body.appendChild(host);
+    ReviewsWidget.mount(host, { reviews: [{ marketplace: "wb", rating: 5, authorName: "Тест Т.", text: "Медиа", createdAt: "2026-06-01T00:00:00+03:00", media: media }] });
+    var trigger = host.querySelector("[data-media-viewer]");
+    var html = "";
+    if (trigger) {
+      trigger.click();
+      var stage = host.querySelector('[data-role="viewer-stage"]');
+      html = stage ? stage.innerHTML : "";
+    }
+    host.remove();
+    return html;
+  }
+  var plainVideoStage = viewerStageHTML([{ kind: "video", url: "https://cdn.test/v.mp4", previewUrl: "https://cdn.test/poster.jpg" }]);
+  eq("embed fields empty keeps video viewer path", plainVideoStage.indexOf("<video") !== -1 && plainVideoStage.indexOf("<iframe") === -1, true);
+  var ytStage = viewerStageHTML([{ kind: "video", url: "https://youtube.com/watch?v=embed-allowlisted-check", previewUrl: "https://cdn.test/poster.jpg", embedProvider: "youtube", embedId: "dQw4w9WgXcQ" }]);
+  eq("embed present renders sanitized allowlisted iframe", ytStage.indexOf('<iframe class="rw-media-viewer-embed" src="https://www.youtube.com/embed/dQw4w9WgXcQ"') !== -1, true);
+  eq("embed iframe never uses raw item.url", ytStage.indexOf("watch?v=") === -1, true);
+  var evilStage = viewerStageHTML([{ kind: "video", url: "https://evil.test/watch/1", embedProvider: "rutube", embedId: "abc" }]);
+  eq("non-allowlisted embed host falls back to link placeholder", evilStage.indexOf("rw-media-viewer-placeholder") !== -1 && evilStage.indexOf("<iframe") === -1, true);
+
+
+  // ── Shoppable preset (appearance.preset "shoppable") ───────────────────────
+  function mountRoot(options) {
+    var host = document.createElement("div");
+    document.body.appendChild(host);
+    ReviewsWidget.mount(host, options || {});
+    return host;
+  }
+  eq("shoppable preset is whitelisted", normVideo({ appearance: { preset: "shoppable" } }).appearance.preset, "shoppable");
+  eq("unknown preset falls back to default", normVideo({ appearance: { preset: "banana" } }).appearance.preset, "default");
+  eq("shoppable preset toggles root class", (function () {
+    var host = mountRoot({ reviews: [], config: { appearance: { preset: "shoppable" } } });
+    var ok = host.classList.contains("rw-preset-shoppable");
+    host.remove();
+    return ok;
+  })(), true);
+  eq("viewAllHref renders header link when set", (function () {
+    var host = mountRoot({ reviews: [], config: { appearance: { viewAllHref: "https://example.test/all" } } });
+    var link = host.querySelector(".rw-header .rw-view-all");
+    var ok = link !== null && link.getAttribute("href") === "https://example.test/all";
+    host.remove();
+    return ok;
+  })(), true);
+  eq("viewAllHref empty hides header link", (function () {
+    var host = mountRoot({ reviews: [] });
+    var ok = host.querySelector(".rw-header .rw-view-all") === null;
+    host.remove();
+    return ok;
+  })(), true);
+
+  // ── Community wall (layout.mode "wall") ────────────────────────────────────
+  eq("wall layout mode is whitelisted", normVideo({ layout: { mode: "wall" } }).layout.mode, "wall");
+  eq("wall minTileWidth clamps invalid 0 to 140", normVideo({ layout: { wall: { minTileWidth: 0 } } }).layout.wall.minTileWidth, 140);
+  eq("wall minTileWidth clamps 999 to 320", normVideo({ layout: { wall: { minTileWidth: 999 } } }).layout.wall.minTileWidth, 320);
+  eq("wall gap clamps negative to 0", normVideo({ layout: { wall: { gap: -5 } } }).layout.wall.gap, 0);
+  eq("wall maxTiles defaults to 24", normVideo({}).layout.wall.maxTiles, 24);
+  eq("wall mode toggles root class", (function () {
+    var host = mountRoot({ reviews: [], config: { layout: { mode: "wall" } } });
+    var ok = host.classList.contains("rw-layout-wall");
+    host.remove();
+    return ok;
+  })(), true);
+  eq("wall renders tiles when media present", (function () {
+    var host = mountRoot({ reviews: [videoReview(), videoReview()], config: { layout: { mode: "wall" } } });
+    var ok = host.querySelectorAll(".rw-wall-tile").length === 2;
+    host.remove();
+    return ok;
+  })(), true);
+  eq("wall tile carries media viewer trigger", (function () {
+    var host = mountRoot({ reviews: [videoReview()], config: { layout: { mode: "wall" } } });
+    var tile = host.querySelector(".rw-wall-tile");
+    var ok = tile !== null && tile.getAttribute("data-media-viewer") === "true" && tile.getAttribute("data-media-url") === "https://cdn.test/v.mp4";
+    host.remove();
+    return ok;
+  })(), true);
+  eq("wall tile keeps play badge on video", (function () {
+    var host = mountRoot({ reviews: [videoReview()], config: { layout: { mode: "wall" } } });
+    var ok = host.querySelector(".rw-wall-tile .rw-play-badge") !== null;
+    host.remove();
+    return ok;
+  })(), true);
+  eq("wall respects maxTiles cap", (function () {
+    var host = mountRoot({ reviews: [videoReview(), videoReview(), videoReview()], config: { layout: { mode: "wall", wall: { maxTiles: 2 } } } });
+    var ok = host.querySelectorAll(".rw-wall-tile").length === 2;
+    host.remove();
+    return ok;
+  })(), true);
+  eq("wall hidden when no media", (function () {
+    var host = mountRoot({ reviews: [{ marketplace: "wb", rating: 5, authorName: "Ольга", text: "Без медиа", createdAt: "2026-05-01T00:00:00+03:00", media: [] }], config: { layout: { mode: "wall" } } });
+    var wall = host.querySelector('[data-role="wall"]');
+    var ok = wall !== null && wall.hidden && host.querySelector(".rw-wall-tile") === null;
+    host.remove();
+    return ok;
+  })(), true);
+  eq("wall absent from DOM in list mode", (function () {
+    var host = mountRoot({ reviews: [videoReview()] });
+    var ok = host.querySelector(".rw-wall-tile") === null;
+    host.remove();
+    return ok;
+  })(), true);
+
+  // ── Custom form fields (submission config customFields) ───────────────────
+  var customCfg = { customFields: [
+    { id: "height", label: "Рост", type: "chips", options: ["150-160", "160-170", "170-180"], required: true },
+    { id: "fit", label: "Как сидит", type: "chips", options: ["маломерит", "соответствует", "болтает"] },
+    { id: "wear", label: "Как носите", type: "select", options: ["a", "b", "c", "d", "e", "f"] },
+    { id: "note", label: "Заметка", type: "text" },
+    { id: "bad", label: "", type: "chips", options: ["x", "y"] },
+    { id: "height", label: "Рост-дубль", type: "chips", options: ["1", "2"] },
+    { id: "empty", label: "Пусто", type: "chips", options: ["only"] },
+  ] };
+  function mountSubmission(options) {
+    var host = mountRoot(options);
+    var toggle = host.querySelector('[data-role="submit-toggle"]');
+    if (toggle) toggle.click();
+    return host;
+  }
+  var subForm = mountSubmission({ reviews: [], context: "product", submissionUrl: "/api/review-submissions", submissionConfig: { enabled: true, allowedTypes: ["image/png"], privacyUrl: "" }, submissionConfigUrl: "" });
+  eq("no custom fields renders none", subForm.querySelector(".rw-custom-field") === null, true);
+  var subCustom = mountSubmission({ reviews: [], context: "product", submissionUrl: "/api/review-submissions", submissionConfig: { enabled: true, allowedTypes: [], privacyUrl: "", customFields: customCfg.customFields }, submissionConfigUrl: "" });
+  eq("chip field renders fieldset with pressed buttons", subCustom.querySelectorAll('[data-custom-chips="height"] .rw-chip').length, 3);
+  eq("chip field marks required field", (subCustom.querySelector('[data-custom-chips="height"] legend').textContent.indexOf("*") !== -1), true);
+  eq("duplicate/invalid/underfilled fields dropped", subCustom.querySelectorAll(".rw-custom-field").length, 4);
+  eq("select used when more than 5 options", subCustom.querySelector('select[name="custom-wear"]') !== null && subCustom.querySelector('[data-custom-chips="wear"]') === null, true);
+  eq("text type renders plain input", subCustom.querySelector('input[name="custom-note"]') !== null, true);
+  eq("chip click toggles aria-pressed and hidden value", (function () {
+    var chip = subCustom.querySelector('[data-custom-chips="height"] .rw-chip');
+    chip.click();
+    var on = chip.getAttribute("aria-pressed") === "true";
+    var hidden = subCustom.querySelector('[data-custom-chips="height"] input[type="hidden"]').value;
+    chip.click();
+    var off = chip.getAttribute("aria-pressed") === "false" && subCustom.querySelector('[data-custom-chips="height"] input[type="hidden"]').value === "";
+    return on && hidden === "150-160" && off;
+  })(), true);
+  eq("custom payload built from form fields", (function () {
+    var form = subCustom.querySelector('[data-role="submit-form"]');
+    subCustom.querySelector('[data-custom-chips="height"] .rw-chip').click();
+    form.querySelector('input[name="custom-note"]').value = "заметка";
+    var formData = new FormData(form);
+    var custom = {};
+    formData.forEach(function (value, key) {
+      if (key.indexOf("custom-") === 0 && typeof value === "string" && value) custom[key.slice(7)] = value;
+    });
+    var ok = Object.keys(custom).length === 2 && custom.height === "150-160" && custom.note === "заметка";
+    if (ok) {
+      var encoded = JSON.stringify(custom);
+      ok = JSON.parse(encoded).height === "150-160";
+    }
+    return ok;
+  })(), true);
+
+
+  // ── Product panel in lightbox (layout.video.productPanel) ──────────────────
+  function panelReview() {
+    return {
+      marketplace: "wb",
+      rating: 5,
+      authorName: "Мария К.",
+      text: "С панелью товара",
+      createdAt: "2026-05-28T12:20:00+03:00",
+      sellerProductUrl: "https://shop.test/product",
+      marketplaceProductUrl: "https://market.test/product",
+      media: [{ kind: "photo", url: "https://cdn.test/photo.jpg" }],
+    };
+  }
+  eq("product panel renders in product context lightbox", (function () {
+    var host = mountRoot({ reviews: [panelReview()] });
+    var trigger = host.querySelector("[data-media-viewer]");
+    trigger.click();
+    var link = host.querySelector(".rw-product-panel-link");
+    var ok = host.querySelector(".rw-product-panel") !== null;
+    ok = ok && link !== null && link.getAttribute("href") === "https://shop.test/product";
+    ok = ok && trigger.getAttribute("data-media-product-url") === "https://shop.test/product";
+    ok = ok && trigger.getAttribute("data-media-product-rating") === "5";
+    ok = ok && trigger.getAttribute("data-media-product-image") !== "";
+    host.remove();
+    return ok;
+  })(), true);
+  eq("product panel absent in homepage context", (function () {
+    var host = mountRoot({ reviews: [panelReview()], context: "homepage" });
+    var trigger = host.querySelector("[data-media-viewer]");
+    var hasAttrs = trigger.getAttribute("data-media-product-url") !== null;
+    trigger.click();
+    var ok = !hasAttrs && host.querySelector(".rw-product-panel") === null;
+    host.remove();
+    return ok;
+  })(), true);
+  eq("productPanel false disables panel", (function () {
+    var host = mountRoot({ reviews: [panelReview()], config: { layout: { video: { productPanel: false } } } });
+    var trigger = host.querySelector("[data-media-viewer]");
+    trigger.click();
+    var ok = host.querySelector(".rw-product-panel") === null;
+    host.remove();
+    return ok;
+  })(), true);
+  eq("panel falls back to marketplace URL when no seller URL", (function () {
+    var review = panelReview();
+    review.sellerProductUrl = "";
+    var host = mountRoot({ reviews: [review] });
+    var trigger = host.querySelector("[data-media-viewer]");
+    trigger.click();
+    var link = host.querySelector(".rw-product-panel-link");
+    var ok = link !== null && link.getAttribute("href") === "https://market.test/product";
+    host.remove();
+    return ok;
+  })(), true);
+
+  // ── Chameleon-neutral default + classic preset (T1) ────────────────────────
+  eq("classic preset is whitelisted", normVideo({ appearance: { preset: "classic" } }).appearance.preset, "classic");
+  eq("classic preset toggles root class", (function () {
+    var host = mountRoot({ reviews: [], config: { appearance: { preset: "classic" } } });
+    var ok = host.classList.contains("rw-preset-classic");
+    host.remove();
+    return ok;
+  })(), true);
+  eq("default preset has no preset class", (function () {
+    var host = mountRoot({ reviews: [] });
+    var ok = !host.className.split(" ").some(function (cls) { return cls.indexOf("rw-preset-") === 0; });
+    host.remove();
+    return ok;
+  })(), true);
+  eq("classic class removed when preset changes", (function () {
+    var host = mountRoot({ reviews: [], config: { appearance: { preset: "shoppable" } } });
+    var ok = !host.classList.contains("rw-preset-classic") && host.classList.contains("rw-preset-shoppable");
+    host.remove();
+    return ok;
+  })(), true);
+
+  // ── Labels map (T7) ────────────────────────────────────────────────────────
+  eq("labels default in normalized config", normVideo({}).labels.writeReview, "Написать отзыв");
+  eq("labels override merged via spread", normVideo({ labels: { writeReview: "Оставить мнение" } }).labels, { writeReview: "Оставить мнение", readMore: "Читать полностью", search: "Поиск по отзывам", viewAll: "Смотреть все", recentlyAdded: "Недавно" });
+
+  // ── Header write CTA (T2) ──────────────────────────────────────────────────
+  eq("write CTA labeled from labels.writeReview", (function () {
+    var host = mountRoot({ reviews: [], config: { labels: { writeReview: "Оставить мнение" } } });
+    var btn = host.querySelector('[data-role="write-cta"]');
+    var ok = btn !== null && btn.textContent === "Оставить мнение";
+    host.remove();
+    return ok;
+  })(), true);
+  eq("write CTA visible in product context", (function () {
+    var host = mountRoot({ reviews: [] });
+    var ok = host.querySelector('[data-role="write-cta"]').hidden === false;
+    host.remove();
+    return ok;
+  })(), true);
+  eq("write CTA hidden on homepage", (function () {
+    var host = mountRoot({ reviews: [], context: "homepage" });
+    var ok = host.querySelector('[data-role="write-cta"]').hidden === true;
+    host.remove();
+    return ok;
+  })(), true);
+  eq("write CTA click expands submission", (function () {
+    var host = mountRoot({ reviews: [], context: "product", submissionUrl: "/api/review-submissions", submissionConfig: { enabled: true, allowedTypes: [], privacyUrl: "" }, submissionConfigUrl: "" });
+    var cta = host.querySelector('[data-role="write-cta"]');
+    cta.click();
+    var ok = host.querySelector('[data-role="submit-form"]') !== null;
+    host.remove();
+    return ok;
+  })(), true);
+
+  // ── Читать полностью clamp (T3) ────────────────────────────────────────────
+  var longReview = { marketplace: "wb", rating: 5, authorName: "Длинный Отзыв", createdAt: "2026-06-01T00:00:00+03:00", text: "Очень подробное описание покупки ".repeat(12) };
+  var shortReview = { marketplace: "wb", rating: 5, authorName: "Короткий", createdAt: "2026-06-02T00:00:00+03:00", text: "Коротко и ясно" };
+  eq("read-more absent for short review", (function () {
+    var host = mountRoot({ reviews: [shortReview] });
+    var ok = host.querySelector('[data-role="read-more"]') === null && host.querySelector(".rw-clamped") === null;
+    host.remove();
+    return ok;
+  })(), true);
+  eq("read-more present for long review", (function () {
+    var host = mountRoot({ reviews: [longReview] });
+    var btn = host.querySelector('[data-role="read-more"]');
+    var text = host.querySelector(".rw-card-text");
+    var ok = btn !== null && text.classList.contains("rw-clamped");
+    host.remove();
+    return ok;
+  })(), true);
+  eq("read-more click unclamps and label persists", (function () {
+    var host = mountRoot({ reviews: [longReview] });
+    host.querySelector('[data-role="read-more"]').click();
+    var text = host.querySelector(".rw-card-text");
+    var btn = host.querySelector('[data-role="read-more"]');
+    var ok = !text.classList.contains("rw-clamped") && btn.getAttribute("aria-expanded") === "true";
+    host.remove();
+    return ok;
+  })(), true);
+
+  // ── Search input (T4) ──────────────────────────────────────────────────────
+  function reviewNamed(text) {
+    return { marketplace: "wb", rating: 5, authorName: "Тест", createdAt: "2026-06-01T00:00:00+03:00", text: text };
+  }
+  eq("search filters by case-insensitive substring", (function () {
+    var host = mountRoot({ reviews: [reviewNamed("Тёплое платье для лета"), reviewNamed("Куртка с капюшоном")] });
+    var input = host.querySelector('[data-role="search"]');
+    var okBefore = host.querySelectorAll(".rw-card").length === 2;
+    input.value = "ПЛАТЬЕ";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    var cards = host.querySelectorAll(".rw-card");
+    var okAfter = cards.length === 1 && cards[0].textContent.indexOf("платье") !== -1;
+    host.remove();
+    return okBefore && okAfter;
+  })(), true);
+  eq("search empty query shows all reviews", (function () {
+    var host = mountRoot({ reviews: [reviewNamed("Тёплое платье"), reviewNamed("Куртка")] });
+    var input = host.querySelector('[data-role="search"]');
+    input.value = "платье";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    var ok = host.querySelectorAll(".rw-card").length === 2;
+    host.remove();
+    return ok;
+  })(), true);
+
+  // ── Clickable distribution rows (T5) ───────────────────────────────────────
+  eq("dist rows are buttons that set rating filter", (function () {
+    var host = mountRoot({ reviews: [reviewNamed("Пять звёзд"), { marketplace: "wb", rating: 3, authorName: "Тест", createdAt: "2026-06-02T00:00:00+03:00", text: "Три звёзды" }] });
+    var rows = host.querySelectorAll("button.rw-dist-row");
+    var ok = rows.length === 5;
+    rows[0].click(); // rating 5 row is first
+    var cards = host.querySelectorAll(".rw-card");
+    ok = ok && cards.length === 1 && cards[0].querySelector(".rw-stars").style.getPropertyValue("--rating") === "5";
+    host.remove();
+    return ok;
+  })(), true);
+
+  // ── Tile hover overlay (T6) ────────────────────────────────────────────────
+  eq("tileHover defaults to true", normVideo({}).layout.tileHover, true);
+  eq("tileHover false is respected", normVideo({ layout: { tileHover: false } }).layout.tileHover, false);
+  eq("tile hover overlay on video rail tiles", (function () {
+    var host = mountRoot({ reviews: [videoReview()] });
+    var hover = host.querySelector(".rw-video-card .rw-tile-hover");
+    var ok = hover !== null && hover.textContent.indexOf("Смотреть") !== -1 && hover.querySelector(".rw-stars") !== null;
+    host.remove();
+    return ok;
+  })(), true);
+  eq("tile hover overlay on wall tiles", (function () {
+    var host = mountRoot({ reviews: [videoReview()], config: { layout: { mode: "wall" } } });
+    var ok = host.querySelector(".rw-wall-tile .rw-tile-hover") !== null;
+    host.remove();
+    return ok;
+  })(), true);
+  eq("tileHover false removes overlay markup", (function () {
+    var host = mountRoot({ reviews: [videoReview()], config: { layout: { tileHover: false } } });
+    var ok = host.querySelector(".rw-tile-hover") === null;
+    host.remove();
+    return ok;
+  })(), true);
+
+  out.textContent += "\n" + pass + " passed, " + fail + " failed\n";
+  document.title = fail === 0 ? "ALL PASS" : "FAIL";
+</script>

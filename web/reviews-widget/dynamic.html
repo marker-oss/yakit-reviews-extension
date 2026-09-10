@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reviews Widget Dynamic Demo</title>
+    <link rel="stylesheet" href="./reviews-widget.css" />
+  </head>
+  <body>
+    <main class="demo-shell">
+      <section class="product-strip" aria-label="Product">
+        <div class="product-media">
+          <img src="./assets/product-card.svg" alt="" />
+        </div>
+        <div class="product-copy">
+          <p class="product-kicker">Live SQLite data</p>
+          <h1>Отзывы из базы Reviews</h1>
+          <p>Виджет получает импортированные отзывы через локальный API сервиса.</p>
+        </div>
+      </section>
+
+      <section
+        id="reviews-widget"
+        class="reviews-widget"
+        aria-label="Отзывы покупателей"
+      ></section>
+    </main>
+
+    <script src="./reviews-widget.js"></script>
+    <script>
+      ReviewsWidget.mount(document.querySelector("#reviews-widget"), {
+        source: "/api/reviews?limit=500",
+        productName: "Импортированные отзывы",
+        initialSort: "media",
+      });
+    </script>
+  </body>
+</html>

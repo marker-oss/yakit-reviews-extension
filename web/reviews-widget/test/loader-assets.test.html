@@ -1,0 +1,123 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>loader asset failure tests</title>
+<pre id="out"></pre>
+<script>
+  // Fresh-page harness: asset loading behavior needs pristine loader caches,
+  // so these tests live apart from loader.test.html's shared page state.
+  var cssMode = "fail";
+  var warns = [];
+  var nativeWarn = console.warn.bind(console);
+  console.warn = function () {
+    warns.push([].slice.call(arguments).join(" "));
+    nativeWarn.apply(null, arguments);
+  };
+
+  window.fetch = function (url) {
+    url = String(url);
+    if (url.indexOf("/rd/links.json") !== -1) {
+      return Promise.resolve(new Response(JSON.stringify({ byID: { "102291": "1777-5", "102277": "3453" } }), { status: 200 }));
+    }
+    if (url.indexOf("/api/widget-config") !== -1) {
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+    }
+    if (url.indexOf("/widget.css") !== -1) {
+      if (cssMode === "fail") {
+        return Promise.reject(new TypeError("Failed to fetch"));
+      }
+      return Promise.resolve(new Response(".rw-body{display:block}", { status: 200 }));
+    }
+    if (url.indexOf("/rd/by-article/") !== -1) {
+      return Promise.resolve(new Response("not found", { status: 404 }));
+    }
+    return Promise.reject(new TypeError("unexpected fetch " + url));
+  };
+
+  window.ReviewsWidget = {
+    mountShadow: function (host, options) {
+      host.setAttribute("data-mounted-reviews", String(options.reviews.length));
+      host.setAttribute("data-style-len", String((options.styleText || "").length));
+    },
+    mount: function (host, options) {
+      host.setAttribute("data-mounted-reviews", String(options.reviews.length));
+      host.setAttribute("data-style-len", String((options.styleText || "").length));
+    },
+  };
+
+  window.REVIEWS_EMBED_CONFIG = {
+    dataBase: "/rd",
+    widgetJsUrl: "/reviews-widget.js",
+    widgetCssUrl: "/widget.css",
+    anchorSelector: "#reviews-widget",
+    debug: true,
+  };
+  history.replaceState({}, "", "/products/renamed-slug-102291");
+</script>
+<div id="reviews-widget"></div>
+<script src="../loader.js"></script>
+<script>
+  var out = document.getElementById("out");
+  var pass = 0;
+  var fail = 0;
+
+  function eq(name, got, want) {
+    var ok = JSON.stringify(got) === JSON.stringify(want);
+    out.textContent +=
+      (ok ? "PASS " : "FAIL ") +
+      name +
+      (ok ? "" : " got=" + JSON.stringify(got) + " want=" + JSON.stringify(want)) +
+      "\n";
+    if (ok) {
+      pass++;
+    } else {
+      fail++;
+    }
+  }
+
+  function wait(ms) {
+    return new Promise(function (resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  function finish() {
+    out.textContent += "\n" + pass + " passed, " + fail + " failed\n";
+    document.title = fail === 0 ? "ALL PASS" : "FAIL";
+  }
+
+  var I = window.__reviewsEmbedInternals;
+  var watchdog = setTimeout(function () {
+    out.textContent += "FAIL watchdog: tests hung\n";
+    fail++;
+    finish();
+  }, 10000);
+
+  // Phase A: widget CSS fetch fails (e.g. CORS) — the loader must NOT render
+  // a bare unstyled shell, and must warn loudly so the misconfiguration is
+  // visible without debug mode.
+  wait(900)
+    .then(function () {
+      eq("asset failure renders nothing", document.getElementById(I.cfg.hostId), null);
+      eq(
+        "asset failure warns without debug flag",
+        warns.some(function (line) {
+          return line.indexOf("[reviews-embed]") !== -1 && line.indexOf("assets") !== -1;
+        }),
+        true,
+      );
+
+      // Phase B: CSS becomes reachable again. A later navigation must retry the
+      // assets (failure is not cached) and a missing per-article bundle must
+      // still render the styled empty state.
+      cssMode = "ok";
+      history.pushState({}, "", "/products/second-102277");
+      return wait(900);
+    })
+    .then(function () {
+      var host = document.getElementById(I.cfg.hostId);
+      eq("bundle 404 renders empty state", host ? host.getAttribute("data-mounted-reviews") : null, "0");
+      eq("bundle 404 render is styled (assets retried)", host ? Number(host.getAttribute("data-style-len")) > 0 : null, true);
+      clearTimeout(watchdog);
+      finish();
+    });
+</script>

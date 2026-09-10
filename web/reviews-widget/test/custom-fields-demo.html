@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>custom form fields demo</title>
+<link rel="stylesheet" href="../reviews-widget.css" />
+<script src="../reviews-widget.js"></script>
+<style>
+  body { font-family: sans-serif; background: #fbf8f4; margin: 0; }
+  #host { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+</style>
+<div id="host"></div>
+<script>
+  ReviewsWidget.mount(document.getElementById("host"), {
+    reviews: [],
+    context: "product",
+    submissionUrl: "/api/review-submissions",
+    submissionConfig: {
+      enabled: true,
+      allowedTypes: ["image/png", "image/jpeg"],
+      privacyUrl: "",
+      customFields: [
+        { id: "height", label: "Рост", type: "chips", options: ["150-160", "160-170", "170-180", "180+"], required: true },
+        { id: "fit", label: "Как сидит", type: "chips", options: ["маломерит", "соответствует", "болтается"] },
+        { id: "wear", label: "Как носите", type: "select", options: ["на работу", "на прогулку", "на праздник", "в офис", "в гости", "дома"] },
+        { id: "note", label: "Заметка", type: "text" },
+      ],
+    },
+  });
+  document.querySelector('[data-role="submit-toggle"]').click();
+  document.querySelector('[data-custom-chips="height"] .rw-chip').click();
+  document.querySelector('[data-custom-chips="fit"] .rw-chip:nth-child(2)').click();
+</script>

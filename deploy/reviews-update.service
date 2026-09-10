@@ -1,0 +1,10 @@
+[Unit]
+Description=Reviews auto-update (pull new image, health-check, rollback)
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+# Directory with docker-compose.yml of the Reviews service.
+Environment=REVIEWS_COMPOSE_DIR=/srv/reviews-src
+ExecStart=/usr/local/bin/reviews-auto-update

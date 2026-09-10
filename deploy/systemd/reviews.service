@@ -1,0 +1,15 @@
+[Unit]
+Description=Reviews HTTP server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/reviews
+EnvironmentFile=/srv/reviews/.env
+ExecStart=/srv/reviews/reviews serve --addr 127.0.0.1:8080 --static-dir /srv/reviews/web
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

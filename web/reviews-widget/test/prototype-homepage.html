@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Прототип — Главная · Native Kit + Compact</title>
+  <link rel="stylesheet" href="../reviews-widget.css" />
+  <style>
+    body {
+      --ys-font-family: "Mulish", Arial, sans-serif;
+      --ys-background-primary: #ffffff;
+      --ys-background-neutral: #f3f4f6;
+      --ys-color-token-text-primary: #0f2248;
+      --ys-color-token-text-secondary: #62708d;
+      --ys-color-token-border-primary: #dfe3eb;
+      --ys-color-token-brand-primary: #1677ff;
+      --ys-color-token-brand-primary-contrast: #ffffff;
+      margin: 0;
+      padding: 24px;
+      background: #f3f4f6;
+      color: var(--ys-color-token-text-primary);
+      font-family: var(--ys-font-family);
+    }
+    .proto-note {
+      max-width: 1280px;
+      margin: 0 auto 16px;
+      padding: 12px 16px;
+      border: 1px dashed #dfe3eb;
+      border-radius: 12px;
+      background: #fff;
+      color: #62708d;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .proto-note strong { color: #0f2248; }
+    main { max-width: 1280px; margin: 0 auto; }
+    .product-strip { padding: 18px 0 28px; }
+    .product-copy h1 { margin: 0 0 8px; font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
+    .product-copy p { margin: 0; color: #62708d; line-height: 1.5; }
+    .product-kicker { margin: 0 0 8px; color: #1677ff; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <div class="proto-note">
+    <strong>Прототип — Главная · Native Kit + Compact</strong> — витрина (homepage): карусель 3 колонки, без фильтров/распределения, 8 отзывов.
+    Проверка: равная высота карточек, scroll-snap, стрелки/точки, fade на обрезанном краю, 375px без горизонтального скролла.
+  </div>
+  <main>
+    <section class="product-strip" aria-label="Главная">
+      <div class="product-copy">
+        <p class="product-kicker">Главная страница</p>
+        <h1>Отзывы покупателей</h1>
+        <p>Отобранные отзывы из витрины — спокойный блок доверия без фильтров по оценке.</p>
+      </div>
+    </section>
+    <section id="reviews-widget" class="reviews-widget" aria-label="Отзывы покупателей"></section>
+  </main>
+  <script src="../reviews-widget.js"></script>
+  <script>
+    // Расширяем sample до 8 для проверки карусели
+    const reviews = [...ReviewsWidget.sampleReviews, ...ReviewsWidget.sampleReviews.slice(0,3)].map((r,i)=>({...r, externalReviewId: r.externalReviewId+'-h'+i}));
+    ReviewsWidget.mount(document.querySelector('#reviews-widget'), {
+      reviews,
+      productName: 'Отзывы покупателей',
+      context: 'homepage',
+      config: {
+        appearance: { preset: 'native-kit' },
+        typography: { inheritSite: true, radius: 16, density: 'compact', fontFamily: 'Mulish, Arial, sans-serif' },
+        layout: { mode: 'carousel', columns: 3, pageSize: 8, pagination: 'more' },
+        theme: { accent: '#1677ff', accentInk: '#ffffff', text: '#0f2248', muted: '#62708d', panel: '#ffffff', border: '#dfe3eb', star: '#ffb800', dark: false },
+        header: { title: 'Отзывы покупателей' },
+        visibility: { photos: true, sellerAnswers: true, prosCons: true, marketplaceBadges: true, ratingDistribution: false, filters: false, questions: false },
+        defaults: { minRating: 0, requireText: false, marketplace: 'all', initialSort: 'newest' }
+      }
+    });
+  </script>
+</body>
+</html>

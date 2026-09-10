@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh shop product catalog (path->article) daily
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=24h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

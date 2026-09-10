@@ -1,0 +1,11 @@
+[Unit]
+Description=Reviews site catalog crawl (path->article) and static export
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/reviews
+EnvironmentFile=/srv/reviews/.env
+ExecStart=/srv/reviews/reviews discover-site-urls
+ExecStart=/srv/reviews/reviews export --out /srv/reviews/web/reviews-data

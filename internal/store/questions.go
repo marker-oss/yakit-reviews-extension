@@ -1,0 +1,243 @@
+package store
+
+import (
+	"context"
+	"time"
+
+	"reviews/internal/auth"
+	"reviews/internal/marketplace"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+// QuestionInput carries fields needed to upsert a marketplace-fetched question.
+type QuestionInput struct {
+	Marketplace        string
+	ExternalQuestionID string
+	ExternalProductID  string
+	SellerArticle      string
+	ExternalSKU        string
+	AuthorName         string
+	Text               string
+	Answer             *marketplace.Answer
+	CreatedAtMP        time.Time
+}
+
+// QuestionFilter controls which questions ListQuestions returns.
+type QuestionFilter struct {
+	Marketplace   string
+	Status        string
+	Visibility    string
+	SellerArticle string
+	Limit         int
+	Offset        int
+}
+
+// SiteQuestionInput carries fields for a site-submitted question.
+type SiteQuestionInput struct {
+	SellerArticle    string
+	AuthorName       string
+	AuthorEmail      string
+	Text             string
+	IPHash           string
+	ConsentPrivacyAt time.Time
+}
+
+// UpsertQuestion inserts or updates a marketplace question, anonymizing the
+// author name at ingestion (same posture as UpsertReview).
+func (s *Store) UpsertQuestion(ctx context.Context, in QuestionInput) (Question, error) {
+	now := time.Now().UTC()
+	authorName := AnonymizeAuthorName(in.AuthorName)
+	answerText, answerState := answerFields(in.Answer)
+	status := "imported"
+	visibility := "hidden"
+	var answerAt *time.Time
+	var publishedAt *time.Time
+	if answerText != nil && *answerText != "" {
+		status = "answered"
+		visibility = "visible"
+		answerAt = &now
+		publishedAt = &now
+	}
+
+	row := Question{
+		TenantID:           TenantIDFromCtx(ctx),
+		Marketplace:        in.Marketplace,
+		ExternalQuestionID: in.ExternalQuestionID,
+		ExternalProductID:  in.ExternalProductID,
+		SellerArticle:      in.SellerArticle,
+		ExternalSKU:        in.ExternalSKU,
+		AuthorName:         authorName,
+		Text:               in.Text,
+		AnswerText:         answerText,
+		AnswerAt:           answerAt,
+		CreatedAtMP:        in.CreatedAtMP,
+		Status:             status,
+		Visibility:         visibility,
+		AnswerPublishState: answerState,
+		AnswerPublishedAt:  publishedAt,
+		FetchedAt:          now,
+	}
+
+	err := s.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "tenant_id"},
+			{Name: "marketplace"},
+			{Name: "external_question_id"},
+		},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"external_product_id",
+			"seller_article",
+			"external_sku",
+			"author_name",
+			"text",
+			"created_at_mp",
+			"fetched_at",
+		}),
+	}).Create(&row).Error
+	if err != nil {
+		return Question{}, err
+	}
+
+	// Reload to get the real ID (OnConflict update may not set it).
+	var out Question
+	err = s.db.WithContext(ctx).
+		Where("tenant_id = ? AND marketplace = ? AND external_question_id = ?",
+			TenantIDFromCtx(ctx), in.Marketplace, in.ExternalQuestionID).
+		First(&out).Error
+	if err != nil || answerText == nil || *answerText == "" {
+		return out, err
+	}
+	if err := s.db.WithContext(ctx).Model(&out).Updates(map[string]any{
+		"answer_text":          answerText,
+		"answer_at":            answerAt,
+		"status":               status,
+		"visibility":           visibility,
+		"answer_publish_state": answerState,
+		"answer_published_at":  publishedAt,
+		"answer_publish_error": nil,
+	}).Error; err != nil {
+		return Question{}, err
+	}
+	err = s.db.WithContext(ctx).First(&out, out.ID).Error
+	return out, err
+}
+
+// ListQuestions returns questions matching the filter, ordered by created_at_mp desc.
+func (s *Store) ListQuestions(ctx context.Context, filter QuestionFilter) ([]Question, error) {
+	q := s.db.WithContext(ctx).Where("tenant_id = ?", TenantIDFromCtx(ctx))
+	if filter.Marketplace != "" {
+		q = q.Where("marketplace = ?", filter.Marketplace)
+	}
+	if filter.Status != "" {
+		q = q.Where("status = ?", filter.Status)
+	}
+	if filter.Visibility != "" {
+		q = q.Where("visibility = ?", filter.Visibility)
+	}
+	if filter.SellerArticle != "" {
+		q = q.Where("seller_article = ?", filter.SellerArticle)
+	}
+	if filter.Limit > 0 {
+		q = q.Limit(filter.Limit)
+	}
+	if filter.Offset > 0 {
+		q = q.Offset(filter.Offset)
+	}
+	var questions []Question
+	err := q.Order("created_at_mp desc").Find(&questions).Error
+	return questions, err
+}
+
+// SetQuestionAnswer saves the seller's answer, marks the question answered and
+// visible, and queues an answer-publish for non-site marketplaces.
+func (s *Store) SetQuestionAnswer(ctx context.Context, id uint, text string) error {
+	now := time.Now().UTC()
+
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var q Question
+		if err := tx.First(&q, "tenant_id = ? AND id = ?", TenantIDFromCtx(ctx), id).Error; err != nil {
+			return err
+		}
+
+		updates := map[string]any{
+			"answer_text": text,
+			"answer_at":   now,
+			"status":      "answered",
+			"visibility":  "visible",
+		}
+		if q.Marketplace != MarketplaceSite {
+			pending := "pending"
+			updates["answer_publish_state"] = pending
+		}
+		return tx.Model(&q).Updates(updates).Error
+	})
+}
+
+// SetQuestionAnswerPublishState persists the outcome of a publish attempt.
+func (s *Store) SetQuestionAnswerPublishState(ctx context.Context, id uint, state string, errText *string, publishedAt *time.Time) error {
+	updates := map[string]any{
+		"answer_publish_state": state,
+		"answer_publish_error": errText,
+		"answer_published_at":  publishedAt,
+	}
+	return s.db.WithContext(ctx).Model(&Question{}).Where("id = ?", id).Updates(updates).Error
+}
+
+// QuestionsNeedingAnswerPublish returns non-site questions whose answer is set
+// and whose publish state is nil, pending, or failed.
+func (s *Store) QuestionsNeedingAnswerPublish(ctx context.Context) ([]Question, error) {
+	var questions []Question
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ?", TenantIDFromCtx(ctx)).
+		Where("marketplace <> ?", MarketplaceSite).
+		Where("answer_text IS NOT NULL AND answer_text <> ''").
+		Where("answer_publish_state IS NULL OR answer_publish_state IN ('pending','failed')").
+		Find(&questions).Error
+	return questions, err
+}
+
+// QuestionByID fetches a single question by primary key.
+func (s *Store) QuestionByID(ctx context.Context, id uint) (Question, error) {
+	var q Question
+	err := s.db.WithContext(ctx).First(&q, "tenant_id = ? AND id = ?", TenantIDFromCtx(ctx), id).Error
+	return q, err
+}
+
+// CreateSiteQuestion stores a site-submitted question as hidden/pending until
+// the seller answers it.
+func (s *Store) CreateSiteQuestion(ctx context.Context, in SiteQuestionInput) (Question, error) {
+	token, err := auth.NewSessionToken()
+	if err != nil {
+		return Question{}, err
+	}
+
+	now := time.Now().UTC()
+	if in.ConsentPrivacyAt.IsZero() {
+		in.ConsentPrivacyAt = now
+	}
+	emailHash := HashPII(in.AuthorEmail)
+	consentPrivacyAt := in.ConsentPrivacyAt.UTC()
+
+	q := Question{
+		TenantID:           TenantIDFromCtx(ctx),
+		Marketplace:        MarketplaceSite,
+		ExternalQuestionID: "site-" + token,
+		SellerArticle:      in.SellerArticle,
+		AuthorName:         AnonymizeAuthorName(in.AuthorName),
+		Text:               in.Text,
+		Status:             "pending",
+		Visibility:         "hidden",
+		CreatedAtMP:        now,
+		AuthorEmailHash:    emailHash,
+		SubmissionIPHash:   in.IPHash,
+		FetchedAt:          now,
+		ConsentPrivacyAt:   &consentPrivacyAt,
+	}
+
+	if err := s.db.WithContext(ctx).Create(&q).Error; err != nil {
+		return Question{}, err
+	}
+	return q, nil
+}
