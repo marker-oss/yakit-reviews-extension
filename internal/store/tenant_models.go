@@ -45,7 +45,7 @@ func (s *Store) EnsureDefaultTenant(ctx context.Context, shopOrigin string) erro
 		ShopOrigin: shopOrigin,
 		// The implicit single-tenant install has no billing lifecycle; it
 		// must never be flipped to paused by the trial-expiry job.
-		Plan:        "active",
+		Plan:        "pro+",
 		Status:      "active",
 		TrialEndsAt: time.Now().UTC().Add(100 * 365 * 24 * time.Hour),
 	}).Error
