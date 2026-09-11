@@ -540,7 +540,6 @@ func activeExportMarketplacePolicy(ctx context.Context, db *store.Store, logger 
 	return policy
 }
 
-
 func emptyAsAll(value string) string {
 	if value == "" {
 		return "all"
