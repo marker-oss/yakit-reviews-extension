@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UGC Editorial preset smoke</title>
+  <link rel="stylesheet" href="../reviews-widget.css" />
+  <style>
+    body { margin: 0; padding: 32px; background: #fff; }
+    main { max-width: 1200px; margin: 0 auto; }
+  </style>
+</head>
+<body>
+  <main>
+    <section id="reviews-widget" aria-label="Отзывы покупателей"></section>
+  </main>
+  <script src="../reviews-widget.js"></script>
+  <script>
+    ReviewsWidget.mount(document.querySelector('#reviews-widget'), {
+      reviews: ReviewsWidget.sampleReviews.map(function (review) {
+        return {
+          ...review,
+          media: review.media.map(function (item) {
+            return item.kind === 'photo' ? { ...item, url: './ugc-editorial-assets/assets/look-1.jpg' } : item;
+          }),
+        };
+      }),
+      productName: 'Демо UGC Editorial',
+      config: {
+        appearance: { preset: 'ugc-editorial' },
+        typography: { inheritSite: false, radius: 12, density: 'comfortable' },
+        layout: { mode: 'video', pageSize: 8, video: { tileWidth: 220 } },
+        defaults: { minRating: 0 },
+        theme: { accent: '#c70000', accentInk: '#ffffff', text: '#000000', muted: '#515151', panel: '#ffffff', border: '#e3e3e3', star: '#000000' }
+      }
+    });
+  </script>
+</body>
+</html>

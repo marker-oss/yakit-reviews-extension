@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UGC Community preset smoke</title>
+  <link rel="stylesheet" href="../reviews-widget.css" />
+  <style>body { margin: 0; padding: 32px; background: #fafaf8; } main { max-width: 1200px; margin: 0 auto; }</style>
+</head>
+<body>
+  <main><section id="reviews-widget" aria-label="Отзывы покупателей"></section></main>
+  <script src="../reviews-widget.js"></script>
+  <script>
+    ReviewsWidget.mount(document.querySelector('#reviews-widget'), {
+      reviews: ReviewsWidget.sampleReviews,
+      productName: 'Демо UGC Community',
+      config: {
+        appearance: { preset: 'ugc-community' },
+        layout: { mode: 'wall', pageSize: 8 },
+        defaults: { minRating: 0 },
+        theme: { accent: '#1e5b4f', accentInk: '#ffffff', text: '#1f2521', muted: '#5b6560', panel: '#ffffff', border: '#e4e6e2', star: '#e8a33d' }
+      }
+    });
+  </script>
+</body>
+</html>

@@ -6,7 +6,18 @@ export type MarketplacePolicy = {
   showSourceLinks: boolean
 }
 
-export type WidgetAppearancePreset = 'default' | 'native-kit' | 'minimal' | 'editorial' | 'compact-commerce' | 'lead-summary'
+export type WidgetAppearancePreset = 'default' | 'native-kit' | 'minimal' | 'editorial' | 'ugc-editorial' | 'ugc-community' | 'compact-commerce' | 'lead-summary'
+
+export type CustomFieldDef = {
+  id: string
+  label: string
+  type: 'select' | 'chips' | 'text'
+  options: string[]
+  required: boolean
+  filterable: boolean
+  showInReview: boolean
+  showInSummary: boolean
+}
 
 export type WidgetConfig = {
   appearance: {
@@ -30,10 +41,23 @@ export type WidgetConfig = {
     density: 'comfortable' | 'compact'
   }
   layout: {
-    mode: 'list' | 'grid' | 'carousel'
+    mode: 'list' | 'grid' | 'carousel' | 'video' | 'wall'
     columns: number
     pageSize: number
     pagination: 'more' | 'pages'
+    video: {
+      aspect: '3:4' | '9:16' | '1:1'
+      tileWidth: number
+      showSourceBadge: boolean
+      showAuthor: boolean
+      autoplayInViewer: boolean
+      productPanel: boolean
+    }
+    wall: {
+      minTileWidth: number
+      gap: number
+      maxTiles: number
+    }
   }
   header: {
     title: string
@@ -44,7 +68,9 @@ export type WidgetConfig = {
     prosCons: boolean
     marketplaceBadges: boolean
     ratingDistribution: boolean
+    videoRail: boolean
     filters: boolean
+    questions: boolean
   }
   defaults: {
     minRating: number
@@ -60,6 +86,7 @@ export type WidgetConfig = {
     field: 'pinned' | 'hasPhoto' | 'hasText' | 'rating' | 'createdAt'
     direction: 'asc' | 'desc'
   }[]
+  customFields: CustomFieldDef[]
   marketplacePolicy: Record<'wb' | 'ym' | 'ozon', MarketplacePolicy>
 }
 
@@ -89,6 +116,19 @@ export const defaultWidgetConfig: WidgetConfig = {
     columns: 2,
     pageSize: 3,
     pagination: 'more',
+    video: {
+      aspect: '9:16',
+      tileWidth: 260,
+      showSourceBadge: true,
+      showAuthor: true,
+      autoplayInViewer: true,
+      productPanel: true,
+    },
+    wall: {
+      minTileWidth: 200,
+      gap: 12,
+      maxTiles: 24,
+    },
   },
   header: {
     title: 'Отзывы покупателей',
@@ -99,7 +139,9 @@ export const defaultWidgetConfig: WidgetConfig = {
     prosCons: true,
     marketplaceBadges: true,
     ratingDistribution: true,
+    videoRail: true,
     filters: true,
+    questions: true,
   },
   defaults: {
     minRating: 4,
@@ -123,6 +165,37 @@ export const defaultWidgetConfig: WidgetConfig = {
     ym: { hidden: false, label: '', showSourceLinks: true },
     ozon: { hidden: false, label: '', showSourceLinks: true },
   },
+  customFields: [],
+}
+
+export function normalizeCustomFields(raw: unknown): CustomFieldDef[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: CustomFieldDef[] = []
+  for (const item of raw.slice(0, 6)) {
+    const field = (item ?? {}) as Partial<CustomFieldDef>
+    const id = String(field.id || '').trim()
+    const label = String(field.label || '').trim()
+    const type = field.type === 'select' || field.type === 'chips' || field.type === 'text' ? field.type : ''
+    if (!id || !label || !type || seen.has(id)) continue
+    seen.add(id)
+    const options = (Array.isArray(field.options) ? field.options : [])
+      .map((option) => String(option || '').trim())
+      .filter(Boolean)
+      .slice(0, 12)
+    if (type !== 'text' && options.length < 2) continue
+    out.push({
+      id,
+      label,
+      type,
+      options,
+      required: field.required === true,
+      filterable: field.filterable === true,
+      showInReview: field.showInReview !== false,
+      showInSummary: field.showInSummary === true,
+    })
+  }
+  return out
 }
 
 export function mergeWidgetConfig(value: Partial<WidgetConfig>): WidgetConfig {
@@ -130,12 +203,18 @@ export function mergeWidgetConfig(value: Partial<WidgetConfig>): WidgetConfig {
     appearance: { ...defaultWidgetConfig.appearance, ...(value.appearance ?? {}) },
     theme: { ...defaultWidgetConfig.theme, ...(value.theme ?? {}) },
     typography: { ...defaultWidgetConfig.typography, ...(value.typography ?? {}) },
-    layout: { ...defaultWidgetConfig.layout, ...(value.layout ?? {}) },
+    layout: {
+      ...defaultWidgetConfig.layout,
+      ...(value.layout ?? {}),
+      video: { ...defaultWidgetConfig.layout.video, ...(value.layout?.video ?? {}) },
+      wall: { ...defaultWidgetConfig.layout.wall, ...(value.layout?.wall ?? {}) },
+    },
     header: { ...defaultWidgetConfig.header, ...(value.header ?? {}) },
     visibility: { ...defaultWidgetConfig.visibility, ...(value.visibility ?? {}) },
     defaults: { ...defaultWidgetConfig.defaults, ...(value.defaults ?? {}) },
-    ranking: value.ranking?.length ? value.ranking : defaultWidgetConfig.ranking,
+    customFields: normalizeCustomFields(value.customFields),
     marketplacePolicy: mergeMarketplacePolicy(value.marketplacePolicy),
+    ranking: value.ranking?.length ? value.ranking : defaultWidgetConfig.ranking,
   }
 }
 

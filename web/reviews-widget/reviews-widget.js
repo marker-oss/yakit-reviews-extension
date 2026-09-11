@@ -202,6 +202,7 @@
       marketplace: config.defaults.marketplace || "all",
       rating: "all",
       mediaFilter: "all",
+      customFilters: {},
       sort: options.initialSort || config.defaults.initialSort || "newest",
       visible: initialVisible(config),
       expanded: true,
@@ -348,6 +349,7 @@
           <div class="rw-segments" data-role="quick-filters" aria-label="Быстрые фильтры"></div>
           <div class="rw-segments" data-role="marketplaces" aria-label="Маркетплейс"></div>
           <div class="rw-segments" data-role="ratings" aria-label="Рейтинг"></div>
+          <div class="rw-segments" data-role="custom-filters" aria-label="Атрибуты отзывов"></div>
         </div>
         <div class="rw-select-row">
           <select class="rw-sort" data-role="sort" aria-label="Сортировка">
@@ -633,7 +635,8 @@
         const defaultsOk = matchesDefaults(review, state.config.defaults);
         const searchOk = !query
           || `${review.text || ""} ${review.pros || ""} ${review.cons || ""}`.toLowerCase().includes(query);
-        return marketplaceOk && ratingOk && mediaOk && defaultsOk && searchOk;
+        const customOk = customMatches(review, state.customFilters);
+        return marketplaceOk && ratingOk && mediaOk && defaultsOk && searchOk && customOk;
       }),
       state.sort,
       state.config,
@@ -682,6 +685,7 @@
       root.querySelector('[data-role="quick-filters"]').innerHTML = "";
       marketplaceRoot.innerHTML = "";
       root.querySelector('[data-role="ratings"]').innerHTML = "";
+      root.querySelector('[data-role="custom-filters"]').innerHTML = "";
       return;
     }
     const quickRoot = root.querySelector('[data-role="quick-filters"]');
@@ -731,8 +735,58 @@
         render(root, state);
       }));
     });
+    renderCustomFilterSegments(root, state, reviews);
   }
 
+  // Public custom-attribute filters: only fields the admin marked filterable,
+  // and only values actually observed on the (defaults-matching) reviews.
+  function renderCustomFilterSegments(root, state, reviews) {
+    const customRoot = root.querySelector('[data-role="custom-filters"]');
+    customRoot.innerHTML = "";
+    const source = reviews.filter((review) => matchesDefaults(review, state.config.defaults));
+    (state.config.customFields || []).forEach((field) => {
+      if (!field.filterable) return;
+      const values = unique(source.map((review) => reviewCustomValue(review, field.id)).filter((value) => value !== "" && value != null));
+      if (values.length < 2) return;
+      const group = document.createElement("div");
+      group.className = "rw-segments";
+      group.setAttribute("aria-label", field.label);
+      const selected = state.customFilters[field.id] || "all";
+      group.appendChild(segmentButton(`Все: ${field.label}`, selected === "all", () => {
+        setCustomFilter(state, field.id, "all");
+        render(root, state);
+      }));
+      values.forEach((value) => {
+        group.appendChild(segmentButton(value, selected === value, () => {
+          setCustomFilter(state, field.id, selected === value ? "all" : value);
+          render(root, state);
+        }));
+      });
+      customRoot.appendChild(group);
+    });
+  }
+
+  function setCustomFilter(state, id, value) {
+    if (value === "all") {
+      delete state.customFilters[id];
+    } else {
+      state.customFilters[id] = value;
+    }
+    resetListingState(state);
+  }
+
+  function reviewCustomValue(review, id) {
+    const custom = review.custom || {};
+    const value = custom[id];
+    return typeof value === "string" ? value.trim() : value == null ? "" : String(value);
+  }
+
+  function customMatches(review, filters) {
+    for (const id in filters) {
+      if (reviewCustomValue(review, id) !== filters[id]) return false;
+    }
+    return true;
+  }
   function renderDistribution(root, reviews) {
     const distRoot = root.querySelector('[data-role="distribution"]');
     distRoot.innerHTML = "";
@@ -882,8 +936,7 @@
         <span class="rw-wall-label">Стиль от сообщества</span>
         <span class="rw-wall-count">${pluralize(items.length, "фото", "фото", "фото")}</span>
         ${viewAllHref ? `<a class="rw-view-all" href="${escapeAttribute(viewAllHref)}" target="_blank" rel="noreferrer">Смотреть все</a>` : ""}
-            const rawSrc = item.kind === "video" ? item.previewUrl || "./assets/review-video.svg" : item.url;
-            const src = item.kind === "video" ? rawSrc : mediaProxyURL(rawSrc, root.__reviewsProxyBase);
+        ${viewAllHref ? `<a class="rw-view-all" href="${escapeAttribute(viewAllHref)}" target="_blank" rel="noreferrer">Смотреть все</a>` : ""}
         ${items
           .slice(0, config.layout.wall.maxTiles)
           .map((item) => {
@@ -920,6 +973,7 @@
         card.tabIndex = 0;
         card.setAttribute("aria-label", "Открыть источник отзыва");
       }
+
       card.innerHTML = `
         <div class="rw-card-top">
           <div class="rw-avatar" aria-hidden="true">${escapeHTML(initials(review.authorName || "Покупатель"))}</div>
@@ -934,6 +988,7 @@
         </div>
         ${renderCardText(review, state, root.__reviewsWidgetConfig)}
         ${renderProsCons(review, root.__reviewsWidgetConfig)}
+        ${renderCustomTags(review, root.__reviewsWidgetConfig)}
         ${renderMedia(review.media, root.__reviewsWidgetConfig, root.__reviewsProxyBase)}
         ${renderAnswer(review.answer, root.__reviewsWidgetConfig)}
       `;
@@ -953,6 +1008,21 @@
       }
       list.appendChild(card);
     });
+  }
+
+  function renderCustomTags(review, config) {
+    const fields = (config && config.customFields) || [];
+    const tags = fields
+      .filter((field) => field.showInReview !== false)
+      .map((field) => {
+        const value = reviewCustomValue(review, field.id);
+        return value ? { label: field.label, value } : null;
+      })
+      .filter(Boolean);
+    if (!tags.length) return "";
+    return `<div class="rw-custom-tags">${tags.map((tag) =>
+      `<span class="rw-custom-tag"><span class="rw-meta-label">${escapeHTML(tag.label)}</span> ${escapeHTML(tag.value)}</span>`
+    ).join("")}</div>`;
   }
 
   // "Читать полностью": clamp long review texts to 6 lines behind a toggle.
@@ -1294,6 +1364,9 @@
         type: type,
         options: options,
         required: field.required === true,
+        filterable: field.filterable === true,
+        showInReview: field.showInReview !== false,
+        showInSummary: field.showInSummary === true,
       });
     }
     return out.filter((field) => field.type === "text" || field.options.length >= 2);
@@ -1719,16 +1792,28 @@
       visibility: { ...defaultConfig.visibility, ...(config.visibility || {}) },
       defaults: { ...defaultConfig.defaults, ...(config.defaults || {}) },
       labels: { ...defaultConfig.labels, ...(config.labels || {}) },
+      customFields: normalizeCustomFields(config.customFields || []),
       ranking: Array.isArray(config.ranking) && config.ranking.length ? config.ranking : defaultConfig.ranking,
       marketplacePolicy: normalizeMarketplacePolicy(config.marketplacePolicy),
     };
     merged.header.title = String(merged.header.title || "").trim() || defaultConfig.header.title;
-    if (!["default", "classic", "native-kit", "minimal", "editorial", "compact-commerce", "lead-summary", "shoppable"].includes(merged.appearance.preset)) {
+    if (![
+      "default",
+      "classic",
+      "native-kit",
+      "minimal",
+      "editorial",
+      "ugc-editorial",
+      "ugc-community",
+      "compact-commerce",
+      "lead-summary",
+      "shoppable",
+    ].includes(merged.appearance.preset)) {
       merged.appearance.preset = "default";
     }
     merged.appearance.viewAllHref = String(merged.appearance.viewAllHref || "").trim();
     merged.typography.scale = clampNumber(merged.typography.scale, 0.85, 1.25, 1);
-    merged.typography.radius = clampNumber(merged.typography.radius, 0, 24, 8);
+    merged.typography.radius = Math.round(clampNumber(merged.typography.radius, 0, 24, 16));
     merged.layout.columns = Math.round(clampNumber(merged.layout.columns, 1, 4, 2));
     merged.layout.pageSize = Math.round(clampNumber(merged.layout.pageSize, 1, 24, 3));
     merged.layout.tileHover = merged.layout.tileHover !== false;
@@ -1852,8 +1937,6 @@
     root.style.setProperty("--rw-accent", theme.accent);
     root.style.setProperty("--rw-accent-ink", theme.accentInk);
     root.style.setProperty("--rw-accent-hover", mixChannels(accent, [0, 0, 0], 0.15));
-    root.style.setProperty("--rw-accent-tint", mixChannels(panel, accent, 0.12));
-    root.style.setProperty("--rw-accent-tint-2", mixChannels(panel, accent, 0.24));
     root.style.setProperty("--rw-soft", mixChannels(panel, text, 0.04));
     root.style.setProperty("--rw-soft-muted", mixChannels(panel, muted, 0.55));
     root.style.fontFamily = config.typography.inheritSite
@@ -1863,7 +1946,8 @@
     root.classList.toggle("rw-inherit-site", config.typography.inheritSite || config.appearance?.preset === "native-kit");
     root.classList.toggle("rw-preset-minimal", config.appearance?.preset === "minimal");
     root.classList.toggle("rw-preset-editorial", config.appearance?.preset === "editorial");
-    root.classList.toggle("rw-preset-compact-commerce", config.appearance?.preset === "compact-commerce");
+    root.classList.toggle("rw-preset-ugc-editorial", config.appearance?.preset === "ugc-editorial");
+    root.classList.toggle("rw-preset-ugc-community", config.appearance?.preset === "ugc-community");
     root.classList.toggle("rw-preset-lead-summary", config.appearance?.preset === "lead-summary");
     root.classList.toggle("rw-preset-shoppable", config.appearance?.preset === "shoppable");
     root.classList.toggle("rw-preset-classic", config.appearance?.preset === "classic");
@@ -1876,6 +1960,10 @@
     root.style.setProperty("--rw-wall-gap", `${config.layout.wall.gap}px`);
     root.style.setProperty("--rw-video-card-width", `${config.layout.video.tileWidth}px`);
     root.style.setProperty("--rw-video-card-ratio", config.layout.video.aspect === "3:4" ? "3 / 4" : config.layout.video.aspect.replace(":", " / "));
+    root.style.setProperty("--rw-radius", `${config.typography.radius}px`);
+    root.style.setProperty("--rw-star", theme.star);
+    root.style.setProperty("--rw-focus-ring", rgba(accent, 0.35));
+    root.style.setProperty("--rw-star-empty", mixChannels(panel, muted, 0.35));
     root.classList.toggle("rw-hide-distribution", !config.visibility.ratingDistribution);
     root.classList.toggle("rw-hide-badges", !config.visibility.marketplaceBadges);
     root.classList.toggle("rw-hide-filters", !config.visibility.filters);

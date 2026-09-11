@@ -5,6 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Отзывы — демо</title>
     <link rel="stylesheet" href="./reviews-widget.css" />
+    <style>
+      /* Хост-подложка демо: тёмный нейтральный фон, чтобы прозрачный bg
+         виджета (chameleon) читался, а белые панели карточек выделялись. */
+      body.rw-demo-page {
+        background: linear-gradient(180deg, #1c1c22 0%, #131316 100%);
+      }
+      /* Демо-хром (product-strip, caption) подстраиваем под тёмный хост.
+         Сам виджет не трогаем — его токены в reviews-widget.css. */
+      .product-copy h1 {
+        color: #fafafa;
+      }
+      .product-copy p {
+        color: #a1a1aa;
+      }
+      .product-kicker {
+        color: #bfa3e8;
+      }
+      .product-media {
+        border-color: #3f3f46;
+        background: #26262b;
+      }
+      .demo-caption {
+        margin: 0 0 16px;
+        color: #a1a1aa;
+        font-size: 13px;
+      }
+      .demo-caption b {
+        color: #e4e4e7;
+        font-weight: 600;
+      }
+    </style>
   </head>
   <body class="rw-demo-page">
     <main class="demo-shell">
@@ -19,6 +50,11 @@
         </div>
       </section>
 
+      <!-- Вариант подписи для «стены UGC»: Демо: режим wall · пресет shoppable -->
+      <p class="demo-caption">
+        Демо: <b>режим video</b> · пресет <b>default (chameleon)</b>
+      </p>
+
       <section
         id="reviews-widget"
         class="reviews-widget"
@@ -28,12 +64,70 @@
 
     <script src="./reviews-widget.js"></script>
     <script>
-      const [videoReviewOzon] = ReviewsWidget.sampleReviews.filter((r) => r.media.some((m) => m.kind === "video"));
-      const videoReviewWb = { ...videoReviewOzon, marketplace: "wb", externalReviewId: "wb-1003", authorName: "Анна С.", media: [{ kind: "video", url: "./assets/demo-review-2.mp4", previewUrl: "./assets/review-video.svg" }] };
+      // Демо-данные: базовые sampleReviews плюс сконструированные здесь отзывы,
+      // чтобы витрина выглядела как настоящий UGC-разрез (видео, фото, длинный
+      // текст, ссылка на товар для продуктовой панели в лайтбоксе).
+      const byId = (id) => ReviewsWidget.sampleReviews.find((r) => r.externalReviewId === id);
+      const sellerProduct = "./product.html?article=1523&marketplace=wb";
+
+      const demoReviews = [
+        byId("wb-1001"), // Мария К. · 5 · WB · 2 фото + ответ продавца
+        byId("oz-771"), // Ирина · 3 · Ozon · видео demo-review-1.mp4
+        {
+          marketplace: "wb",
+          externalReviewId: "wb-2001",
+          externalProductId: "70476012",
+          sellerArticle: "1523",
+          sellerProductUrl: sellerProduct,
+          rating: 4,
+          authorName: "Анна С.",
+          text: "Сняла видео, как платье сидит при ходьбе: не задирается, посадка по фигуре. Второй раз ношу на работу — смотрится аккуратно.",
+          pros: "Хорошо садится по фигуре",
+          cons: "",
+          createdAt: "2026-06-02T10:15:00+03:00",
+          media: [
+            { kind: "video", url: "./assets/demo-review-2.mp4", previewUrl: "./assets/review-video.svg" },
+            { kind: "photo", url: "./assets/review-fabric.svg" },
+          ],
+          answer: {
+            text: "Анна, спасибо за подробное видео! Рады, что платье подошло и для работы.",
+            state: "published",
+          },
+        },
+        {
+          marketplace: "wb",
+          externalReviewId: "wb-2002",
+          externalProductId: "70476012",
+          sellerArticle: "1523",
+          sellerProductUrl: sellerProduct,
+          rating: 5,
+          authorName: "Светлана Т.",
+          text: "Заказывала платье на выпускной дочери и, честно говоря, переживала из-за размера, потому что дочь между 42 и 44. Взяли 44 — село идеально, ткань струится и не колется даже без подкладки. Швы ровные, молния не перекошена, пуговица-крючок держит надёжно. После стирки на деликатном режиме платье не село и не растянулось, глажка заняла пять минут. Цвет вживую чуть глубже, чем на фото витрины, и это скорее плюс: на вечерних фото он выглядит дороже. Дочь получила комплименты весь вечер, а мама теперь рекомендует всем подругам и уже присматривает такое же, но в другом оттенке.",
+          pros: "Посадка, ткань, стойкость после стирки",
+          cons: "",
+          createdAt: "2026-05-25T18:40:00+03:00",
+          media: [{ kind: "photo", url: "./assets/review-label.svg" }],
+          answer: null,
+        },
+        byId("ym-2107"), // Елена · 4 · Я.Маркет · 1 фото
+        {
+          marketplace: "ozon",
+          externalReviewId: "oz-812",
+          sellerArticle: "812",
+          rating: 2,
+          authorName: "Дарья В.",
+          text: "Платье хорошее, но пришло с затяжкой на юбке. Возврат оформлять не стала — зашила сама, но осадок остался.",
+          pros: "",
+          cons: "Затяжка на ткани при доставке",
+          createdAt: "2026-05-06T11:05:00+03:00",
+          media: [{ kind: "photo", url: "./assets/review-outfit.svg" }],
+          answer: null,
+        },
+      ];
     </script>
     <script>
       ReviewsWidget.mount(document.querySelector("#reviews-widget"), {
-        reviews: [...ReviewsWidget.sampleReviews, { ...videoReviewWb }],
+        reviews: demoReviews,
         productName: "Платье (пример)",
         config: { layout: { mode: "video", pageSize: 8, video: { tileWidth: 260 } }, defaults: { minRating: 0 } },
         // Вариант «стена UGC»: config: { layout: { mode: "wall", pageSize: 8, wall: { minTileWidth: 200, maxTiles: 24 } }, appearance: { preset: "shoppable" }, defaults: { minRating: 0 } },

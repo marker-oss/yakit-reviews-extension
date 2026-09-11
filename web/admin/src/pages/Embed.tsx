@@ -43,6 +43,21 @@ window.REVIEWS_EMBED_CONFIG = ${json};
     toast.success('Скопировано')
   }
 
+  const installVariants = useMemo(() => {
+    const base = baseUrl.replace(/\/$/, '')
+    return {
+      anchor: `<div id="reviews-widget"></div>`,
+      anchorHome: `<div id="reviews-homepage"></div>`,
+      withAnchor: `<div id="reviews-widget">
+${snippet
+  .split('\n')
+  .map((line) => '  ' + line)
+  .join('\n')}
+</div>`,
+      headScript: `<script src="${base}/loader.js" data-reviews-embed async></script>`,
+    }
+  }, [snippet, baseUrl])
+
   return (
     <section className="stack">
       <section className="panel form-grid">
@@ -77,6 +92,51 @@ window.REVIEWS_EMBED_CONFIG = ${json};
           «Настройки» (www-вариант домена разрешится автоматически, рестарт не нужен) — либо задайте
           REVIEWS_SHOP_ORIGIN=https://ваш-магазин.ru в .env сервера. Изменения в Тег Менеджере
           попадают на сайт только после публикации контейнера.
+        </p>
+      </section>
+
+      <section className="panel">
+        <h3>Без тег-менеджера: через CMS</h3>
+        <p className="muted">
+          Если тег-менеджер не используется, тот же сниппет вставляется напрямую в конструктор сайта.
+          Ключевое отличие: место виджета задаёт сам блок CMS, поэтому добавьте якорь рядом со сниппетом.
+        </p>
+        <h4>1. Тильда: блок T123 «HTML-код»</h4>
+        <p className="muted">
+          Библиотека блоков → Другое → T123. Вставьте сниппет вместе с якорем (контент блока и есть место виджета):
+        </p>
+        <pre className="snippet">{installVariants.withAnchor}</pre>
+        <p className="muted">
+          Для главной используйте тот же приём с <code>id=«reviews-homepage»</code>. Глобальный вариант (все страницы
+          сразу) — «Настройки сайта → Ещё → HTML-код для вставки внутрь head» со сниппетом без якоря: тогда якорь
+          кладётся на каждую нужную страницу отдельным блоком, а автопривязка после ProductDetails сработает без якоря.
+        </p>
+        <h4>2. WordPress: блок Custom HTML или шорткод</h4>
+        <p className="muted">
+          Gutenberg-блок «Custom HTML» на шаблоне товара — вставьте якорь и сниппет как выше. Для повторного
+          использования оберните в шорткод через functions.php дочерней темы:
+        </p>
+        <pre className="snippet">{`function render_reviews_widget() {
+  return \`${installVariants.anchor}
+  <script src="${baseUrl.replace(/\/$/, '')}/loader.js" async></script>\`;
+}
+add_shortcode('reviews_widget', 'render_reviews_widget');`}</pre>
+        <p className="muted">
+          Затем <code>[reviews_widget]</code> в шаблоне карточки товара. REVIEWS_EMBED_CONFIG можно не задавать
+          inline — loader поднимет его из data-атрибутов.
+        </p>
+        <h4>3. Произвольная CMS: якорь + скрипт</h4>
+        <p className="muted">
+          Минимальный вариант — div-якорь в шаблоне товара и один скрипт в head/footer всех страниц:
+        </p>
+        <pre className="snippet">{`<!-- в шаблон карточки товара -->
+${installVariants.anchor}
+
+<!-- в head/footer всех страниц -->
+${installVariants.headScript}`}</pre>
+        <p className="muted">
+          Артикул loader возьмёт из JSON-LD / data-article на якоре / ссылочного индекса; без якоря сработает
+          автопривязка после стандартного блока Кита.
         </p>
       </section>
     </section>

@@ -43,6 +43,16 @@ type ReviewListFilter struct {
 	PinnedFirst          bool
 	SortBy               string
 	Ranking              []ReviewRankingRule
+	CustomFilters        []CustomFilter
+}
+
+// CustomFilter narrows reviews by a custom-field answer stored in the
+// reviews.custom_data JSON map. Server-side validation (field id + option
+// come from the admin config) is the caller's job; values are still bound
+// as parameters, never spliced into SQL.
+type CustomFilter struct {
+	FieldID string
+	Value   string
 }
 
 func (s *Store) ListReviews(ctx context.Context, filter ReviewListFilter) ([]Review, error) {
@@ -188,6 +198,16 @@ func (s *Store) applyReviewFilters(ctx context.Context, query *gorm.DB, filter R
 				OR LOWER(mp_answer_text) LIKE ?
 				OR LOWER(admin_reply_text) LIKE ?`,
 			like, like, like, like, like, like, like,
+		)
+	}
+	for _, cf := range filter.CustomFilters {
+		// ponytail: escaped-LIKE exact match on the custom_data JSON map;
+		// portable SQLite+Postgres. JSONB expression index is the upgrade
+		// path if these filters ever get hot.
+		query = query.Where(
+			`custom_data LIKE ? ESCAPE '\'`,
+			`%"`+strings.ReplaceAll(cf.FieldID, `"`, `\"`)+`":"`+
+				strings.ReplaceAll(strings.ReplaceAll(cf.Value, `\`, `\\`), `"`, `\"`)+`"%`,
 		)
 	}
 	return query, nil

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { apiGet, apiWrite } from '../api'
 import { toast } from '../toast'
 import { useDirty } from '../useDirty'
-import { defaultWidgetConfig, mergeWidgetConfig, type MarketplacePolicy, type WidgetConfig, type WidgetContext } from '../widgetConfig'
+import { defaultWidgetConfig, mergeWidgetConfig, type CustomFieldDef, type MarketplacePolicy, type WidgetConfig, type WidgetContext } from '../widgetConfig'
 
 type VersionItem = {
   version: number
@@ -16,7 +16,9 @@ const visibilityLabels: Record<keyof WidgetConfig['visibility'], string> = {
   prosCons: 'Плюсы и минусы',
   marketplaceBadges: 'Бейджи',
   ratingDistribution: 'Распределение',
+  videoRail: 'Видео',
   filters: 'Фильтры',
+  questions: 'Вопросы',
 }
 
 const rankingLabels: Record<WidgetConfig['ranking'][number]['field'], string> = {
@@ -81,6 +83,28 @@ const presets: PresetSpec[] = [
       typography: { ...defaultWidgetConfig.typography, inheritSite: false, radius: 18, density: 'comfortable' },
       layout: { ...defaultWidgetConfig.layout, mode: 'list', columns: 1, pageSize: 3 },
       visibility: { ...defaultWidgetConfig.visibility, ratingDistribution: false, filters: false },
+    },
+  },
+  {
+    id: 'ugc-editorial',
+    label: 'UGC Editorial',
+    description: 'Плоский чёрно-белый стиль с акцентом на пользовательские фото и видео',
+    config: {
+      appearance: { preset: 'ugc-editorial' },
+      theme: { ...defaultWidgetConfig.theme, accent: '#c70000', accentInk: '#ffffff', text: '#000000', muted: '#515151', panel: '#ffffff', border: '#e3e3e3', star: '#000000' },
+      typography: { ...defaultWidgetConfig.typography, inheritSite: false, radius: 12, density: 'comfortable' },
+      layout: { ...defaultWidgetConfig.layout, mode: 'video', columns: 2, pageSize: 4 },
+    },
+  },
+  {
+    id: 'ugc-community',
+    label: 'UGC Community',
+    description: 'Тёплый природный стиль с карточкой сводки и UGC-галереей',
+    config: {
+      appearance: { preset: 'ugc-community' },
+      theme: { ...defaultWidgetConfig.theme, accent: '#1e5b4f', accentInk: '#ffffff', text: '#1f2521', muted: '#5b6560', panel: '#ffffff', border: '#e4e6e2', star: '#e8a33d' },
+      typography: { ...defaultWidgetConfig.typography, inheritSite: false, radius: 16, density: 'comfortable' },
+      layout: { ...defaultWidgetConfig.layout, mode: 'wall', columns: 2, pageSize: 4 },
     },
   },
   {
@@ -293,6 +317,8 @@ export default function Editor() {
                   <option value="list">Список</option>
                   <option value="grid">Сетка</option>
                   <option value="carousel">Лента</option>
+                  <option value="video">Видео</option>
+                  <option value="wall">UGC-стена</option>
                 </select>
               </label>
               <label>
@@ -302,6 +328,25 @@ export default function Editor() {
               <label>
                 <span>Размер страницы</span>
                 <input type="number" min="1" max="24" value={cfg.layout.pageSize} onChange={(e) => setLayout('pageSize', Number(e.target.value))} />
+              </label>
+            </section>
+            <section className="panel form-grid">
+              <h3>Медиа</h3>
+              <label>
+                <span>Формат видео</span>
+                <select value={cfg.layout.video.aspect} onChange={(e) => setCfg({ ...cfg, layout: { ...cfg.layout, video: { ...cfg.layout.video, aspect: e.target.value as WidgetConfig['layout']['video']['aspect'] } } })}>
+                  <option value="9:16">Вертикальный 9:16</option>
+                  <option value="3:4">Портретный 3:4</option>
+                  <option value="1:1">Квадратный 1:1</option>
+                </select>
+              </label>
+              <label>
+                <span>Ширина видео-карточки</span>
+                <input type="number" min="140" max="320" value={cfg.layout.video.tileWidth} onChange={(e) => setCfg({ ...cfg, layout: { ...cfg.layout, video: { ...cfg.layout.video, tileWidth: Number(e.target.value) } } })} />
+              </label>
+              <label className="checkbox">
+                <input type="checkbox" checked={cfg.layout.video.showAuthor} onChange={(e) => setCfg({ ...cfg, layout: { ...cfg.layout, video: { ...cfg.layout.video, showAuthor: e.target.checked } } })} />
+                <span>Показывать автора на видео</span>
               </label>
             </section>
 
@@ -317,6 +362,7 @@ export default function Editor() {
         )}
 
         {tab === 'content' && (
+          <>
           <section className="panel">
             <h3>Выдача отзывов</h3>
             <div className="form-grid">
@@ -381,6 +427,11 @@ export default function Editor() {
               ))}
             </div>
           </section>
+          <section className="panel">
+            <h3>Атрибуты отзывов</h3>
+            <CustomFieldsEditor fields={cfg.customFields} onChange={(customFields) => setCfg({ ...cfg, customFields })} />
+          </section>
+          </>
         )}
 
         {tab === 'marketplaces' && (
@@ -450,6 +501,82 @@ export default function Editor() {
         <iframe title="Предпросмотр виджета" srcDoc={preview} />
       </section>
     </section>
+  )
+}
+
+function CustomFieldsEditor({ fields, onChange }: { fields: CustomFieldDef[]; onChange: (fields: CustomFieldDef[]) => void }) {
+  function update(index: number, patch: Partial<CustomFieldDef>) {
+    onChange(fields.map((field, i) => (i === index ? { ...field, ...patch } : field)))
+  }
+  function move(index: number, direction: -1 | 1) {
+    const target = index + direction
+    if (target < 0 || target >= fields.length) return
+    const next = [...fields]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    onChange(next)
+  }
+  function add() {
+    onChange([...fields, { id: '', label: '', type: 'select', options: ['', ''], required: false, filterable: false, showInReview: true, showInSummary: false }])
+  }
+  return (
+    <div className="rows">
+      {fields.length === 0 && <p className="muted">Дополнительные поля не настроены.</p>}
+      {fields.map((field, index) => (
+        <div className="row marketplace-policy-row" key={index} style={{ display: 'block' }}>
+          <div className="form-grid">
+            <label>
+              <span>Идентификатор</span>
+              <input value={field.id} onChange={(e) => update(index, { id: e.target.value })} placeholder="height" />
+            </label>
+            <label>
+              <span>Название</span>
+              <input value={field.label} onChange={(e) => update(index, { label: e.target.value })} placeholder="Рост" />
+            </label>
+            <label>
+              <span>Тип</span>
+              <select value={field.type} onChange={(e) => update(index, { type: e.target.value as CustomFieldDef['type'] })}>
+                <option value="select">Выпадающий список</option>
+                <option value="chips">Чипы</option>
+                <option value="text">Текст</option>
+              </select>
+            </label>
+          </div>
+          {field.type !== 'text' && (
+            <label>
+              <span>Варианты (через запятую)</span>
+              <input
+                value={field.options.join(', ')}
+                onChange={(e) => update(index, { options: e.target.value.split(',').map((option) => option.trim()) })}
+              />
+            </label>
+          )}
+          <div className="check-grid">
+            <label className="checkbox">
+              <input type="checkbox" checked={field.required} onChange={(e) => update(index, { required: e.target.checked })} />
+              <span>Обязательное</span>
+            </label>
+            <label className="checkbox">
+              <input type="checkbox" checked={field.filterable} onChange={(e) => update(index, { filterable: e.target.checked })} />
+              <span>Публичный фильтр</span>
+            </label>
+            <label className="checkbox">
+              <input type="checkbox" checked={field.showInReview} onChange={(e) => update(index, { showInReview: e.target.checked })} />
+              <span>Показывать в отзыве</span>
+            </label>
+            <label className="checkbox">
+              <input type="checkbox" checked={field.showInSummary} onChange={(e) => update(index, { showInSummary: e.target.checked })} />
+              <span>Показывать в сводке</span>
+            </label>
+          </div>
+          <div className="rows">
+            <button className="secondary" disabled={index === 0} onClick={() => move(index, -1)}>Вверх</button>
+            <button className="secondary" disabled={index === fields.length - 1} onClick={() => move(index, 1)}>Вниз</button>
+            <button className="secondary" onClick={() => onChange(fields.filter((_, i) => i !== index))}>Удалить</button>
+          </div>
+        </div>
+      ))}
+      <button className="secondary" onClick={add} disabled={fields.length >= 6}>Добавить поле</button>
+    </div>
   )
 }
 

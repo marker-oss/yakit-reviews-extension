@@ -19,14 +19,19 @@ will likely ask for next. Sources: `defaultConfig` + `normalizeConfig` in
   textFirst, photoFirst, onlyWithAnswer.
 - Ranking rules (pinned/hasPhoto/hasText/rating/createdAt, per-rule direction).
 - Per-marketplace policy: hidden, public label, showSourceLinks.
-- Header title (+ productName override); review-submission custom fields.
+- Custom review attributes end-to-end (2026-09-10): `customFields` schema in widget config
+  (id/label/type/options/required/filterable/showInReview/showInSummary), admin editor panel,
+  submission form fields, answers stored in `Review.CustomData` and served as `review.custom`,
+  attribute tags in review cards, local public filter segments, and server-side
+  `custom_<fieldId>=<value>` filtering on GET /api/reviews (whitelisted against the schema).
+  Remaining gap: `showInSummary` is stored but not yet rendered in the widget summary.
 
 ## Cheap to add (pure config plumbing, no design work)
 
-- Tile width / min card width for list & grid modes (only video/wall have it).
 - Star rating color beyond `theme.star`: empty-star color, star size.
-- Per-element colors: review-card background, filter-bar text, answer accent
-  (currently hardwired `--rw-trust: #4e7c59` and `--rw-danger: #9e4b5a`).
+  - Closed 2026-09-10: `--rw-star` / `--rw-star-empty` / `--rw-focus-ring` are now derived in
+    `applyConfig` from `theme.star` / `theme.muted` / `theme.accent`; `typography.radius` is wired
+    to `--rw-radius` (was dead config).
 - Label texts: "Оставить отзыв", "Отзыв появится после проверки модератором",
   consent text, tab labels, "Загрузить ещё" — all hardcoded Russian strings.
 - Section order: media rail / distribution / filters / list are fixed in the shell.

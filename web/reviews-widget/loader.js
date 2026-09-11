@@ -1,14 +1,19 @@
 /*
- * Reviews embed loader for a Yandex Kit shop.
- * Loaded once by a Yandex Tag Manager Custom HTML tag. Watches SPA navigation,
- * fetches per-article JSON, mounts the widget into Shadow DOM, and injects
- * JSON-LD. The host URLs below MUST be provided via window.REVIEWS_EMBED_CONFIG
- * (the admin Embed page generates the full snippet); the empty defaults are
- * placeholders only.
+ * Reviews embed loader for a shop site.
+ * Loaded once — via a Tag Manager Custom HTML tag, a CMS code block, or a
+ * plain <script> tag. Watches SPA navigation, fetches per-article JSON, mounts
+ * the widget into Shadow DOM, and injects JSON-LD. Host URLs come from
+ * window.REVIEWS_EMBED_CONFIG (the admin Embed page generates the full
+ * snippet) or, for a minimal <script src> install, from data-attributes on
+ * the script tag: data-reviews-base, data-reviews-public-key,
+ * data-reviews-anchor. window.REVIEWS_EMBED_CONFIG wins over data-attributes;
+ * the empty defaults are placeholders only.
  */
 (function () {
   "use strict";
 
+  var scriptEl = document.currentScript;
+  var attrs = scriptEl && scriptEl.dataset ? scriptEl.dataset : {};
   var CFG = Object.assign(
     {
       dataBase: "",
@@ -24,6 +29,9 @@
       useShadowDom: true,
       debug: false,
     },
+    attrs.reviewsBase ? { dataBase: attrs.reviewsBase + "/reviews-data", configBase: attrs.reviewsBase } : {},
+    attrs.reviewsPublicKey ? { publicKey: attrs.reviewsPublicKey } : {},
+    attrs.reviewsAnchor ? { anchorSelector: attrs.reviewsAnchor } : {},
     window.REVIEWS_EMBED_CONFIG || {},
   );
 

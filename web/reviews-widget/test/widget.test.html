@@ -139,6 +139,24 @@
     host.remove();
     return ok;
   })(), true);
+  eq("ugc editorial preset is whitelisted", normVideo({ appearance: { preset: "ugc-editorial" } }).appearance.preset, "ugc-editorial");
+  eq("ugc editorial preset toggles root class", (function () {
+    var host = mountRoot({ reviews: [], config: { appearance: { preset: "ugc-editorial" } } });
+    var ok = host.classList.contains("rw-preset-ugc-editorial");
+    host.remove();
+    return ok;
+  })(), true);
+ 
+  eq("ugc community preset is whitelisted", normVideo({ appearance: { preset: "ugc-community" } }).appearance.preset, "ugc-community");
+  eq("ugc community preset toggles root class", (function () {
+    var host = mountRoot({ reviews: [], config: { appearance: { preset: "ugc-community" } } });
+    var ok = host.classList.contains("rw-preset-ugc-community");
+    host.remove();
+    return ok;
+  })(), true);
+ 
+   // ── Community wall (layout.mode "wall") ────────────────────────────────────
+   // ── Community wall (layout.mode "wall") ────────────────────────────────────
   eq("viewAllHref renders header link when set", (function () {
     var host = mountRoot({ reviews: [], config: { appearance: { viewAllHref: "https://example.test/all" } } });
     var link = host.querySelector(".rw-header .rw-view-all");

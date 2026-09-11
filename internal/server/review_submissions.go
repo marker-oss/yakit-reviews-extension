@@ -36,11 +36,14 @@ const (
 // customField describes one extra selectable parameter on the review form
 // (товарные атрибуты вида "рост / вес / посадка").
 type customField struct {
-	ID       string   `json:"id"`
-	Label    string   `json:"label"`
-	Type     string   `json:"type"` // select | chips | text
-	Options  []string `json:"options"`
-	Required bool     `json:"required"`
+	ID            string   `json:"id"`
+	Label         string   `json:"label"`
+	Type          string   `json:"type"` // select | chips | text
+	Options       []string `json:"options"`
+	Required      bool     `json:"required"`
+	Filterable    bool     `json:"filterable,omitempty"`    // expose as public /api/reviews filter
+	ShowInReview  bool     `json:"showInReview,omitempty"`  // render answer inside the review card
+	ShowInSummary bool     `json:"showInSummary,omitempty"` // aggregate into the widget summary
 }
 
 // normalizeCustomFields validates the admin-configured custom-field list.

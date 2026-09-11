@@ -3,7 +3,7 @@
   font-style: normal;
   font-weight: 400 700;
   font-display: swap;
-  src: url('./assets/fonts/onest-var.woff2') format('woff2');
+  src: url('./onest-var.woff2') format('woff2');
 }
 
 @font-face {
@@ -11,5 +11,5 @@
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url('./assets/fonts/prata-400.woff2') format('woff2');
+  src: url('./prata-400.woff2') format('woff2');
 }
