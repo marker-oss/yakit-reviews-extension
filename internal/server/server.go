@@ -335,7 +335,10 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.Handle("POST /admin/api/dsr/delete", requireCSRF(http.HandlerFunc(s.handleDSRDelete)))
 	mux.Handle("/admin/api/", s.requireSession(protected))
 	if s.cfg.ExtraAdminRoutes != nil {
-		mux.Handle("/admin/api/saas/", s.requireSession(s.cfg.ExtraAdminRoutes(s)))
+		inner := s.cfg.ExtraAdminRoutes(s)
+		mux.Handle("/admin/api/saas/", s.requireSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.StripPrefix("/admin/api/saas", inner).ServeHTTP(w, r)
+		})))
 	}
 
 	mux.Handle("/admin/", s.adminSPAHandler())
