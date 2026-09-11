@@ -60,7 +60,7 @@ func (s *Server) handleTriggerSync(w http.ResponseWriter, r *http.Request) {
 	if mp != "" {
 		marketplaces = []string{mp}
 	}
-	result, err := s.cfg.TriggerSync(marketplaces)
+	result, err := s.cfg.TriggerSync(r.Context(), marketplaces)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

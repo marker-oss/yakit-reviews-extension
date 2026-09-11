@@ -82,7 +82,7 @@ func (s *Server) handleRefreshSiteLinks(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusConflict, s.siteLinksSnapshot())
 		return
 	}
-	go s.runSiteLinksRefresh(sitemapURL, full)
+	go s.runSiteLinksRefresh(store.TenantIDFromCtx(r.Context()), sitemapURL, full)
 	writeJSON(w, http.StatusAccepted, s.siteLinksSnapshot())
 }
 
@@ -90,12 +90,13 @@ func (s *Server) handleSiteLinksRefreshStatus(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, s.siteLinksSnapshot())
 }
 
-func (s *Server) runSiteLinksRefresh(sitemapURL string, full bool) {
-	// The job detaches from the triggering request (it may run past the
-	// response) but must keep the tenant: one process serves one tenant.
-	ctx, cancel := context.WithTimeout(store.WithTenant(context.Background(), store.DefaultTenantID), siteLinksJobTimeout)
-	defer cancel()
+// runSiteLinksRefresh crawls the tenant's shop sitemap and regenerates the
+// per-tenant export. The job detaches from the triggering request but must
+// keep the caller's tenant.
+func (s *Server) runSiteLinksRefresh(tenantID uint, sitemapURL string, full bool) {
+	ctx, cancel := context.WithTimeout(store.WithTenant(context.Background(), tenantID), siteLinksJobTimeout)
 	client := &http.Client{Timeout: siteLinksFetchTimeout}
+	defer cancel()
 
 	fail := func(err error) {
 		now := time.Now().UTC()
@@ -199,6 +200,11 @@ func (s *Server) regenerateSiteData(ctx context.Context, links []site.ProductLin
 
 	generatedAt := time.Now().UTC()
 	outDir := filepath.Join(s.cfg.StaticDir, "reviews-data")
+	if s.tenantExportScope != nil {
+		if scope, err := s.tenantExportScope(ctx); err == nil && scope != "" {
+			outDir = filepath.Join(s.cfg.StaticDir, "reviews-data", scope)
+		}
+	}
 	if err = staticexport.Write(outDir, bundles, generatedAt); err != nil {
 		return 0, 0, err
 	}

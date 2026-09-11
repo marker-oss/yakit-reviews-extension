@@ -67,12 +67,12 @@ type Config struct {
 }
 
 type Server struct {
-	store       *store.Store
-	cfg         Config
-	logger      *slog.Logger
-	server      *http.Server
-	submissions *submissionLimiter
-	// linksMu guards cfg.ProductLinks, which the refresh-products action swaps
+	store         *store.Store
+	cfg           Config
+	logger        *slog.Logger
+	server        *http.Server
+	submissions   *submissionLimiter
+	tenantLimiter *tenantRateLimiter
 	// at runtime while request handlers read it.
 	linksMu sync.RWMutex
 
@@ -96,6 +96,11 @@ type Server struct {
 	ozonProbeMu      sync.Mutex
 	ozonProbeAt      time.Time
 	ozonProbeWarning string
+
+	// tenantExportScope resolves the per-tenant static export subdirectory
+	// (the tenant's public key) on SaaS. nil keeps the legacy shared
+	// reviews-data path for single-tenant deployments.
+	tenantExportScope func(ctx context.Context) (string, error)
 }
 
 // productLinks returns the current article→URL map under a read lock.
@@ -103,6 +108,12 @@ func (s *Server) productLinks() map[string]string {
 	s.linksMu.RLock()
 	defer s.linksMu.RUnlock()
 	return s.cfg.ProductLinks
+}
+
+// SetTenantExportScope installs the per-tenant static export resolver (SaaS).
+// Call before Run; nil keeps the legacy shared reviews-data directory.
+func (s *Server) SetTenantExportScope(resolve func(ctx context.Context) (string, error)) {
+	s.tenantExportScope = resolve
 }
 
 // setProductLinks atomically swaps the in-memory article→URL map.
@@ -152,7 +163,7 @@ func (s *Server) handler() http.Handler {
 	mux.Handle("/admin/", s.adminMux())
 	mux.Handle("/", http.FileServer(http.Dir(s.cfg.StaticDir)))
 
-	return securityHeaders(s.tenantScope(s.cors(s.logRequests(mux))))
+	return securityHeaders(s.tenantScope(s.tenantRateLimit(s.cors(s.logRequests(mux)))))
 }
 
 // tenantScope resolves the tenant for every request that reaches the store.
@@ -192,6 +203,13 @@ func (s *Server) tenantScope(next http.Handler) http.Handler {
 				ctx = context.WithValue(ctx, tenantOriginsKey, origins)
 			}
 			ctx = store.WithTenant(ctx, tenant.ID)
+			// Billing gate: a paused tenant (trial expired / unpaid) keeps admin
+			// access but serves widget data 402 so the seller can still log in
+			// and pay.
+			if tenant.Status == "paused" {
+				writeError(w, http.StatusPaymentRequired, errors.New("подписка приостановлена"))
+				return
+			}
 		} else if store.StrictTenantMode() && !admin && !tenantless {
 			writeError(w, http.StatusForbidden, errors.New("public key required"))
 			return
@@ -236,6 +254,7 @@ func (s *Server) adminMux() *http.ServeMux {
 	mux.HandleFunc("GET /admin/api/setup-status", s.handleSetupStatus)
 	mux.HandleFunc("POST /admin/api/setup", s.handleSetup)
 	mux.HandleFunc("POST /admin/api/login", s.handleLogin)
+	mux.HandleFunc("POST /admin/api/signup", s.handleSignup)
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /admin/api/me", s.handleMe)

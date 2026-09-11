@@ -57,6 +57,10 @@ type ozonProductChecker interface {
 // edits take effect on the next sync or publish without a restart. It owns
 // the single apihttp.Executor and syncer.Coordinator shared across every
 // marketplace adapter constructed in the process.
+//
+// On SaaS one process serves many tenants: every operation runs with the
+// tenant stamped into its ctx, and the coordinator slot key includes the
+// tenant so tenant A's in-flight sync never blocks tenant B.
 type marketplaceOperations struct {
 	// ctx is the server-lifetime context passed at construction. DispatchSync
 	// uses it for background work launched after it has already returned to
@@ -81,6 +85,18 @@ func newMarketplaceOperations(ctx context.Context, db *store.Store, base config.
 		coordinator: coordinator,
 		newAdapter:  newLiveAdapter,
 	}
+}
+
+// tenantCtx stamps the tenant from parent into a fresh child of the
+// server-lifetime context, so background work (DispatchSync goroutines)
+// carries the tenant even though it detaches from the caller's request.
+func (o *marketplaceOperations) tenantCtx(parent context.Context) context.Context {
+	return store.WithTenant(o.ctx, store.TenantIDFromCtx(parent))
+}
+
+// slotKey namespaces a coordinator slot by tenant.
+func slotKey(tenantID uint, marketplace string) string {
+	return fmt.Sprintf("%d:%s", tenantID, marketplace)
 }
 
 // EffectiveConfig overlays admin-saved marketplace credentials onto the base
@@ -159,14 +175,17 @@ func (o *marketplaceOperations) resolveIDs(ctx context.Context, requested []stri
 	return requested, nil
 }
 
-// DispatchSync resolves requested marketplaces (or Runnable(ctx) when
-// requested is empty), acquires the coordinator slot for each, and returns
-// immediately with which ids started versus which were already busy. Work
-// for started marketplaces runs in background goroutines using the
-// server-lifetime context; after (if non-nil) runs exactly once, after every
-// marketplace started by this dispatch finishes.
-func (o *marketplaceOperations) DispatchSync(requested []string, after func()) (server.SyncDispatch, error) {
-	ctx := o.ctx
+// DispatchSync resolves the tenant from ctx (an admin request or the SaaS
+// sync loop), then resolves requested marketplaces (or the tenant's
+// Runnable list when requested is empty), acquires the per-tenant
+// coordinator slot for each, and returns immediately with which ids
+// started versus which were already busy. Work for started marketplaces
+// runs in background goroutines carrying the same tenant; after (if
+// non-nil) runs exactly once, after every marketplace started by this
+// dispatch finishes.
+func (o *marketplaceOperations) DispatchSync(ctx context.Context, requested []string, after func()) (server.SyncDispatch, error) {
+	tenantID := store.TenantIDFromCtx(ctx)
+	ctx = store.WithTenant(o.ctx, tenantID)
 	ids, err := o.resolveIDs(ctx, requested)
 	if err != nil {
 		return server.SyncDispatch{}, err
@@ -175,7 +194,7 @@ func (o *marketplaceOperations) DispatchSync(requested []string, after func()) (
 	var dispatch server.SyncDispatch
 	var wg sync.WaitGroup
 	for _, id := range ids {
-		release, ok := o.coordinator.TryAcquire(id)
+		release, ok := o.coordinator.TryAcquire(slotKey(tenantID, id))
 		if !ok {
 			dispatch.Busy = append(dispatch.Busy, id)
 			continue
@@ -187,10 +206,10 @@ func (o *marketplaceOperations) DispatchSync(requested []string, after func()) (
 			defer release()
 			result := o.runOne(ctx, id)
 			if result.Error != nil {
-				o.logger.Error("dispatched sync marketplace failed", "marketplace", id, "error", result.Error)
+				o.logger.Error("dispatched sync marketplace failed", "tenant", tenantID, "marketplace", id, "error", result.Error)
 				return
 			}
-			o.logger.Info("dispatched sync marketplace ok", "marketplace", id, "seen", result.Seen, "upserted", result.Upserted)
+			o.logger.Info("dispatched sync marketplace ok", "tenant", tenantID, "marketplace", id, "seen", result.Seen, "upserted", result.Upserted)
 		}(id, release)
 	}
 
@@ -217,7 +236,7 @@ func (o *marketplaceOperations) RunSync(ctx context.Context, requested []string,
 	results := make([]collector.Result, len(ids))
 	var wg sync.WaitGroup
 	for i, id := range ids {
-		release, ok := o.coordinator.TryAcquire(id)
+		release, ok := o.coordinator.TryAcquire(slotKey(store.TenantIDFromCtx(ctx), id))
 		if !ok {
 			results[i] = collector.Result{Marketplace: id, Error: fmt.Errorf("marketplace %s sync already in progress", id)}
 			continue

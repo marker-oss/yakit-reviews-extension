@@ -19,7 +19,7 @@ import (
 	"reviews/internal/marketplace/apihttp"
 	"reviews/internal/marketplace/wbtoken"
 	"reviews/internal/reviewjson"
-	"reviews/internal/scheduler"
+	"reviews/internal/secrets"
 	"reviews/internal/server"
 	"reviews/internal/site"
 	"reviews/internal/store"
@@ -83,8 +83,9 @@ func run(args []string) int {
 	logger := newLogger(cfg.Log)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	// One process serves one tenant (variant A: container per tenant); every
-	// job, CLI subcommand, and background loop inherits it from here.
+	// One process serves one tenant in variant A (container per tenant) and
+	// all tenants in variant B (shared SaaS process): serve backgrounds run
+	// per tenant, and CLI subcommands below default to the default tenant.
 	ctx = store.WithTenant(ctx, store.DefaultTenantID)
 
 	switch args[0] {
@@ -158,13 +159,9 @@ func runAdminResetPassword(ctx context.Context, args []string, cfg config.Config
 		return exitConfigError
 	}
 
-	db, err := store.Open(cfg.DB)
+	db, err := openStore(ctx, cfg, logger)
 	if err != nil {
 		logger.Error("open database", "error", err)
-		return exitConfigError
-	}
-	if err := db.Migrate(ctx); err != nil {
-		logger.Error("migrate database", "error", err)
 		return exitRunError
 	}
 	user, err := db.GetAdminUserByLogin(ctx, strings.TrimSpace(*login))
@@ -223,13 +220,9 @@ func runSync(ctx context.Context, args []string, cfg config.Config, logger *slog
 		fmt.Fprintf(os.Stderr, "unknown marketplace: %s\n", *marketplace)
 		return exitConfigError
 	}
-	db, err := store.Open(cfg.DB)
+	db, err := openStore(ctx, cfg, logger)
 	if err != nil {
 		logger.Error("open database", "error", err)
-		return exitConfigError
-	}
-	if err := db.Migrate(ctx); err != nil {
-		logger.Error("migrate database", "error", err)
 		return exitRunError
 	}
 
@@ -242,25 +235,62 @@ func runSync(ctx context.Context, args []string, cfg config.Config, logger *slog
 		marketplaces = []string{*marketplace}
 	}
 
-	results, err := operations.RunSync(ctx, marketplaces, nil)
+	// SaaS: sync every tenant in sequence. Single-tenant installs have one
+	// row (the implicit default tenant), so the loop degenerates to the
+	// previous behavior.
+	tenants, err := db.ListTenants(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
-		return exitConfigError
+		logger.Error("list tenants", "error", err)
+		return exitRunError
 	}
-
 	var failed bool
-	for _, result := range results {
-		if result.Error != nil {
+	for _, t := range tenants {
+		tCtx := store.WithTenant(ctx, t.ID)
+		results, err := operations.RunSync(tCtx, marketplaces, nil)
+		if err != nil {
+			logger.Error("sync tenant failed", "tenant", t.ID, "error", err)
 			failed = true
-			logger.Error("sync marketplace failed", "marketplace", result.Marketplace, "error", result.Error)
 			continue
 		}
-		logger.Info("sync marketplace ok", "marketplace", result.Marketplace, "seen", result.Seen, "upserted", result.Upserted)
+		for _, result := range results {
+			if result.Error != nil {
+				failed = true
+				logger.Error("sync marketplace failed", "tenant", t.ID, "marketplace", result.Marketplace, "error", result.Error)
+				continue
+			}
+			logger.Info("sync marketplace ok", "tenant", t.ID, "marketplace", result.Marketplace, "seen", result.Seen, "upserted", result.Upserted)
+		}
 	}
 	if failed {
 		return exitRunError
 	}
 	return exitOK
+}
+
+// openStore opens the database, installs the credentials cipher (SaaS:
+// REVIEWS_CREDENTIALS_KEY seals marketplace tokens at rest; empty keeps
+// plaintext for single-tenant installs), runs migrations, and upgrades any
+// legacy plaintext credential rows.
+func openStore(ctx context.Context, cfg config.Config, logger *slog.Logger) (*store.Store, error) {
+	db, err := store.Open(cfg.DB)
+	if err != nil {
+		return nil, err
+	}
+	cipher, err := secrets.New(os.Getenv("REVIEWS_CREDENTIALS_KEY"))
+	if err != nil {
+		return nil, err
+	}
+	db.SetCredentialsCipher(cipher)
+	if err := db.Migrate(ctx); err != nil {
+		return nil, err
+	}
+	if err := db.MigrateCredentials(ctx); err != nil {
+		return nil, fmt.Errorf("migrate credentials encryption: %w", err)
+	}
+	if cipher != nil {
+		logger.Info("marketplace credentials sealed at rest (AES-256-GCM)")
+	}
+	return db, nil
 }
 
 func runServe(ctx context.Context, args []string, cfg config.Config, logger *slog.Logger) int {
@@ -279,31 +309,40 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		return exitConfigError
 	}
 
-	db, err := store.Open(cfg.DB)
+	db, err := openStore(ctx, cfg, logger)
 	if err != nil {
 		logger.Error("open database", "error", err)
-		return exitConfigError
-	}
-	if err := db.Migrate(ctx); err != nil {
-		logger.Error("migrate database", "error", err)
 		return exitRunError
 	}
 
 	executor := apihttp.NewExecutor()
 	coordinator := syncer.NewCoordinator()
 	operations := newMarketplaceOperations(ctx, db, cfg, logger, executor, coordinator)
-	effectiveCfg := operations.EffectiveConfig(ctx)
-
 	var httpServer *server.Server
-	afterSync := func() {
+	effectiveCfg := operations.EffectiveConfig(ctx)
+	// Tenants are listed fresh on every scheduled sync tick: a tenant
+	// registered after startup is picked up without a restart.
+	listTenants := func() ([]store.Tenant, error) {
+		tenants, err := db.ListTenants(ctx)
+		if err != nil {
+			logger.Error("list tenants", "error", err)
+		}
+		return tenants, err
+	}
+	// afterTenant runs the post-sync publication retries for one tenant,
+	// detached from the request that triggered the sync.
+	afterTenant := func(tenantID uint) {
 		if httpServer == nil {
 			return
 		}
-		httpServer.RetryPendingReplies(context.Background())
-		httpServer.RetryPendingQuestionAnswers(context.Background())
+		tCtx := store.WithTenant(context.Background(), tenantID)
+		httpServer.RetryPendingReplies(tCtx)
+		httpServer.RetryPendingQuestionAnswers(tCtx)
 	}
-	triggerSync := func(marketplaces []string) (server.SyncDispatch, error) {
-		return operations.DispatchSync(marketplaces, afterSync)
+	triggerSync := func(reqCtx context.Context, marketplaces []string) (server.SyncDispatch, error) {
+		// Admin-triggered sync: the request ctx carries the admin's tenant.
+		tenantID := store.TenantIDFromCtx(reqCtx)
+		return operations.DispatchSync(reqCtx, marketplaces, func() { afterTenant(tenantID) })
 	}
 
 	httpServer = server.New(db, server.Config{
@@ -333,13 +372,51 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		},
 	}, logger)
 
+	// SaaS: scope the static reviews-data export per tenant (by public key)
+	// so many tenants share one instance without colliding. In compat
+	// (single-tenant) mode TenantScope returns "" and the shared legacy
+	// directory is used, keeping existing installs byte-identical.
+	httpServer.SetTenantExportScope(func(ctx context.Context) (string, error) {
+		if !store.StrictTenantMode() {
+			return "", nil
+		}
+		tenant, err := db.TenantByID(ctx)
+		if err != nil {
+			return "", err
+		}
+		return tenant.PublicKey, nil
+	})
+
 	if *withSync {
-		sched := scheduler.New(
-			schedulerRunnerAdapter{operations: operations, logger: logger, after: afterSync},
-			effectiveCfg.Sync.Interval,
-			logger,
-		)
-		go sched.Run(ctx)
+		// SaaS sync loop: every tick walks all tenants and dispatches their
+		// runnable marketplaces. Tenant N+1's slow sync never blocks tenant
+		// N's dispatch (per-tenant coordinator slots).
+		interval := effectiveCfg.Sync.Interval
+		go func() {
+			runOneTick := func() {
+				tenants, err := listTenants()
+				if err != nil {
+					return
+				}
+				for _, t := range tenants {
+					tCtx := store.WithTenant(ctx, t.ID)
+					if _, err := operations.DispatchSync(tCtx, nil, func() { afterTenant(t.ID) }); err != nil {
+						logger.Error("scheduled sync dispatch failed", "tenant", t.ID, "error", err)
+					}
+				}
+			}
+			runOneTick()
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					runOneTick()
+				}
+			}
+		}()
 	}
 
 	// Continuous publish: the static export regenerates itself after data
@@ -349,6 +426,8 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 	httpServer.StartAutoPublish(ctx, autoPublishEvery)
 	catalogRefreshEvery := envDuration("REVIEWS_CATALOG_REFRESH_INTERVAL", 24*time.Hour, logger)
 	httpServer.StartCatalogAutoRefresh(ctx, catalogRefreshEvery)
+	// SaaS: pause trials that ended; hourly tick, idempotent store method.
+	httpServer.StartTrialExpiry(ctx)
 	logger.Info("continuous publish enabled", "publish_interval", autoPublishEvery.String(), "catalog_interval", catalogRefreshEvery.String())
 
 	if err := httpServer.Run(ctx); err != nil {
@@ -375,26 +454,6 @@ func envDuration(key string, fallback time.Duration, logger *slog.Logger) time.D
 		return fallback
 	}
 	return parsed
-}
-
-// schedulerRunnerAdapter adapts marketplaceOperations to scheduler.Runner.
-// It ignores the marketplaces list the scheduler was constructed with (a
-// startup snapshot) and re-resolves Runnable(ctx) on every tick instead, so
-// admin-panel credential edits take effect on the next tick without a
-// restart, and an invalid enabled marketplace never blocks the others. On
-// completion it fires the same post-sync publication callback as a manual
-// trigger.
-type schedulerRunnerAdapter struct {
-	operations *marketplaceOperations
-	logger     *slog.Logger
-	after      func()
-}
-
-func (a schedulerRunnerAdapter) RunOnce(ctx context.Context) {
-	_ = ctx // operations holds the server-lifetime context from runServe.
-	if _, err := a.operations.DispatchSync(nil, a.after); err != nil {
-		a.logger.Error("scheduled sync dispatch failed", "error", err)
-	}
 }
 
 func runDiscoverSiteURLs(ctx context.Context, args []string, cfg config.Config, logger *slog.Logger) int {

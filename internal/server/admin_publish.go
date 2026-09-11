@@ -36,7 +36,15 @@ func (s *Server) publishReviewsData(ctx context.Context) (publishResult, error) 
 	}
 	bundles := staticexport.BuildBundles(reviews, mapper, pins)
 	generatedAt := time.Now().UTC()
+	// SaaS layout: each tenant exports into its own publicKey-scoped
+	// directory so one instance can serve many tenants without collisions.
+	// Compat (single-tenant) keeps the legacy shared path.
 	outDir := filepath.Join(s.cfg.StaticDir, "reviews-data")
+	if s.tenantExportScope != nil {
+		if scope, err := s.tenantExportScope(ctx); err == nil && scope != "" {
+			outDir = filepath.Join(s.cfg.StaticDir, "reviews-data", scope)
+		}
+	}
 	if err := staticexport.Write(outDir, bundles, generatedAt); err != nil {
 		return publishResult{}, err
 	}

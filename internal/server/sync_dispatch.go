@@ -14,10 +14,11 @@ type SyncDispatch struct {
 	Busy    []string `json:"busy"`
 }
 
-// TriggerSyncFunc validates and dispatches a marketplace sync. It returns
-// once every requested marketplace is either started (background work) or
-// rejected as busy; it never blocks on the sync itself.
-type TriggerSyncFunc func(marketplaces []string) (SyncDispatch, error)
+// TriggerSyncFunc validates and dispatches a marketplace sync for the tenant
+// resolved from ctx. It returns once every requested marketplace is either
+// started (background work) or rejected as busy; it never blocks on the sync
+// itself.
+type TriggerSyncFunc func(ctx context.Context, marketplaces []string) (SyncDispatch, error)
 
 // ReplyPublisherResolver returns a fresh reply publisher for a marketplace,
 // reading current (possibly just-changed) credentials.

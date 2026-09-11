@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -116,7 +117,7 @@ func TestAdminTriggerSync(t *testing.T) {
 	}{
 		{
 			name: "started returns 202 with arrays",
-			trigger: func([]string) (SyncDispatch, error) {
+			trigger: func(context.Context, []string) (SyncDispatch, error) {
 				return SyncDispatch{Started: []string{"wb"}}, nil
 			},
 			want: http.StatusAccepted,
@@ -124,7 +125,7 @@ func TestAdminTriggerSync(t *testing.T) {
 		},
 		{
 			name: "partial start still 202",
-			trigger: func([]string) (SyncDispatch, error) {
+			trigger: func(context.Context, []string) (SyncDispatch, error) {
 				return SyncDispatch{Started: []string{"ym"}, Busy: []string{"wb"}}, nil
 			},
 			want: http.StatusAccepted,
@@ -132,7 +133,7 @@ func TestAdminTriggerSync(t *testing.T) {
 		},
 		{
 			name: "all busy returns 409",
-			trigger: func([]string) (SyncDispatch, error) {
+			trigger: func(context.Context, []string) (SyncDispatch, error) {
 				return SyncDispatch{Busy: []string{"wb"}}, nil
 			},
 			want: http.StatusConflict,
@@ -140,7 +141,7 @@ func TestAdminTriggerSync(t *testing.T) {
 		},
 		{
 			name: "invalid marketplace returns 400",
-			trigger: func([]string) (SyncDispatch, error) {
+			trigger: func(context.Context, []string) (SyncDispatch, error) {
 				return SyncDispatch{}, errors.New("unknown marketplace")
 			},
 			want: http.StatusBadRequest,

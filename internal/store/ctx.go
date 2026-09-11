@@ -49,6 +49,17 @@ func TenantIDFromCtx(ctx context.Context) uint {
 	return DefaultTenantID
 }
 
+// TenantIDFromCtxSafe reports the tenant without the strict-mode panic:
+// middleware that may run on tenantless requests (health, statics) uses it
+// instead of TenantIDFromCtx.
+func TenantIDFromCtxSafe(ctx context.Context) (uint, bool) {
+	id, ok := ctx.Value(tenantCtxKey{}).(uint)
+	if !ok || id == 0 {
+		return 0, false
+	}
+	return id, true
+}
+
 // StrictTenantMode reports whether the instance runs without the single-tenant
 // fallback (SaaS). Public middleware uses it to require public_key.
 func StrictTenantMode() bool {

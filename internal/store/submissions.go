@@ -194,6 +194,11 @@ func (s *Store) UpdateReviewContent(ctx context.Context, id uint, patch ReviewEd
 	return s.db.WithContext(ctx).Model(&Review{}).Where("id = ?", id).Updates(updates).Error
 }
 
+// MediaByAccessToken resolves a visitor-uploaded media row by its unguessable
+// access token. Intentionally tenant-agnostic: the token is globally unique
+// (crypto/rand) and the /user-media route reaches the store without a tenant
+// context on SaaS (the media embed URL carries no public_key). Access is
+// still scoped by review visibility + session in the handler.
 func (s *Store) MediaByAccessToken(ctx context.Context, token string) (ReviewMedia, error) {
 	var media ReviewMedia
 	err := s.db.WithContext(ctx).

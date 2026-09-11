@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"reviews/internal/store"
 	"time"
 )
 
@@ -23,9 +24,10 @@ func (s *Server) runAutoPublishOnce(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// StartAutoPublish keeps the static reviews-data export continuously fresh:
-// every interval it republishes if curation, sync, remap, widget config or
-// catalog changes marked the export dirty. interval <= 0 disables the loop.
+// StartAutoPublish keeps the static reviews-data export continuously fresh
+// for every tenant: each tick walks all tenants and republishes the ones
+// whose data changed since their last publish. interval <= 0 disables the
+// loop.
 func (s *Server) StartAutoPublish(ctx context.Context, interval time.Duration) {
 	if interval <= 0 {
 		return
@@ -38,12 +40,26 @@ func (s *Server) StartAutoPublish(ctx context.Context, interval time.Duration) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if published, err := s.runAutoPublishOnce(ctx); err != nil {
-					s.logger.Warn("auto-publish failed", "error", err)
-				} else if published {
-					s.logger.Info("auto-publish: reviews-data regenerated")
-				}
+				s.autoPublishTick(ctx)
 			}
 		}
 	}()
+}
+
+// autoPublishTick runs runAutoPublishOnce for every tenant. A failing tenant
+// logs and yields; one broken tenant never starves the others.
+func (s *Server) autoPublishTick(ctx context.Context) {
+	tenants, err := s.store.ListTenants(ctx)
+	if err != nil {
+		s.logger.Warn("auto-publish: list tenants failed", "error", err)
+		return
+	}
+	for _, t := range tenants {
+		published, err := s.runAutoPublishOnce(store.WithTenant(ctx, t.ID))
+		if err != nil {
+			s.logger.Warn("auto-publish failed", "tenant", t.ID, "error", err)
+		} else if published {
+			s.logger.Info("auto-publish: reviews-data regenerated", "tenant", t.ID)
+		}
+	}
 }

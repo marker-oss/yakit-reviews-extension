@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"reviews/internal/config"
+	"reviews/internal/secrets"
 
 	sqlite "github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
@@ -15,6 +16,9 @@ import (
 
 type Store struct {
 	db *gorm.DB
+	// credentials seals marketplace tokens at rest (SaaS); nil keeps
+	// plaintext payloads (single-tenant compat).
+	credentials *secrets.Cipher
 }
 
 func Open(cfg config.DBConfig) (*Store, error) {
@@ -66,8 +70,17 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.migrateTenantBackfill(ctx); err != nil {
 		return fmt.Errorf("tenant backfill: %w", err)
 	}
-	if _, err := s.ScrubPersonalData(ctx); err != nil {
-		return fmt.Errorf("scrub personal data: %w", err)
+	// Scrub is a startup data migration across every tenant's rows: the
+	// tenant may not exist yet on a fresh strict-mode instance, so iterate
+	// all tenants explicitly (ScrubPersonalData is tenant-scoped).
+	tenants, err := s.ListTenants(ctx)
+	if err != nil {
+		return fmt.Errorf("list tenants for scrub: %w", err)
+	}
+	for _, t := range tenants {
+		if _, err := s.ScrubPersonalData(WithTenant(ctx, t.ID)); err != nil {
+			return fmt.Errorf("scrub personal data (tenant %d): %w", t.ID, err)
+		}
 	}
 	return nil
 }
