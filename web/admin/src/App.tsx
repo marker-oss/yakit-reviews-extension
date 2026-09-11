@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { apiGet, apiWrite, clearCSRF } from './api'
 import ToastHost from './components/ToastHost'
@@ -14,8 +15,8 @@ import Billing from './pages/Billing'
 // OperatorPage is replaced by the hosted build (closed-source overlay):
 // the open-source build ships a hidden no-op. The page itself renders only
 // for owner sessions (server-gated /admin/api/saas/*).
-let OperatorPage: (() => JSX.Element) | null = null
-export function setOperatorPage(component: () => JSX.Element) {
+let OperatorPage: ComponentType | null = null
+export function setOperatorPage(component: ComponentType) {
   OperatorPage = component
 }
 
@@ -44,6 +45,16 @@ async function postAuth(path: string, body: unknown) {
     throw new Error(data.error ?? 'Запрос не выполнен')
   }
 }
+
+const LEGACY_ROUTES: Record<string, Route> = {
+  '': 'dashboard',
+  showcase: 'widget/showcase',
+  editor: 'widget/editor',
+  embed: 'widget/embed',
+  settings: 'settings/general',
+  marketplaces: 'settings/marketplaces',
+}
+
 const ROUTES: Route[] = [
   'dashboard',
   'reviews',
@@ -307,7 +318,7 @@ export default function App() {
         {route === 'questions' && <Questions />}
         {route === 'status' && <Status />}
         {route === 'billing' && <Billing />}
-        {route === 'operator' && hasOperator && <OperatorPage />}
+        {route === 'operator' && OperatorPage !== null && hasOperator && <OperatorPage />}
         {route === 'widget/showcase' && <Showcase />}
         {route === 'widget/editor' && <Editor />}
         {route === 'widget/embed' && <Embed />}
