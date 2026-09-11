@@ -20,7 +20,11 @@ type Tenant struct {
 	Plan        string    `gorm:"size:16;not null;default:'trial'"` // trial|free|base|pro|pro+
 	Status      string    `gorm:"size:16;not null;default:'trial'"` // trial|active|grace|paused
 	TrialEndsAt time.Time `gorm:"not null"`
-	CreatedAt   time.Time
+	// PaidUntil extends with each successful payment (billing overlay):
+	// an active tenant past PaidUntil degrades to grace/paused. nil for
+	// trial/free tenants; the core never sets it.
+	PaidUntil *time.Time
+	CreatedAt time.Time
 }
 
 // EnsureDefaultTenant seeds the implicit tenant 1 once. PublicKey is

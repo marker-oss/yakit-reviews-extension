@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -61,7 +61,7 @@ type ozonProductChecker interface {
 // On SaaS one process serves many tenants: every operation runs with the
 // tenant stamped into its ctx, and the coordinator slot key includes the
 // tenant so tenant A's in-flight sync never blocks tenant B.
-type marketplaceOperations struct {
+type MarketplaceOperations struct {
 	// ctx is the server-lifetime context passed at construction. DispatchSync
 	// uses it for background work launched after it has already returned to
 	// its caller (an HTTP handler); RunSync always uses its own explicit
@@ -75,8 +75,8 @@ type marketplaceOperations struct {
 	newAdapter  adapterFactory
 }
 
-func newMarketplaceOperations(ctx context.Context, db *store.Store, base config.Config, logger *slog.Logger, executor *apihttp.Executor, coordinator *syncer.Coordinator) *marketplaceOperations {
-	return &marketplaceOperations{
+func NewMarketplaceOperations(ctx context.Context, db *store.Store, base config.Config, logger *slog.Logger, executor *apihttp.Executor, coordinator *syncer.Coordinator) *MarketplaceOperations {
+	return &MarketplaceOperations{
 		ctx:         ctx,
 		db:          db,
 		base:        base,
@@ -90,7 +90,7 @@ func newMarketplaceOperations(ctx context.Context, db *store.Store, base config.
 // tenantCtx stamps the tenant from parent into a fresh child of the
 // server-lifetime context, so background work (DispatchSync goroutines)
 // carries the tenant even though it detaches from the caller's request.
-func (o *marketplaceOperations) tenantCtx(parent context.Context) context.Context {
+func (o *MarketplaceOperations) tenantCtx(parent context.Context) context.Context {
 	return store.WithTenant(o.ctx, store.TenantIDFromCtx(parent))
 }
 
@@ -101,13 +101,13 @@ func slotKey(tenantID uint, marketplace string) string {
 
 // EffectiveConfig overlays admin-saved marketplace credentials onto the base
 // config. It re-reads the database on every call.
-func (o *marketplaceOperations) EffectiveConfig(ctx context.Context) config.Config {
+func (o *MarketplaceOperations) EffectiveConfig(ctx context.Context) config.Config {
 	return applyStoredMarketplaceCredentials(ctx, o.db, o.base, o.logger)
 }
 
 // Runnable returns the enabled marketplaces whose current credentials pass
 // validation, evaluated fresh against the database.
-func (o *marketplaceOperations) Runnable(ctx context.Context) []string {
+func (o *MarketplaceOperations) Runnable(ctx context.Context) []string {
 	effective := o.EffectiveConfig(ctx)
 	var ids []string
 	for _, id := range effective.EnabledMarketplaces() {
@@ -123,7 +123,7 @@ func (o *marketplaceOperations) Runnable(ctx context.Context) []string {
 // config and constructs a fresh adapter, returning the effective config
 // alongside so callers needing more than the adapter (e.g. Sync settings)
 // don't re-query the database.
-func (o *marketplaceOperations) resolvedAdapter(ctx context.Context, marketplaceID string) (marketplace.Adapter, config.Config, error) {
+func (o *MarketplaceOperations) resolvedAdapter(ctx context.Context, marketplaceID string) (marketplace.Adapter, config.Config, error) {
 	effective := o.EffectiveConfig(ctx)
 	if err := effective.ValidateMarketplaceCredentials(marketplaceID); err != nil {
 		return nil, config.Config{}, err
@@ -137,14 +137,14 @@ func (o *marketplaceOperations) resolvedAdapter(ctx context.Context, marketplace
 
 // adapter validates one enabled marketplace and constructs a fresh adapter
 // for it using the shared executor.
-func (o *marketplaceOperations) adapter(ctx context.Context, marketplaceID string) (marketplace.Adapter, error) {
+func (o *MarketplaceOperations) adapter(ctx context.Context, marketplaceID string) (marketplace.Adapter, error) {
 	a, _, err := o.resolvedAdapter(ctx, marketplaceID)
 	return a, err
 }
 
 // runOne resolves a fresh adapter for marketplaceID and runs one sync
 // against it via a one-adapter collector.Runner.
-func (o *marketplaceOperations) runOne(ctx context.Context, marketplaceID string) collector.Result {
+func (o *MarketplaceOperations) runOne(ctx context.Context, marketplaceID string) collector.Result {
 	a, effective, err := o.resolvedAdapter(ctx, marketplaceID)
 	if err != nil {
 		return collector.Result{Marketplace: marketplaceID, Error: err}
@@ -159,7 +159,7 @@ func (o *marketplaceOperations) runOne(ctx context.Context, marketplaceID string
 // currently runnable marketplaces (invalid enabled ones silently skipped);
 // an explicit list is validated in full before any acquisition or work
 // starts, so a single bad id rejects the whole request.
-func (o *marketplaceOperations) resolveIDs(ctx context.Context, requested []string) ([]string, error) {
+func (o *MarketplaceOperations) resolveIDs(ctx context.Context, requested []string) ([]string, error) {
 	if len(requested) == 0 {
 		return o.Runnable(ctx), nil
 	}
@@ -183,7 +183,7 @@ func (o *marketplaceOperations) resolveIDs(ctx context.Context, requested []stri
 // runs in background goroutines carrying the same tenant; after (if
 // non-nil) runs exactly once, after every marketplace started by this
 // dispatch finishes.
-func (o *marketplaceOperations) DispatchSync(ctx context.Context, requested []string, after func()) (server.SyncDispatch, error) {
+func (o *MarketplaceOperations) DispatchSync(ctx context.Context, requested []string, after func()) (server.SyncDispatch, error) {
 	tenantID := store.TenantIDFromCtx(ctx)
 	ctx = store.WithTenant(o.ctx, tenantID)
 	ids, err := o.resolveIDs(ctx, requested)
@@ -227,7 +227,7 @@ func (o *marketplaceOperations) DispatchSync(ctx context.Context, requested []st
 // validation, fresh-adapter, and coordinator rules as DispatchSync, but
 // blocks until every requested marketplace finishes before calling after
 // (if non-nil) once and returning.
-func (o *marketplaceOperations) RunSync(ctx context.Context, requested []string, after func()) ([]collector.Result, error) {
+func (o *MarketplaceOperations) RunSync(ctx context.Context, requested []string, after func()) ([]collector.Result, error) {
 	ids, err := o.resolveIDs(ctx, requested)
 	if err != nil {
 		return nil, err
@@ -258,7 +258,7 @@ func (o *marketplaceOperations) RunSync(ctx context.Context, requested []string,
 
 // ResolveReplyPublisher resolves a fresh adapter for marketplaceID and
 // asserts it supports publishing seller replies.
-func (o *marketplaceOperations) ResolveReplyPublisher(ctx context.Context, marketplaceID string) (marketplace.ReplyPublisher, error) {
+func (o *MarketplaceOperations) ResolveReplyPublisher(ctx context.Context, marketplaceID string) (marketplace.ReplyPublisher, error) {
 	a, err := o.adapter(ctx, marketplaceID)
 	if err != nil {
 		return nil, err
@@ -272,7 +272,7 @@ func (o *marketplaceOperations) ResolveReplyPublisher(ctx context.Context, marke
 
 // ResolveQuestionPublisher resolves a fresh adapter for marketplaceID and
 // asserts it supports publishing seller answers to product questions.
-func (o *marketplaceOperations) ResolveQuestionPublisher(ctx context.Context, marketplaceID string) (marketplace.QuestionAnswerPublisher, error) {
+func (o *MarketplaceOperations) ResolveQuestionPublisher(ctx context.Context, marketplaceID string) (marketplace.QuestionAnswerPublisher, error) {
 	a, err := o.adapter(ctx, marketplaceID)
 	if err != nil {
 		return nil, err
@@ -286,7 +286,7 @@ func (o *marketplaceOperations) ResolveQuestionPublisher(ctx context.Context, ma
 
 // CheckOzonProducts resolves a fresh Ozon adapter and verifies the
 // configured Api-Key can list the seller's products.
-func (o *marketplaceOperations) CheckOzonProducts(ctx context.Context) error {
+func (o *MarketplaceOperations) CheckOzonProducts(ctx context.Context) error {
 	a, err := o.adapter(ctx, config.MarketplaceOzon)
 	if err != nil {
 		return err

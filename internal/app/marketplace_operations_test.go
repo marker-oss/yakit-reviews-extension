@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -40,10 +40,10 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func newOps(t *testing.T, base config.Config) (*marketplaceOperations, *store.Store) {
+func newOps(t *testing.T, base config.Config) (*MarketplaceOperations, *store.Store) {
 	t.Helper()
 	db := newOpsTestStore(t)
-	return newMarketplaceOperations(context.Background(), db, base, testLogger(), apihttp.NewExecutor(), syncer.NewCoordinator()), db
+	return NewMarketplaceOperations(context.Background(), db, base, testLogger(), apihttp.NewExecutor(), syncer.NewCoordinator()), db
 }
 
 // wbJWT builds an unsigned JWT-shaped fixture; validation is metadata-only

@@ -19,6 +19,17 @@ type Store struct {
 	// credentials seals marketplace tokens at rest (SaaS); nil keeps
 	// plaintext payloads (single-tenant compat).
 	credentials *secrets.Cipher
+	// extraMigrate lets a closed-source overlay (operator panel, billing)
+	// add its tables to the same migration run: the core migrates its own
+	// models, then calls this with the raw gorm handle. nil in the
+	// open-source build.
+	extraMigrate func(ctx context.Context, db *gorm.DB) error
+}
+
+// SetExtraMigrate installs the overlay migration hook (billing payments,
+// operator tables). Call before Migrate.
+func (s *Store) SetExtraMigrate(fn func(ctx context.Context, db *gorm.DB) error) {
+	s.extraMigrate = fn
 }
 
 func Open(cfg config.DBConfig) (*Store, error) {
@@ -69,6 +80,11 @@ func (s *Store) Migrate(ctx context.Context) error {
 	}
 	if err := s.migrateTenantBackfill(ctx); err != nil {
 		return fmt.Errorf("tenant backfill: %w", err)
+	}
+	if s.extraMigrate != nil {
+		if err := s.extraMigrate(ctx, s.db); err != nil {
+			return fmt.Errorf("overlay migration: %w", err)
+		}
 	}
 	// Scrub is a startup data migration across every tenant's rows: the
 	// tenant may not exist yet on a fresh strict-mode instance, so iterate

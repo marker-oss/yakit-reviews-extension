@@ -12,12 +12,12 @@ import (
 	"syscall"
 	"time"
 
+	"reviews/internal/app"
 	"reviews/internal/auth"
 	"reviews/internal/config"
 	"reviews/internal/export"
 	"reviews/internal/installer"
 	"reviews/internal/marketplace/apihttp"
-	"reviews/internal/marketplace/wbtoken"
 	"reviews/internal/reviewjson"
 	"reviews/internal/secrets"
 	"reviews/internal/server"
@@ -42,16 +42,6 @@ const latestReleaseURL = "https://api.github.com/repos/marker-oss/yakit-reviews-
 // updateCheckURL resolves the release feed for the update banner.
 // REVIEWS_UPDATE_CHECK=false disables the daily lookup entirely; any other
 // non-empty value overrides the feed URL (useful for mirrors and tests).
-func updateCheckURL() string {
-	switch value := os.Getenv("REVIEWS_UPDATE_CHECK"); value {
-	case "":
-		return latestReleaseURL
-	case "false", "0", "off":
-		return ""
-	default:
-		return value
-	}
-}
 
 func main() {
 	os.Exit(run(os.Args[1:]))
@@ -228,7 +218,7 @@ func runSync(ctx context.Context, args []string, cfg config.Config, logger *slog
 
 	// Overlay credentials saved through the admin panel so CLI sync behaves
 	// the same as `serve --with-sync` and manual syncs.
-	operations := newMarketplaceOperations(ctx, db, cfg, logger, apihttp.NewExecutor(), syncer.NewCoordinator())
+	operations := app.NewMarketplaceOperations(ctx, db, cfg, logger, apihttp.NewExecutor(), syncer.NewCoordinator())
 
 	var marketplaces []string
 	if *marketplace != "" {
@@ -317,7 +307,7 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 
 	executor := apihttp.NewExecutor()
 	coordinator := syncer.NewCoordinator()
-	operations := newMarketplaceOperations(ctx, db, cfg, logger, executor, coordinator)
+	operations := app.NewMarketplaceOperations(ctx, db, cfg, logger, executor, coordinator)
 	var httpServer *server.Server
 	effectiveCfg := operations.EffectiveConfig(ctx)
 	// Tenants are listed fresh on every scheduled sync tick: a tenant
@@ -349,20 +339,20 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 		Addr:                     *addr,
 		StaticDir:                *staticDir,
 		ProductURLTemplate:       *productURLTemplate,
-		ProductLinks:             loadProductLinks(cfg.Web.ProductLinksPath, logger),
+		ProductLinks:             app.LoadProductLinks(cfg.Web.ProductLinksPath, logger),
 		ProductLinksPath:         cfg.Web.ProductLinksPath,
 		SitemapURL:               cfg.Web.SitemapURL,
 		SessionTTL:               24 * time.Hour,
 		SecureCookies:            os.Getenv("REVIEWS_INSECURE_COOKIES") == "",
 		TriggerSync:              triggerSync,
-		Marketplaces:             marketplaceStatuses(effectiveCfg),
+		Marketplaces:             app.MarketplaceStatuses(effectiveCfg),
 		AllowedOrigins:           cfg.Web.ShopOrigins,
 		Media:                    cfg.Media,
 		UploadDir:                cfg.Web.UploadDir,
 		PrivacyURL:               cfg.Web.PrivacyURL,
 		ReviewTermsURL:           cfg.Web.ReviewTermsURL,
 		Version:                  version,
-		LatestReleaseURL:         updateCheckURL(),
+		LatestReleaseURL:         app.UpdateCheckURL(),
 		ResolveReplyPublisher:    operations.ResolveReplyPublisher,
 		ResolveQuestionPublisher: operations.ResolveQuestionPublisher,
 		OzonProductsProbe: func(probeCtx context.Context) error {
@@ -422,9 +412,9 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 	// Continuous publish: the static export regenerates itself after data
 	// changes, and the catalog re-crawls daily — no manual «Опубликовать» /
 	// «Обновить каталог» needed in steady state.
-	autoPublishEvery := envDuration("REVIEWS_AUTOPUBLISH_INTERVAL", 5*time.Minute, logger)
+	autoPublishEvery := app.EnvDuration("REVIEWS_AUTOPUBLISH_INTERVAL", 5*time.Minute, logger)
 	httpServer.StartAutoPublish(ctx, autoPublishEvery)
-	catalogRefreshEvery := envDuration("REVIEWS_CATALOG_REFRESH_INTERVAL", 24*time.Hour, logger)
+	catalogRefreshEvery := app.EnvDuration("REVIEWS_CATALOG_REFRESH_INTERVAL", 24*time.Hour, logger)
 	httpServer.StartCatalogAutoRefresh(ctx, catalogRefreshEvery)
 	// SaaS: pause trials that ended; hourly tick, idempotent store method.
 	httpServer.StartTrialExpiry(ctx)
@@ -440,21 +430,6 @@ func runServe(ctx context.Context, args []string, cfg config.Config, logger *slo
 }
 
 // envDuration reads a duration env var; "0"/"off" disable the feature (zero).
-func envDuration(key string, fallback time.Duration, logger *slog.Logger) time.Duration {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback
-	}
-	if value == "0" || strings.EqualFold(value, "off") || strings.EqualFold(value, "false") {
-		return 0
-	}
-	parsed, err := time.ParseDuration(value)
-	if err != nil {
-		logger.Warn("invalid duration, using default", "env", key, "value", value, "default", fallback.String())
-		return fallback
-	}
-	return parsed
-}
 
 func runDiscoverSiteURLs(ctx context.Context, args []string, cfg config.Config, logger *slog.Logger) int {
 	flags := flag.NewFlagSet("discover-site-urls", flag.ContinueOnError)
@@ -526,7 +501,7 @@ func runExport(ctx context.Context, args []string, cfg config.Config, logger *sl
 
 	mapper := reviewjson.Mapper{
 		ProductURLTemplate: *productURLTemplate,
-		ProductLinks:       loadProductLinks(cfg.Web.ProductLinksPath, logger),
+		ProductLinks:       app.LoadProductLinks(cfg.Web.ProductLinksPath, logger),
 		MarketplacePolicy:  activeExportMarketplacePolicy(ctx, db, logger),
 	}
 	pins, err := db.AllShowcasePins(ctx)
@@ -588,109 +563,6 @@ func emptyAsAll(value string) string {
 		return "all"
 	}
 	return value
-}
-
-func marketplaceStatuses(cfg config.Config) []server.MarketplaceStatus {
-	wbConfigured := cfg.Marketplaces.WB.Token != ""
-	var wbWarning string
-	if wbConfigured {
-		if err := wbtoken.ValidatePersonalTokenMetadata(cfg.Marketplaces.WB.Token, time.Now()); err != nil {
-			wbConfigured = false
-			wbWarning = err.Error()
-		}
-	}
-	return []server.MarketplaceStatus{
-		{
-			ID:         config.MarketplaceWB,
-			Enabled:    cfg.Marketplaces.WB.Enabled,
-			Configured: wbConfigured,
-			Fields: map[string]bool{
-				"token": cfg.Marketplaces.WB.Token != "",
-			},
-			Warning: wbWarning,
-		},
-		{
-			ID:      config.MarketplaceYM,
-			Enabled: cfg.Marketplaces.YM.Enabled,
-			Configured: cfg.Marketplaces.YM.BusinessID != "" &&
-				(cfg.Marketplaces.YM.APIKey != "" || cfg.Marketplaces.YM.OAuthToken != ""),
-			Fields: map[string]bool{
-				"api_key":     cfg.Marketplaces.YM.APIKey != "",
-				"oauth_token": cfg.Marketplaces.YM.OAuthToken != "",
-				"business_id": cfg.Marketplaces.YM.BusinessID != "",
-				"campaign_id": cfg.Marketplaces.YM.CampaignID != "",
-			},
-		},
-		{
-			ID:         config.MarketplaceOzon,
-			Enabled:    cfg.Marketplaces.Ozon.Enabled,
-			Configured: cfg.Marketplaces.Ozon.ClientID != "" && cfg.Marketplaces.Ozon.APIKey != "",
-			Fields: map[string]bool{
-				"client_id": cfg.Marketplaces.Ozon.ClientID != "",
-				"api_key":   cfg.Marketplaces.Ozon.APIKey != "",
-			},
-		},
-	}
-}
-
-func applyStoredMarketplaceCredentials(ctx context.Context, db *store.Store, cfg config.Config, logger *slog.Logger) config.Config {
-	creds, err := db.ListMarketplaceCredentials(ctx)
-	if err != nil {
-		logger.Warn("load marketplace credentials", "error", err)
-		return cfg
-	}
-	for _, cred := range creds {
-		values := cred.PayloadMap()
-		switch cred.Marketplace {
-		case config.MarketplaceWB:
-			cfg.Marketplaces.WB.Enabled = cred.Enabled
-			if values["token"] != "" {
-				cfg.Marketplaces.WB.Token = values["token"]
-			}
-		case config.MarketplaceYM:
-			cfg.Marketplaces.YM.Enabled = cred.Enabled
-			if values["api_key"] != "" {
-				cfg.Marketplaces.YM.APIKey = values["api_key"]
-			}
-			if values["oauth_token"] != "" {
-				cfg.Marketplaces.YM.OAuthToken = values["oauth_token"]
-			}
-			if values["business_id"] != "" {
-				cfg.Marketplaces.YM.BusinessID = values["business_id"]
-			}
-			if values["campaign_id"] != "" {
-				cfg.Marketplaces.YM.CampaignID = values["campaign_id"]
-			}
-		case config.MarketplaceOzon:
-			cfg.Marketplaces.Ozon.Enabled = cred.Enabled
-			if values["client_id"] != "" {
-				cfg.Marketplaces.Ozon.ClientID = values["client_id"]
-			}
-			if values["api_key"] != "" {
-				cfg.Marketplaces.Ozon.APIKey = values["api_key"]
-			}
-		}
-	}
-	return cfg
-}
-
-func loadProductLinks(path string, logger *slog.Logger) map[string]string {
-	file, err := os.Open(path)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		logger.Warn("open product links", "path", path, "error", err)
-		return nil
-	}
-	defer file.Close()
-	links, err := site.LoadProductLinkMap(file)
-	if err != nil {
-		logger.Warn("load product links", "path", path, "error", err)
-		return nil
-	}
-	logger.Info("product links loaded", "path", path, "count", len(links))
-	return links
 }
 
 func loadProductCatalog(path string, logger *slog.Logger) []site.ProductLink {

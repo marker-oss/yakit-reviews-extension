@@ -64,6 +64,15 @@ type Config struct {
 	// admin-panel warning; the closure must use the effective (DB-overlaid)
 	// credentials at call time.
 	OzonProductsProbe func(ctx context.Context) error
+	// ExtraAdminRoutes lets a closed-source overlay (operator panel,
+	// billing) register protected /admin/api routes: the returned mux is
+	// mounted inside requireSession. The overlay receives the server so it
+	// can reach the store and logger. nil in the open-source build.
+	ExtraAdminRoutes func(s *Server) *http.ServeMux
+	// ExtraPublicRoutes lets the overlay register public routes (payment
+	// webhooks that must not require a session). Mounted at the root mux
+	// before the static file server.
+	ExtraPublicRoutes func(s *Server) *http.ServeMux
 }
 
 type Server struct {
@@ -159,6 +168,9 @@ func (s *Server) handler() http.Handler {
 		mux.Handle("GET /media", mediaHandler)
 	} else {
 		s.logger.Error("media proxy disabled", "error", err)
+	}
+	if s.cfg.ExtraPublicRoutes != nil {
+		mux.Handle("/billing/", s.cfg.ExtraPublicRoutes(s))
 	}
 	mux.Handle("/admin/", s.adminMux())
 	mux.Handle("/", http.FileServer(http.Dir(s.cfg.StaticDir)))
@@ -298,6 +310,9 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.HandleFunc("GET /admin/api/dsr/export", s.handleDSRExport)
 	protected.Handle("POST /admin/api/dsr/delete", requireCSRF(http.HandlerFunc(s.handleDSRDelete)))
 	mux.Handle("/admin/api/", s.requireSession(protected))
+	if s.cfg.ExtraAdminRoutes != nil {
+		mux.Handle("/admin/api/saas/", s.requireSession(s.cfg.ExtraAdminRoutes(s)))
+	}
 
 	mux.Handle("/admin/", s.adminSPAHandler())
 	return mux
