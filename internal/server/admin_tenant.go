@@ -21,10 +21,12 @@ func (s *Server) handleTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id":        tenant.ID,
-		"slug":      tenant.Slug,
-		"publicKey": tenant.PublicKey,
-		"plan":      tenant.Plan,
-		"status":    tenant.Status,
+		"id":          tenant.ID,
+		"slug":        tenant.Slug,
+		"publicKey":   tenant.PublicKey,
+		"plan":        tenant.Plan,
+		"status":      tenant.Status,
+		"paidUntil":   tenant.PaidUntil,
+		"trialEndsAt": tenant.TrialEndsAt,
 	})
 }

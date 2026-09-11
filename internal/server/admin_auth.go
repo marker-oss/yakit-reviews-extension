@@ -108,7 +108,12 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, errors.New("authentication required"))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user_id": id})
+	user, err := s.store.GetAdminUserByID(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, errors.New("authentication required"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user_id": id, "role": user.Role})
 }
 
 // handleSetupStatus tells the SPA whether to show setup or login.

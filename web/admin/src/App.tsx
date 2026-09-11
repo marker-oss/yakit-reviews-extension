@@ -10,6 +10,14 @@ import Reviews from './pages/Reviews'
 import Settings from './pages/Settings'
 import Showcase from './pages/Showcase'
 import Status from './pages/Status'
+import Billing from './pages/Billing'
+// OperatorPage is replaced by the hosted build (closed-source overlay):
+// the open-source build ships a hidden no-op. The page itself renders only
+// for owner sessions (server-gated /admin/api/saas/*).
+let OperatorPage: (() => JSX.Element) | null = null
+export function setOperatorPage(component: () => JSX.Element) {
+  OperatorPage = component
+}
 
 type Mode = 'loading' | 'setup' | 'login' | 'authed'
 type Route =
@@ -17,6 +25,8 @@ type Route =
   | 'reviews'
   | 'questions'
   | 'status'
+  | 'billing'
+  | 'operator'
   | 'widget/showcase'
   | 'widget/editor'
   | 'widget/embed'
@@ -34,21 +44,13 @@ async function postAuth(path: string, body: unknown) {
     throw new Error(data.error ?? 'Запрос не выполнен')
   }
 }
-
-const LEGACY_ROUTES: Record<string, Route> = {
-  '': 'dashboard',
-  showcase: 'widget/showcase',
-  editor: 'widget/editor',
-  embed: 'widget/embed',
-  settings: 'settings/general',
-  marketplaces: 'settings/marketplaces',
-}
-
 const ROUTES: Route[] = [
   'dashboard',
   'reviews',
   'questions',
   'status',
+  'billing',
+  'operator',
   'widget/showcase',
   'widget/editor',
   'widget/embed',
@@ -81,6 +83,10 @@ function routeTitle(route: Route): string {
       return 'Вопросы'
     case 'status':
       return 'Состояние'
+    case 'billing':
+      return 'Подписка'
+    case 'operator':
+      return 'Операторская панель'
     case 'widget/showcase':
       return 'Виджет · Витрина'
     case 'widget/editor':
@@ -124,10 +130,16 @@ export default function App() {
     pendingReviews: 0,
     pendingQuestions: 0,
   })
-
+  // The operator tab appears only when the operator page component was
+  // installed (hosted build) AND the session belongs to an owner.
+  const [isOwner, setIsOwner] = useState(false)
+  const hasOperator = isOwner && OperatorPage !== null
   useEffect(() => {
-    apiGet('/admin/api/me')
-      .then(() => setMode('authed'))
+    apiGet<{ user_id: number; role: string }>('/admin/api/me')
+      .then((me) => {
+        setMode('authed')
+        setIsOwner(me.role === 'owner')
+      })
       .catch(() => {
         fetch('/admin/api/setup-status')
           .then((s) => s.json())
@@ -135,6 +147,7 @@ export default function App() {
           .catch(() => setMode('login'))
       })
   }, [])
+
 
   useEffect(() => {
     const onHash = () => setRoute(currentRoute())
@@ -232,87 +245,74 @@ export default function App() {
 
   return (
     <>
-      <div className="app-shell">
-        <aside className="sidebar">
-          <div>
-            <p className="eyebrow">Отзывы</p>
-            <h1>Админка</h1>
-          </div>
-          <nav>
-            <a className={route === 'dashboard' ? 'active' : ''} href="#/dashboard">
-              Сводка
+      <div className="view-shell">
+        <header className="plat">
+          <div className="plat-in">
+            <a className="brand" href="#/dashboard">
+              <span className="brand-mark">Виджет отзывов</span>
             </a>
-            <a className={route === 'reviews' ? 'active' : ''} href="#/reviews">
-              Отзывы {counts.pendingReviews > 0 && <span className="nav-count">{counts.pendingReviews}</span>}
-            </a>
-            <a className={route === 'questions' ? 'active' : ''} href="#/questions">
-              Вопросы {counts.pendingQuestions > 0 && <span className="nav-count">{counts.pendingQuestions}</span>}
-            </a>
-            <a className={route === 'status' ? 'active' : ''} href="#/status">
-              Состояние
-            </a>
-            <div className="nav-group">
-              <span className={`nav-group-label${routeSection(route) === 'widget' ? ' active' : ''}`}>
-                Виджет
-              </span>
-              <a className={`nav-sub${route === 'widget/showcase' ? ' active' : ''}`} href="#/widget/showcase">
-                Витрина
-              </a>
-              <a className={`nav-sub${route === 'widget/editor' ? ' active' : ''}`} href="#/widget/editor">
-                Редактор
-              </a>
-              <a className={`nav-sub${route === 'widget/embed' ? ' active' : ''}`} href="#/widget/embed">
-                Встраивание
-              </a>
-            </div>
-            <div className="nav-group">
-              <span className={`nav-group-label${routeSection(route) === 'settings' ? ' active' : ''}`}>
-                Настройки
-              </span>
-              <a className={`nav-sub${route === 'settings/general' ? ' active' : ''}`} href="#/settings/general">
-                Общие
-              </a>
-              <a className={`nav-sub${route === 'settings/marketplaces' ? ' active' : ''}`} href="#/settings/marketplaces">
-                Маркетплейсы
-              </a>
-            </div>
-          </nav>
-          <button className="secondary" onClick={logout}>
-            Выйти
-          </button>
-          {error && <p className="error">{error}</p>}
-        </aside>
-        <main className="workspace">
-          {showUpdateBanner && versionInfo && (
-            <div className="update-banner">
-              <span>
-                Доступна новая версия <strong>{versionInfo.latest}</strong> (у вас {versionInfo.current}).{' '}
-                <a href={versionInfo.releaseUrl} target="_blank" rel="noreferrer">
-                  Что нового
-                </a>{' '}
-                ·{' '}
-                <a href={UPDATE_DOCS_URL} target="_blank" rel="noreferrer">
-                  Как обновиться
+            <span className="brand-tag">Админка</span>
+            <nav className="hub-tabs" aria-label="Разделы">
+              {[
+                { route: 'dashboard' as Route, label: 'Сводка' },
+                { route: 'reviews' as Route, label: 'Отзывы', count: counts.pendingReviews },
+                { route: 'questions' as Route, label: 'Вопросы', count: counts.pendingQuestions },
+                { route: 'status' as Route, label: 'Состояние' },
+                { route: 'billing' as Route, label: 'Подписка' },
+                { route: 'widget/showcase' as Route, label: 'Витрина' },
+                { route: 'widget/editor' as Route, label: 'Редактор' },
+                { route: 'widget/embed' as Route, label: 'Встраивание' },
+                { route: 'settings/general' as Route, label: 'Общие' },
+                { route: 'settings/marketplaces' as Route, label: 'Маркетплейсы' },
+                ...(hasOperator ? [{ route: 'operator' as Route, label: 'SaaS' }] : []),
+              ].map((item) => (
+                <a
+                  key={item.route}
+                  className={`tab${route === item.route ? ' active' : ''}`}
+                  href={`#/${item.route}`}
+                >
+                  {item.label}
+                  {item.count ? <span className="nav-count">{item.count}</span> : null}
                 </a>
-              </span>
-              <button className="secondary" onClick={() => dismissUpdate(versionInfo.latest)}>
-                Скрыть
-              </button>
-            </div>
-          )}
-          <header className="topbar">
-            <h2>{title}</h2>
-          </header>
-          {route === 'dashboard' && <Dashboard />}
-          {route === 'reviews' && <Reviews />}
-          {route === 'questions' && <Questions />}
-          {route === 'status' && <Status />}
-          {route === 'widget/showcase' && <Showcase />}
-          {route === 'widget/editor' && <Editor />}
-          {route === 'widget/embed' && <Embed />}
-          {route === 'settings/general' && <Settings />}
-          {route === 'settings/marketplaces' && <Marketplaces />}
-        </main>
+              ))}
+            </nav>
+            <button className="plat-logout" onClick={logout}>
+              Выйти
+            </button>
+          </div>
+        </header>
+        {error && <p className="error plat-error">{error}</p>}
+        {showUpdateBanner && versionInfo && (
+          <div className="update-banner">
+            <span>
+              Доступна новая версия <strong>{versionInfo.latest}</strong> (у вас {versionInfo.current}).{' '}
+              <a href={versionInfo.releaseUrl} target="_blank" rel="noreferrer">
+                Что нового
+              </a>{' '}
+              ·{' '}
+              <a href={UPDATE_DOCS_URL} target="_blank" rel="noreferrer">
+                Как обновиться
+              </a>
+            </span>
+            <button className="secondary" onClick={() => dismissUpdate(versionInfo.latest)}>
+              Скрыть
+            </button>
+          </div>
+        )}
+        <header className="topbar">
+          <h1>{title}</h1>
+        </header>
+        {route === 'dashboard' && <Dashboard />}
+        {route === 'reviews' && <Reviews />}
+        {route === 'questions' && <Questions />}
+        {route === 'status' && <Status />}
+        {route === 'billing' && <Billing />}
+        {route === 'operator' && hasOperator && <OperatorPage />}
+        {route === 'widget/showcase' && <Showcase />}
+        {route === 'widget/editor' && <Editor />}
+        {route === 'widget/embed' && <Embed />}
+        {route === 'settings/general' && <Settings />}
+        {route === 'settings/marketplaces' && <Marketplaces />}
       </div>
       <ToastHost />
     </>
