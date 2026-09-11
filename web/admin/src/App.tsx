@@ -17,6 +17,7 @@ import Billing from './pages/Billing'
 // for owner sessions (server-gated /admin/api/saas/*).
 let OperatorPage: ComponentType | null = null
 export function setOperatorPage(component: ComponentType) {
+  console.log('SLOT_SET')
   OperatorPage = component
 }
 
@@ -148,6 +149,7 @@ export default function App() {
   useEffect(() => {
     apiGet<{ user_id: number; role: string }>('/admin/api/me')
       .then((me) => {
+        console.log('ME_ROLE:', me.role)
         setMode('authed')
         setIsOwner(me.role === 'owner')
       })
@@ -197,6 +199,14 @@ export default function App() {
       await postAuth(mode === 'setup' ? '/admin/api/setup' : '/admin/api/login', { login, password })
       setMode('authed')
       setPassword('')
+      // The operator tab depends on the role; login is the second entry
+      // point after the session cookie persisted across page loads.
+      try {
+        const me = await apiGet<{ user_id: number; role: string }>('/admin/api/me')
+        setIsOwner(me.role === 'owner')
+      } catch {
+        setIsOwner(false)
+      }
     } catch (err) {
       setError(err instanceof Error ? authError(err.message) : 'Запрос не выполнен')
     }
