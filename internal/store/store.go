@@ -95,6 +95,12 @@ func (s *Store) migrateTenantBackfill(ctx context.Context) error {
 // an existing table whose primary key still covers only marketplace (SQLite
 // cannot alter a PK in place). The rebuild is a copy: safe and idempotent.
 func (s *Store) migrateSyncStatePK(ctx context.Context) error {
+	// This rebuild only exists for SQLite (PKs can't be altered in place);
+	// gorm's postgres migrator handles PK changes natively, and on a fresh
+	// database AutoMigrate already created the composite PK.
+	if s.db.Dialector.Name() != "sqlite" {
+		return nil
+	}
 	var pkColumns []string
 	if err := s.db.WithContext(ctx).Raw(
 		"SELECT name FROM pragma_table_info('sync_states') WHERE pk > 0 ORDER BY pk",
