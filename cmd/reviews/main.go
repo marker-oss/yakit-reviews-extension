@@ -70,7 +70,7 @@ func run(args []string) int {
 		return exitConfigError
 	}
 
-	logger := newLogger(cfg.Log)
+	logger := app.NewLogger(cfg.Log)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	// One process serves one tenant in variant A (container per tenant) and
@@ -540,23 +540,6 @@ func activeExportMarketplacePolicy(ctx context.Context, db *store.Store, logger 
 	return policy
 }
 
-func newLogger(cfg config.LogConfig) *slog.Logger {
-	level := slog.LevelInfo
-	switch strings.ToLower(cfg.Level) {
-	case "debug":
-		level = slog.LevelDebug
-	case "warn", "warning":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	}
-
-	opts := &slog.HandlerOptions{Level: level}
-	if strings.EqualFold(cfg.Format, "json") {
-		return slog.New(slog.NewJSONHandler(os.Stdout, opts))
-	}
-	return slog.New(slog.NewTextHandler(os.Stdout, opts))
-}
 
 func emptyAsAll(value string) string {
 	if value == "" {

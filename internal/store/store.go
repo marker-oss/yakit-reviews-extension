@@ -53,6 +53,13 @@ func Open(cfg config.DBConfig) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// DB exposes the underlying gorm handle for overlays that own extra tables
+// (billing payments, operator data) and run them through the same
+// connection and migrations. Core code never needs it.
+func (s *Store) DB() *gorm.DB {
+	return s.db
+}
+
 func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.db.WithContext(ctx).AutoMigrate(
 		&Tenant{},

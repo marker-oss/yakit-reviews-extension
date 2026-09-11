@@ -112,6 +112,12 @@ type Server struct {
 	tenantExportScope func(ctx context.Context) (string, error)
 }
 
+// Store exposes the store for overlay route handlers (operator panel,
+// billing webhooks mounted through Config.Extra*Routes).
+func (s *Server) Store() *store.Store {
+	return s.store
+}
+
 // productLinks returns the current article→URL map under a read lock.
 func (s *Server) productLinks() map[string]string {
 	s.linksMu.RLock()

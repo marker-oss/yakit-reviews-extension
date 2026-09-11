@@ -157,6 +157,12 @@ func userIDFromContext(ctx context.Context) (uint, bool) {
 	return id, ok
 }
 
+// SessionUserID returns the admin user id requireSession stashed in the
+// request context. Overlays (operator panel) use it for role checks.
+func SessionUserID(ctx context.Context) (uint, bool) {
+	return userIDFromContext(ctx)
+}
+
 // setSessionCookie writes the session cookie with hardened attributes.
 func setSessionCookie(w http.ResponseWriter, token string, expires time.Time, secure bool) {
 	http.SetCookie(w, &http.Cookie{

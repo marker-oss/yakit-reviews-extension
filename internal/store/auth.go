@@ -34,6 +34,24 @@ func (s *Store) GetAdminUserByLogin(ctx context.Context, login string) (AdminUse
 	return user, err
 }
 
+// GetAdminUserByID loads one admin user by primary key (role checks).
+func (s *Store) GetAdminUserByID(ctx context.Context, id uint) (AdminUser, error) {
+	var user AdminUser
+	err := s.db.WithContext(ctx).First(&user, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return AdminUser{}, ErrNotFound
+	}
+	return user, err
+}
+
+// CreateOwnerUser registers an operator account outside the tenant world
+// (TenantID 0). Tenant-scoped store calls never resolve to it. Used by the
+// closed-source overlay's CLI.
+func (s *Store) CreateOwnerUser(ctx context.Context, login, passwordHash string) error {
+	user := AdminUser{TenantID: 0, Login: login, PasswordHash: passwordHash, Role: "owner"}
+	return s.db.WithContext(ctx).Create(&user).Error
+}
+
 func (s *Store) UpdateAdminPassword(ctx context.Context, userID uint, passwordHash string) error {
 	return s.db.WithContext(ctx).Model(&AdminUser{}).
 		Where("id = ?", userID).

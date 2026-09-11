@@ -146,3 +146,21 @@ func UpdateCheckURL() string {
 		return value
 	}
 }
+
+func NewLogger(cfg config.LogConfig) *slog.Logger {
+	level := slog.LevelInfo
+	switch strings.ToLower(cfg.Level) {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn", "warning":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	}
+
+	opts := &slog.HandlerOptions{Level: level}
+	if strings.EqualFold(cfg.Format, "json") {
+		return slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	}
+	return slog.New(slog.NewTextHandler(os.Stdout, opts))
+}
