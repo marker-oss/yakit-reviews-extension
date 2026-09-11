@@ -194,7 +194,10 @@ func (s *Server) handler() http.Handler {
 		s.logger.Error("media proxy disabled", "error", err)
 	}
 	if s.cfg.ExtraPublicRoutes != nil {
-		mux.Handle("/billing/", s.cfg.ExtraPublicRoutes(s))
+		inner := s.cfg.ExtraPublicRoutes(s)
+		mux.Handle("/billing/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.StripPrefix("/billing", inner).ServeHTTP(w, r)
+		}))
 	}
 	mux.Handle("/admin/", s.adminMux())
 	mux.Handle("/", http.FileServer(http.Dir(s.cfg.StaticDir)))

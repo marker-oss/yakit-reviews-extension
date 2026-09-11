@@ -152,6 +152,12 @@ func (s *Server) requireSession(next http.Handler) http.Handler {
 	})
 }
 
+// RequireSession is the exported requireSession wrapper for overlay routes
+// mounted outside the protected admin mux (e.g. the billing pay link).
+func (s *Server) RequireSession(next http.Handler) http.Handler {
+	return s.requireSession(next)
+}
+
 func userIDFromContext(ctx context.Context) (uint, bool) {
 	id, ok := ctx.Value(userIDKey).(uint)
 	return id, ok
