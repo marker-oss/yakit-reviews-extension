@@ -131,6 +131,24 @@ func (s *Server) SetTenantExportScope(resolve func(ctx context.Context) (string,
 	s.tenantExportScope = resolve
 }
 
+// SetOperatorRoutesForTest installs the overlay route hooks the way Run
+// does, so overlay integration tests exercise the real mounting path
+// (requireSession wrap included). Production wiring goes through Config.
+func (s *Server) SetOperatorRoutesForTest(admin, public func(*Server) *http.ServeMux) {
+	if admin != nil {
+		s.cfg.ExtraAdminRoutes = admin
+	}
+	if public != nil {
+		s.cfg.ExtraPublicRoutes = public
+	}
+}
+
+// HandlerForTest builds the full middleware-wrapped handler for overlay
+// integration tests (the same chain Run installs).
+func (s *Server) HandlerForTest() http.Handler {
+	return s.handler()
+}
+
 // setProductLinks atomically swaps the in-memory article→URL map.
 func (s *Server) setProductLinks(links map[string]string) {
 	s.linksMu.Lock()
